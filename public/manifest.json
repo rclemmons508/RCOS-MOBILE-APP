@@ -1,0 +1,24 @@
+{
+  "name": "RC Solutions - RCOS Mobile",
+  "short_name": "RCOS",
+  "description": "Mobile AI Operating System for RC Solutions featuring multi-agent orchestration, phone system automation, job dispatching, CRM, and RCOS system file manager.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#84CC16",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/rc-logo.svg",
+      "sizes": "280x120",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "Business": {
+      "title": "Business Account",
+      "description": "Tenant business profile and operational configurations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string", "description": "Firebase Auth UID of business owner" },
+        "name": { "type": "string", "maxLength": 100 },
+        "industry": { "type": "string", "maxLength": 50 },
+        "size": { "type": "string", "maxLength": 50 },
+        "services": { "type": "array", "description": "List of services offered" },
+        "pricingApproach": { "type": "string", "maxLength": 100 },
+        "brandTone": { "type": "string", "maxLength": 100 },
+        "painPoints": { "type": "array" },
+        "autonomyMode": { "type": "string", "enum": ["autonomous", "supervised"] },
+        "dollarThreshold": { "type": "number" },
+        "activeEmployees": { "type": "object" },
+        "onboardingCompleted": { "type": "boolean" },
+        "starterDrafts": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "ownerId", "name", "industry", "autonomyMode", "dollarThreshold"]
+    },
+    "CustomerRequest": {
+      "title": "Customer Request",
+      "description": "Incoming client request in the intake pipeline",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "customerName": { "type": "string", "maxLength": 100 },
+        "customerPhone": { "type": "string", "maxLength": 30 },
+        "customerEmail": { "type": "string", "maxLength": 100 },
+        "preferredContact": { "type": "string", "enum": ["phone", "email", "text"] },
+        "serviceLocation": { "type": "string", "maxLength": 200 },
+        "serviceType": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "urgency": { "type": "string", "enum": ["routine", "soon", "urgent", "emergency"] },
+        "preferredDateTime": { "type": "string", "maxLength": 100 },
+        "flexibility": { "type": "string", "maxLength": 100 },
+        "specialInstructions": { "type": "string", "maxLength": 1000 },
+        "stage": { "type": "string", "enum": ["Intake", "Qualification", "Routing", "Execution", "Follow-Up", "Completion"] },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "businessId", "customerName", "serviceType", "stage", "status"]
+    },
+    "ActionRecord": {
+      "title": "Action Record",
+      "description": "Persisted unit of operational work assigned to an AI employee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "requestId": { "type": "string" },
+        "employeeId": { "type": "string", "maxLength": 50 },
+        "actionType": { "type": "string" },
+        "title": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["queued", "running", "awaiting_approval", "approved", "rejected", "completed", "failed"] },
+        "stepSummary": { "type": "string", "maxLength": 500 },
+        "fullTrace": { "type": "array" },
+        "result": { "type": "object" },
+        "riskCategory": { "type": "string" },
+        "requiresApproval": { "type": "boolean" },
+        "dollarAmount": { "type": "number" },
+        "approvalDecision": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["id", "businessId", "employeeId", "actionType", "title", "status", "riskCategory"]
+    }
+  },
+  "firestore": {
+    "/businesses/{businessId}": {
+      "schema": "Business",
+      "description": "Tenant business profiles"
+    },
+    "/businesses/{businessId}/requests/{requestId}": {
+      "schema": "CustomerRequest",
+      "description": "Customer intake requests for this business"
+    },
+    "/businesses/{businessId}/actions/{actionId}": {
+      "schema": "ActionRecord",
+      "description": "AI team actions for this business"
+    }
+  }
+}

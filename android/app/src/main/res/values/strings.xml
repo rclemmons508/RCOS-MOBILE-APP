@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RC Solutions - RCOS</string>
+    <string name="title_activity_main">RC Solutions - RCOS</string>
+    <string name="package_name">com.rcsolutions.app</string>
+    <string name="custom_url_scheme">com.rcsolutions.app</string>
+</resources>

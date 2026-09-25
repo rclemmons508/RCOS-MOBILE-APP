@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <rect width="128" height="128" rx="28" fill="#09090b" />
+  <g transform="translate(14, 28) scale(0.32)">
+    <!-- Letter R (White) -->
+    <path d="M 12 42               L 42 12               L 122 12               C 146 12 158 24 158 45               C 158 64 145 74 122 76               L 156 112               L 120 112               L 92 76               L 52 76               L 52 112               L 16 112               Z               M 52 36               L 110 36               C 120 36 124 40 124 46               C 124 52 120 56 110 56               L 52 56               Z" 
+          fill="#FFFFFF" />
+    <!-- Accent Slash -->
+    <path d="M 106 86 L 130 112 L 115 112 L 91 86 Z" fill="#84CC16" />
+    <!-- Letter C (Lime Green) -->
+    <path d="M 230 12               L 262 42               L 218 42               C 190 42 182 52 182 62               C 182 72 190 82 218 82               L 252 82               L 222 112               L 172 112               C 142 112 132 90 132 62               C 132 34 142 12 172 12               Z" 
+          fill="#84CC16" />
+  </g>
+</svg>

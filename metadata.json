@@ -1,0 +1,8 @@
+{
+  "name": "RC Solutions - RCOS Mobile",
+  "description": "Mobile AI Operating System for RC Solutions featuring multi-agent orchestration, phone system automation, job dispatching, CRM, and RCOS system file manager.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

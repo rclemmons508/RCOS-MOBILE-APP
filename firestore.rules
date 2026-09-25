@@ -1,0 +1,82 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBusinessOwner(bizId) {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/businesses/$(bizId)) &&
+        get(/databases/$(database)/documents/businesses/$(bizId)).data.ownerId == request.auth.uid;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection test document for startup latency check
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // Businesses Collection
+    match /businesses/{businessId} {
+      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid);
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      
+      allow create: if isSignedIn() && 
+        isValidId(businessId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().name is string && incoming().name.size() <= 100;
+
+      allow update: if isSignedIn() && 
+        existing().ownerId == request.auth.uid &&
+        incoming().ownerId == existing().ownerId;
+
+      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+
+      // Subcollection: Requests (Intake Pipeline)
+      match /requests/{requestId} {
+        allow get, list: if isBusinessOwner(businessId);
+        // Allow customer form intake creation, or owner creation
+        allow create: if isValidId(requestId) && 
+          exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+          incoming().customerName is string && incoming().customerName.size() <= 100;
+        allow update, delete: if isBusinessOwner(businessId);
+      }
+
+      // Subcollection: Actions
+      match /actions/{actionId} {
+        allow read, write: if isBusinessOwner(businessId) && isValidId(actionId);
+      }
+
+      // Subcollection: Chat Messages
+      match /chatMessages/{messageId} {
+        allow read, write: if isBusinessOwner(businessId) && isValidId(messageId);
+      }
+    }
+
+    // Job Packs global or seeded collection
+    match /jobPacks/{jobPackId} {
+      allow read: if true;
+      allow write: if isSignedIn() && isValidId(jobPackId);
+    }
+  }
+}
