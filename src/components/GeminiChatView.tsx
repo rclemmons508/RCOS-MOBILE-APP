@@ -61,7 +61,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBu
         role: 'assistant',
         content: `Hello! I'm Morgan Vance, your Executive Assistant for ${business.name}. I coordinate your operational team, enforce safety boundaries, and assist with any day-to-day task. How can I help direct operations today?`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        modelUsed: 'gemini-2.5-flash',
+        modelUsed: 'gemini-3.8-flash',
         roleId: 'executive_assistant'
       }
     ];

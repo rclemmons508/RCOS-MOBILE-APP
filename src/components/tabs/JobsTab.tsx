@@ -139,7 +139,21 @@ export const JobsTab: React.FC<JobsTabProps> = ({ jobs, onAddJob }) => {
 
       {/* Job Cards List */}
       <div className="space-y-3">
-        {filteredJobs.map((job) => (
+        {filteredJobs.length === 0 ? (
+          <div className="p-8 text-center rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
+            <Briefcase className="w-8 h-8 text-zinc-600 mx-auto" />
+            <div className="text-sm font-bold text-zinc-300">No active jobs or tasks</div>
+            <p className="text-xs text-zinc-500">Dispatch a new operational task or simulate an incoming request.</p>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="mt-2 px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-400 text-xs font-semibold border border-amber-500/30 cursor-pointer hover:bg-amber-500/30 transition-colors"
+            >
+              + Dispatch First Job
+            </button>
+          </div>
+        ) : (
+          filteredJobs.map((job) => (
           <div
             key={job.id}
             className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3 hover:border-zinc-700 transition-all shadow-md"
@@ -215,7 +229,8 @@ export const JobsTab: React.FC<JobsTabProps> = ({ jobs, onAddJob }) => {
               </div>
             </div>
           </div>
-        ))}
+        ))
+        )}
       </div>
 
       {/* Dispatch New Task Modal */}

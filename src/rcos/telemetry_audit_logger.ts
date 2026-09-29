@@ -63,9 +63,10 @@ export interface CostBreakdownReport {
 export class TelemetryAuditLogger {
   // Model pricing rates per 1,000,000 tokens (USD)
   private readonly MODEL_PRICING: Record<string, { promptRate: number; completionRate: number }> = {
-    'gemini-2.5-flash': { promptRate: 0.075, completionRate: 0.30 },
     'gemini-3.8-flash': { promptRate: 0.10, completionRate: 0.40 },
-    'default': { promptRate: 0.08, completionRate: 0.35 }
+    'gemini-3.1-flash-lite': { promptRate: 0.05, completionRate: 0.20 },
+    'gemini-3.1-pro-preview': { promptRate: 1.25, completionRate: 5.00 },
+    'default': { promptRate: 0.10, completionRate: 0.40 }
   };
 
   private tokenUsageLogs: TokenUsageRecord[] = [
@@ -74,7 +75,7 @@ export class TelemetryAuditLogger {
       traceId: 'trace-8891',
       agentId: 'agent-orchestrator',
       agentName: 'RCOS System Orchestrator',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       promptTokens: 420,
       completionTokens: 110,
       totalTokens: 530,
@@ -86,7 +87,7 @@ export class TelemetryAuditLogger {
       traceId: 'trace-8892',
       agentId: 'agent-phone',
       agentName: 'Voice AI Comm Agent',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       promptTokens: 780,
       completionTokens: 190,
       totalTokens: 970,
@@ -98,7 +99,7 @@ export class TelemetryAuditLogger {
       traceId: 'trace-8893',
       agentId: 'agent-jobs',
       agentName: 'Smart Task Router',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       promptTokens: 640,
       completionTokens: 240,
       totalTokens: 880,
@@ -181,7 +182,7 @@ export class TelemetryAuditLogger {
     agentName: string,
     promptTokens: number,
     completionTokens: number,
-    model: string = 'gemini-2.5-flash',
+    model: string = 'gemini-3.8-flash',
     traceId?: string
   ): TokenUsageRecord {
     const rates = this.MODEL_PRICING[model] || this.MODEL_PRICING['default'];

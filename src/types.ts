@@ -238,13 +238,16 @@ export type TabType =
   | 'jobs' 
   | 'clients' 
   | 'chat'
+  | 'gmail'
   | 'more' 
   | 'settings'
   | 'activity'
   | 'approvals'
   | 'team'
   | 'jobpacks'
-  | 'portal';
+  | 'portal'
+  | 'automation'
+  | 'docs';
 
 export interface ChatMessage {
   id: string;

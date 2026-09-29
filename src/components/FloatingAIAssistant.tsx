@@ -184,27 +184,50 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
               <span className="text-zinc-500 font-mono text-[10px]">QUICK:</span>
               <button
                 type="button"
-                onClick={() => handleSendMessage('Check system status and active agent workloads')}
-                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 hover:border-lime-500/50 whitespace-nowrap cursor-pointer"
+                onClick={() => {
+                  setIsOpen(false);
+                  if (onOpenTab) onOpenTab('automation');
+                }}
+                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-lime-400 hover:border-lime-500/50 whitespace-nowrap cursor-pointer font-bold"
               >
-                Diagnostics
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage('Show urgent HVAC emergency job details')}
-                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 hover:border-lime-500/50 whitespace-nowrap cursor-pointer"
-              >
-                Urgent Tasks
+                1-Click Installer
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setIsOpen(false);
-                  if (onOpenTab) onOpenTab('more');
+                  if (onOpenTab) onOpenTab('phone');
                 }}
-                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-lime-400 hover:border-lime-500/50 whitespace-nowrap cursor-pointer"
+                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-blue-400 hover:border-blue-500/50 whitespace-nowrap cursor-pointer"
               >
-                RCOS Architecture
+                Voice AI Phone
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  if (onOpenTab) onOpenTab('jobs');
+                }}
+                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-amber-400 hover:border-amber-500/50 whitespace-nowrap cursor-pointer"
+              >
+                Smart Dispatch
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  if (onOpenTab) onOpenTab('docs');
+                }}
+                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-purple-400 hover:border-purple-500/50 whitespace-nowrap cursor-pointer"
+              >
+                100+ Docs
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendMessage('Check system status and active agent workloads')}
+                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300 hover:border-lime-500/50 whitespace-nowrap cursor-pointer"
+              >
+                Run Diagnostics
               </button>
             </div>
 

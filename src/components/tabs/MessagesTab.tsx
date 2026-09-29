@@ -4,7 +4,7 @@ import { Send, Users } from 'lucide-react';
 
 interface MessagesTabProps {
   messages: ChatMessage[];
-  currentUser: User;
+  currentUser: User | null;
   onSendMessage: (text: string) => void;
 }
 
@@ -43,6 +43,13 @@ export const MessagesTab: React.FC<MessagesTabProps> = ({ messages, currentUser,
 
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-3">
+        {messages.length === 0 && (
+          <div className="py-12 text-center text-xs text-zinc-500 space-y-1">
+            <Users className="w-6 h-6 text-zinc-600 mx-auto mb-2" />
+            <div className="font-semibold text-zinc-400">Radio channel ready</div>
+            <p>Send a message below to broadcast updates to the operations team.</p>
+          </div>
+        )}
         {messages.map((msg) => {
           const isMe = msg.isCurrentUser;
           return (

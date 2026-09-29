@@ -4,9 +4,11 @@ import {
   onAuthStateChanged, 
   signInWithPopup, 
   signOut,
-  AuthError
+  AuthError,
+  GoogleAuthProvider
 } from 'firebase/auth';
 import { auth, googleProvider, googleServicesConfig, firebaseConfig } from '../lib/firebase';
+import { setCachedAccessToken, getCachedAccessToken } from '../lib/gmail';
 
 export interface AuthErrorInfo {
   code?: string;
@@ -76,6 +78,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setCachedAccessToken(credential.accessToken);
+      }
       setUser(result.user);
       setIsSigningIn(false);
       return true;
@@ -144,11 +150,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       localStorage.removeItem('rcos_auth_user');
+      setCachedAccessToken(null);
       await signOut(auth);
       setUser(null);
       setAuthError(null);
     } catch (err) {
       console.error('Sign-out failed:', err);
+      setCachedAccessToken(null);
       setUser(null);
     }
   };

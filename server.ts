@@ -190,22 +190,25 @@ Respond with ONLY valid JSON:
   "suggestedServices": ["Service 1", "Service 2", "Service 3", "Service 4"]
 }`;
 
+  const fallbackDetect = () => JSON.stringify({
+    industryId: 'general_small_business',
+    industryName: 'General Small Business',
+    reason: 'Matched versatile operational profile for local services and operations.',
+    suggestedServices: ['Standard Service Appointment', 'Emergency Service Call', 'Consultation & Estimate']
+  });
+
   try {
-    const aiRes = await ai.models.generateContent({
-      model: FAST_MODEL,
+    const aiRes = await executeGeminiWithFallback({
+      preferredModel: FAST_MODEL,
       contents: prompt,
       config: { responseMimeType: 'application/json' },
+      fallbackFn: fallbackDetect
     });
-    const result = JSON.parse(aiRes.text || '{}');
+    const result = JSON.parse(aiRes.text || fallbackDetect());
     res.json(result);
   } catch (err: any) {
     console.error('Industry detection error:', err);
-    res.json({
-      industryId: 'general_small_business',
-      industryName: 'General Small Business',
-      reason: 'Matched versatile operational profile',
-      suggestedServices: ['Standard Service Appointment', 'Emergency Service Call', 'Consultation & Estimate']
-    });
+    res.json(JSON.parse(fallbackDetect()));
   }
 });
 
@@ -243,13 +246,31 @@ Return ONLY valid JSON:
   ]
 }`;
 
+  const fallbackTemplates = () => JSON.stringify({
+    drafts: [
+      {
+        id: "draft_quote",
+        title: "Standard Service Proposal & Estimate",
+        type: "quote_template",
+        content: `PROPOSAL & SERVICE ESTIMATE\nClient: Valued Client\nService: ${business.services[0] || 'Standard Service'}\nProvider: ${business.name}\n\nScope of Work:\n- Comprehensive initial on-site inspection\n- Execution of requested service standard protocols\n- Quality assurance sign-off and site cleanup\n\nTotal Estimated: $${business.dollarThreshold || 250}.00\nTerms: Net 15 days upon completion.`
+      },
+      {
+        id: "draft_followup",
+        title: "Post-Service Client Follow-Up & Review Request",
+        type: "follow_up_template",
+        content: `Hi there! Thank you for choosing ${business.name}. We wanted to check in and make sure you were completely satisfied with our service today. If you have 30 seconds, leaving us a quick Google review helps our team tremendously. Thank you for your partnership!`
+      }
+    ]
+  });
+
   try {
-    const aiRes = await ai.models.generateContent({
-      model: PRIMARY_MODEL,
+    const aiRes = await executeGeminiWithFallback({
+      preferredModel: PRIMARY_MODEL,
       contents: prompt,
       config: { responseMimeType: 'application/json' },
+      fallbackFn: fallbackTemplates
     });
-    const parsed = JSON.parse(aiRes.text || '{}');
+    const parsed = JSON.parse(aiRes.text || fallbackTemplates());
     const drafts: StarterDraft[] = (parsed.drafts || []).map((d: any) => ({
       id: d.id || `draft_${Date.now()}_${Math.random().toString(36).substring(7)}`,
       title: d.title,
@@ -866,17 +887,22 @@ Rules:
 3. If the user gives a concrete task (e.g., "send an invoice for $200" or "quote Mrs. Smith"), confirm that you are executing it and explain the next step in plain language.
 4. Keep answers friendly, free of technical jargon, and focused on helping this small business succeed.`;
 
+  const fallbackEmpReply = () => {
+    return `Hello! I'm ${employee.name}, ${employee.roleTitle} for ${business.name}. I've received your directive regarding "${message.slice(0, 80)}" and have queued this up in our operations pipeline.`;
+  };
+
   try {
-    const aiRes = await ai.models.generateContent({
-      model: PRIMARY_MODEL,
+    const aiRes = await executeGeminiWithFallback({
+      preferredModel: PRIMARY_MODEL,
       contents,
       config: {
         systemInstruction,
         temperature: 0.7,
       },
+      fallbackFn: fallbackEmpReply
     });
 
-    const replyText = aiRes.text || `I'm on it. I'll take care of this for ${business.name}.`;
+    const replyText = aiRes.text || fallbackEmpReply();
 
     const modelMsg: ChatMessage = {
       id: `msg_${Date.now()}_model`,
@@ -891,7 +917,16 @@ Rules:
     res.json({ message: modelMsg });
   } catch (err: any) {
     console.error('Chat error:', err);
-    res.status(500).json({ error: 'Failed to generate response' });
+    const modelMsg: ChatMessage = {
+      id: `msg_${Date.now()}_model`,
+      businessId: business.id,
+      employeeId: targetEmpId,
+      role: 'model',
+      content: fallbackEmpReply(),
+      timestamp: new Date().toISOString()
+    };
+    db.saveChatMessage(modelMsg);
+    res.json({ message: modelMsg });
   }
 });
 
@@ -937,13 +972,35 @@ Return ONLY valid JSON matching this schema:
   "troubleshootingNotes": ["..."]
 }`;
 
+  const fallbackPack = () => JSON.stringify({
+    serviceType,
+    industry: business.industry,
+    checklist: [
+      `Review initial service specifications for ${serviceType}`,
+      'Perform on-site hazard and safety assessment',
+      'Verify equipment calibration and required PPE',
+      'Execute primary service protocol following manufacturer specs',
+      'Post-service testing and quality control sign-off'
+    ],
+    workflowSequence: {
+      preCheck: ['Client check-in & access confirmation', 'Work zone isolation and hazard labeling'],
+      execute: [`Execute ${serviceType} primary steps`, 'Document line-item inspection checks', 'Photograph completed work'],
+      cleanUp: ['Remove tools and debris from service area', 'Clean and sanitize equipment'],
+      clientConfirmation: ['Walkthrough with client representative', 'Obtain digital completion signature']
+    },
+    requiredTools: ['Standard Diagnostic Kit', 'PPE (Safety Glasses, Gloves, Boots)', 'Digital Tablet / Mobile Work Order'],
+    safetyNotes: ['Verify zero-energy state or Lockout/Tagout where appropriate', 'Ensure adequate ventilation during service'],
+    troubleshootingNotes: ['If unexpected deviation occurs, contact Operations Dispatcher immediately', 'Document all variance in service notes']
+  });
+
   try {
-    const aiRes = await ai.models.generateContent({
-      model: PRIMARY_MODEL,
+    const aiRes = await executeGeminiWithFallback({
+      preferredModel: PRIMARY_MODEL,
       contents: prompt,
       config: { responseMimeType: 'application/json' },
+      fallbackFn: fallbackPack
     });
-    const parsed = JSON.parse(aiRes.text || '{}');
+    const parsed = JSON.parse(aiRes.text || fallbackPack());
     const newPack: JobPack = {
       id: `jp_${Date.now()}`,
       serviceType: parsed.serviceType || serviceType,

@@ -38,6 +38,7 @@ import { JobsTab } from './components/tabs/JobsTab';
 import { ClientsTab } from './components/tabs/ClientsTab';
 import { MoreTab } from './components/tabs/MoreTab';
 import { SettingsTab } from './components/tabs/SettingsTab';
+import { GmailTab } from './components/tabs/GmailTab';
 import { GeminiChatView } from './components/GeminiChatView';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
@@ -376,6 +377,7 @@ export default function App() {
           onOpenNotifications={() => setIsNotifCenterOpen(true)}
           onOpenAuth={() => setIsAuthModalOpen(true)}
           onOpenChat={() => setActiveTab('chat')}
+          onOpenGmail={() => setActiveTab('gmail')}
         />
 
         {/* Tab Views Container with Safe Scrollable Bounds */}
@@ -414,6 +416,39 @@ export default function App() {
                   isCurrentUser: true,
                 };
                 setMessages(prev => [...prev, newMessage]);
+              }}
+            />
+          )}
+
+          {activeTab === 'gmail' && (
+            <GmailTab
+              currentUser={currentUser}
+              onOpenAuthModal={() => setIsAuthModalOpen(true)}
+              onAddJobFromEmail={(jobData) => {
+                const newJob: Job = {
+                  id: `job-${Date.now()}`,
+                  title: jobData.title || 'Email Dispatch Request',
+                  clientName: jobData.clientName || 'Gmail Client',
+                  clientPhone: jobData.clientPhone || '(555) 019-4820',
+                  address: jobData.address || 'Facility Mechanical Room',
+                  status: jobData.status || 'unassigned',
+                  priority: jobData.priority || 'high',
+                  description: jobData.description || 'Origin: Gmail message',
+                  assignedTechnician: jobData.assignedTechnician || 'Lead Field Specialist',
+                  scheduledTime: 'Immediate Response',
+                  estimatedValue: 850,
+                  category: 'HVAC',
+                };
+                setJobs(prev => [newJob, ...prev]);
+                setActivePushToast({
+                  id: `notif-${Date.now()}`,
+                  title: 'New Dispatch Job Created',
+                  message: `Job "${newJob.title}" originated from Gmail was added to the queue.`,
+                  type: 'emergency_dispatch',
+                  timestamp: 'Just now',
+                  read: false,
+                  priority: 'high',
+                });
               }}
             />
           )}

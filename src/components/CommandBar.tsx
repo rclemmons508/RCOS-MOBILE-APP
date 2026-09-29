@@ -67,24 +67,24 @@ export const CommandBar: React.FC<CommandBarProps> = ({ business, onActionCreate
   };
 
   return (
-    <div className="w-full bg-[#0d1017] border border-[#1f2637] rounded-2xl p-4 md:p-5 shadow-2xl relative overflow-hidden">
+    <div className="w-full bg-zinc-950 border border-zinc-800/90 rounded-2xl p-3 sm:p-4 shadow-xl relative overflow-hidden">
       {/* Ambient background glow */}
-      <div className="absolute top-0 right-1/4 w-96 h-20 bg-[#00ff66]/5 blur-3xl pointer-events-none" />
+      <div className="absolute top-0 right-1/4 w-72 h-16 bg-lime-500/5 blur-2xl pointer-events-none" />
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-[#00ff66] animate-pulse" />
-            <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              RCOS Operational Command
+            <span className="flex h-2 w-2 rounded-full bg-lime-400 animate-pulse" />
+            <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider font-mono">
+              RCOS AI Command Bar
             </span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#00ff66]" />
-            <span>
+          <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 font-mono">
+            <ShieldCheck className="w-3 h-3 text-lime-400 shrink-0" />
+            <span className="truncate max-w-[190px] sm:max-w-none">
               {business.autonomyMode === 'autonomous' 
-                ? `Autonomous (Safeguards over $${business.dollarThreshold})` 
-                : 'Supervised (All actions reviewed)'}
+                ? `Auto (Approval over $${business.dollarThreshold})` 
+                : 'Supervised (Manual sign-off)'}
             </span>
           </div>
         </div>
@@ -102,24 +102,24 @@ export const CommandBar: React.FC<CommandBarProps> = ({ business, onActionCreate
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={isSubmitting}
-            placeholder={`Tell your AI team what to do (e.g. "Send Mrs. Rodriguez a quote for a ${business.services[0] || 'service'}" or "Draft an invoice")...`}
-            className="w-full bg-[#131722] text-slate-100 placeholder-slate-500 rounded-xl px-4 py-3.5 pr-28 text-sm md:text-base border border-[#263044] focus:outline-none focus:border-[#00ff66] focus:ring-1 focus:ring-[#00ff66]/40 transition shadow-inner"
+            placeholder={`Instruct AI team: e.g. "Send quote to John" or "Schedule maintenance"...`}
+            className="w-full bg-black text-zinc-100 placeholder-zinc-500 rounded-xl pl-3 pr-20 py-2.5 text-xs sm:text-sm border border-zinc-800 focus:outline-none focus:border-lime-500 focus:ring-1 focus:ring-lime-500/30 transition shadow-inner"
           />
 
           <button
             type="submit"
             disabled={!input.trim() || isSubmitting}
-            className="absolute right-2 px-4 py-2 rounded-lg bg-[#00ff66] text-[#090b0e] font-semibold text-sm hover:bg-[#10e560] disabled:opacity-40 disabled:hover:bg-[#00ff66] transition flex items-center gap-1.5 shadow-md shadow-[#00ff66]/20 cursor-pointer disabled:cursor-not-allowed"
+            className="absolute right-1.5 px-3 py-1.5 rounded-lg bg-lime-500 text-black font-extrabold text-xs hover:bg-lime-400 disabled:opacity-40 disabled:hover:bg-lime-500 transition flex items-center gap-1 shadow-md shadow-lime-500/20 cursor-pointer disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin text-[#090b0e]" />
-                <span>Routing...</span>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
+                <span className="hidden sm:inline">Routing...</span>
               </>
             ) : (
               <>
-                <span>Execute</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>Run</span>
+                <ArrowRight className="w-3 h-3" />
               </>
             )}
           </button>
@@ -127,20 +127,20 @@ export const CommandBar: React.FC<CommandBarProps> = ({ business, onActionCreate
 
         {/* Live Feedback banner if recent command fired */}
         {feedback && (
-          <div className={`flex items-center gap-2.5 px-3.5 py-2 rounded-lg text-xs md:text-sm border transition animate-in fade-in duration-200 ${
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs border transition animate-in fade-in duration-200 ${
             feedback.type === 'success' 
-              ? 'bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30' 
+              ? 'bg-lime-500/10 text-lime-400 border-lime-500/30 font-medium' 
               : 'bg-rose-950/40 text-rose-300 border-rose-800/40'
           }`}>
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span className="font-medium">{feedback.message}</span>
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{feedback.message}</span>
           </div>
         )}
 
-        {/* Friendly Suggestion Chips */}
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-[#00ff66]" /> Quick tasks:
+        {/* Horizontal scrollable quick task suggestion chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+          <span className="text-[10px] text-zinc-500 font-mono shrink-0 flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-lime-400" /> Quick:
           </span>
           {suggestions.map((sug, idx) => (
             <button
@@ -148,7 +148,7 @@ export const CommandBar: React.FC<CommandBarProps> = ({ business, onActionCreate
               type="button"
               onClick={() => handleSubmit(sug)}
               disabled={isSubmitting}
-              className="text-[11px] text-slate-300 bg-[#161c2b] hover:bg-[#1f273b] hover:text-[#00ff66] border border-[#273248] rounded-full px-3 py-1 transition cursor-pointer disabled:opacity-50"
+              className="text-[10.5px] text-zinc-300 bg-zinc-900 hover:bg-zinc-800 hover:text-lime-300 border border-zinc-800 rounded-lg px-2.5 py-1 whitespace-nowrap transition cursor-pointer disabled:opacity-50 shrink-0"
             >
               {sug}
             </button>

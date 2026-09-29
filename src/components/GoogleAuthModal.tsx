@@ -15,7 +15,7 @@ import {
   LogIn
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { RcLogo } from './RcLogo';
+import { RCLogo } from './RCLogo';
 
 interface GoogleAuthModalProps {
   isOpen: boolean;
@@ -64,7 +64,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1f2638] pb-3.5">
           <div className="flex items-center gap-2.5">
-            <RcLogo size="sm" />
+            <RCLogo size="sm" />
             <div>
               <h3 className="text-sm font-bold text-white">Google Account & Systems</h3>
               <p className="text-[11px] text-slate-400">Connected authentication & cloud infrastructure</p>
@@ -168,7 +168,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
 
         {/* Error notification if encountered */}
         {authError && (
-          <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-800/50 space-y-2 text-xs">
+          <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-800/50 space-y-2.5 text-xs">
             <div className="flex items-center gap-2 text-amber-300 font-semibold">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>Authentication Diagnostics</span>
@@ -178,16 +178,38 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
             </p>
 
             {authError.domain && (
-              <div className="flex items-center justify-between p-2 rounded-lg bg-[#0d1017] border border-[#202738] text-[11px]">
-                <span className="font-mono text-slate-300 truncate max-w-[280px]">{authError.domain}</span>
-                <button
-                  type="button"
-                  onClick={handleCopyDomain}
-                  className="px-2 py-1 rounded bg-[#182133] hover:bg-[#222d44] text-[#00ff66] font-medium flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedDomain ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedDomain ? 'Copied' : 'Copy Domain'}</span>
-                </button>
+              <div className="space-y-2 pt-1 border-t border-amber-900/40">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#0d1017] border border-[#202738] text-[11px]">
+                  <span className="font-mono text-slate-300 truncate max-w-[280px]">{authError.domain}</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyDomain}
+                    className="px-2 py-1 rounded bg-[#182133] hover:bg-[#222d44] text-[#00ff66] font-medium flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    {copiedDomain ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedDomain ? 'Copied' : 'Copy Domain'}</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <a
+                    href="https://console.firebase.google.com/project/rcos-mobile/authentication/settings"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1 rounded-lg bg-[#182133] hover:bg-[#222d44] text-cyan-400 border border-cyan-800/40 font-medium text-[11px] flex items-center gap-1 transition"
+                  >
+                    <span>Authorize Domain in Firebase Console</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => handleQuickAuthorize('rcsoulutions@gmail.com', 'RC Solutions Owner')}
+                    className="px-2.5 py-1 rounded-lg bg-[#00ff66] text-[#090b0e] font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <span>Quick Connect Directly</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

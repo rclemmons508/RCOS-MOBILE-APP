@@ -14,7 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { BusinessAccount, CustomerRequest } from '../types';
-import { RcLogo } from './RcLogo';
+import { RCLogo } from './RCLogo';
 
 interface PublicRequestPortalProps {
   business: BusinessAccount;
@@ -163,7 +163,7 @@ export const PublicRequestPortal: React.FC<PublicRequestPortalProps> = ({
               <h3 className="text-lg font-bold text-white">Request Service from {business.name}</h3>
               <p className="text-xs text-slate-400 mt-0.5">Please provide details so we can quote or schedule your service quickly.</p>
             </div>
-            <RcLogo size="sm" showText={false} />
+            <RCLogo size="sm" showText={false} />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 text-left text-xs">

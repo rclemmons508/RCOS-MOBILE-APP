@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { BusinessAccount, AutonomyMode, StarterDraft } from '../types';
 import { INDUSTRY_PRESETS } from '../data/presets';
-import { RcLogo } from './RcLogo';
+import { RCLogo } from './RCLogo';
 import { useAuth } from '../context/AuthContext';
 
 interface OnboardingModalProps {
@@ -199,7 +199,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         
         {/* Progress header */}
         <div className="flex items-center justify-between border-b border-[#1f2638] pb-4 mb-5">
-          <RcLogo size="sm" />
+          <RCLogo size="sm" />
           <div className="flex items-center gap-1.5">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
               <div

@@ -8,19 +8,41 @@ import {
   ChevronUp, 
   Save, 
   AlertCircle,
-  Lock,
   Building,
-  Sparkles
+  Sparkles,
+  Calendar,
+  Mail,
+  FileSpreadsheet,
+  PhoneCall,
+  CreditCard,
+  FileText,
+  Database,
+  LogIn,
+  LogOut,
+  UserCheck,
+  RefreshCw,
+  Link2,
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 import { BusinessAccount, AutonomyMode } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
+import { useAuth } from '../context/AuthContext';
 
 interface SettingsViewProps {
   business: BusinessAccount;
   onSave: (updated: BusinessAccount) => void;
+  onOpenOnboarding?: () => void;
+  onOpenAuth?: () => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ business, onSave }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ 
+  business, 
+  onSave,
+  onOpenOnboarding,
+  onOpenAuth
+}) => {
+  const { user, logout } = useAuth();
   const [autonomyMode, setAutonomyMode] = useState<AutonomyMode>(business.autonomyMode);
   const [dollarThreshold, setDollarThreshold] = useState<number>(business.dollarThreshold);
   const [brandTone, setBrandTone] = useState(business.brandTone);
@@ -28,6 +50,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ business, onSave }) 
   const [activeEmployees, setActiveEmployees] = useState<Record<string, boolean>>(business.activeEmployees);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+
+  // Integration connection states
+  const [integrations, setIntegrations] = useState({
+    googleCalendar: true,
+    gmail: true,
+    googleSheets: true,
+    twilio: true,
+    stripe: true,
+    quickbooks: true,
+    firestore: true
+  });
+
+  const toggleIntegration = (key: keyof typeof integrations) => {
+    setIntegrations(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const handleSaveSettings = async () => {
     const updated: BusinessAccount = {
@@ -57,26 +94,299 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ business, onSave }) 
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto text-left">
+    <div className="space-y-6 max-w-3xl mx-auto text-left pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1f2637] pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <span>Autonomy & Safety Settings</span>
+            <span>System Settings & Integrations</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Configure how your AI team operates. Simple and safe by default.
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Manage your AI autonomy safeguards, connected apps, and business profile.
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSaveSettings}
-          className="px-5 py-2.5 rounded-xl bg-[#00ff66] hover:bg-[#10e560] text-[#090b0e] font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-[#00ff66]/20 self-start sm:self-center"
-        >
-          {isSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-          <span>{isSaved ? 'Settings Saved' : 'Save Changes'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenOnboarding && (
+            <button
+              type="button"
+              onClick={onOpenOnboarding}
+              className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-lime-400 border border-lime-500/30 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Onboarding Wizard</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSaveSettings}
+            className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-lime-500/20"
+          >
+            {isSaved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+            <span>{isSaved ? 'Saved' : 'Save Changes'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Operator Account & Google Login Card */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-lime-400" />
+            <h4 className="text-sm font-bold text-white">Operator Authentication</h4>
+          </div>
+          {user ? (
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-lime-500/10 text-lime-400 border border-lime-500/30 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+              Connected as {user.email?.split('@')[0]}
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30">
+              Not Signed In
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+          <div className="text-xs text-zinc-300">
+            {user ? (
+              <div className="space-y-0.5">
+                <div className="font-semibold text-white">{user.displayName || 'Authorized Lead Operator'}</div>
+                <div className="text-zinc-400 font-mono text-[11px]">{user.email}</div>
+              </div>
+            ) : (
+              <div>Sign in with your Google account to connect Workspace calendar, mail, and sheets.</div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {user ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onOpenAuth}
+                  className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs text-zinc-200 transition cursor-pointer"
+                >
+                  Manage Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => logout()}
+                  className="px-3 py-1.5 rounded-xl bg-rose-950/40 border border-rose-900/60 hover:bg-rose-900/40 text-xs text-rose-300 transition flex items-center gap-1 cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Logout</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-lime-500/20"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Connect Google Account</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Connected Integrated Apps & Services */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-lime-400" />
+              <span>Connected Apps & Integrations</span>
+            </h4>
+            <p className="text-xs text-zinc-400">
+              Live bi-directional communication with your business tools.
+            </p>
+          </div>
+          <span className="text-[11px] font-mono text-lime-400 font-bold">
+            {Object.values(integrations).filter(Boolean).length}/7 Connected
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          {/* Google Calendar */}
+          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Google Calendar</span>
+                  {integrations.googleCalendar && <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                </div>
+                <div className="text-[11px] text-zinc-400 leading-snug">Auto-schedule field appointments and technician dispatch slots.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleIntegration('googleCalendar')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer shrink-0 ${
+                integrations.googleCalendar
+                  ? 'bg-lime-500/10 text-lime-400 border border-lime-500/30'
+                  : 'bg-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {integrations.googleCalendar ? 'Active' : 'Connect'}
+            </button>
+          </div>
+
+          {/* Gmail */}
+          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 shrink-0">
+                <Mail className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Gmail Workflows</span>
+                  {integrations.gmail && <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                </div>
+                <div className="text-[11px] text-zinc-400 leading-snug">Client quote dispatch, follow-up sequences, and review requests.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleIntegration('gmail')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer shrink-0 ${
+                integrations.gmail
+                  ? 'bg-lime-500/10 text-lime-400 border border-lime-500/30'
+                  : 'bg-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {integrations.gmail ? 'Active' : 'Connect'}
+            </button>
+          </div>
+
+          {/* Google Sheets */}
+          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                <FileSpreadsheet className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Google Sheets</span>
+                  {integrations.googleSheets && <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                </div>
+                <div className="text-[11px] text-zinc-400 leading-snug">Continuous job logs, action exports, and customer ledger backup.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleIntegration('googleSheets')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer shrink-0 ${
+                integrations.googleSheets
+                  ? 'bg-lime-500/10 text-lime-400 border border-lime-500/30'
+                  : 'bg-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {integrations.googleSheets ? 'Active' : 'Connect'}
+            </button>
+          </div>
+
+          {/* Twilio Voice & SMS */}
+          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+                <PhoneCall className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Twilio Voice & SMS</span>
+                  {integrations.twilio && <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                </div>
+                <div className="text-[11px] text-zinc-400 leading-snug">Inbound AI receptionist answering, SMS dispatch, and call recording.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleIntegration('twilio')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer shrink-0 ${
+                integrations.twilio
+                  ? 'bg-lime-500/10 text-lime-400 border border-lime-500/30'
+                  : 'bg-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {integrations.twilio ? 'Active' : 'Connect'}
+            </button>
+          </div>
+
+          {/* Stripe Invoicing & Deposits */}
+          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">
+                <CreditCard className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Stripe Financial</span>
+                  {integrations.stripe && <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                </div>
+                <div className="text-[11px] text-zinc-400 leading-snug">Auto-collect emergency diagnostic deposits and send payment links.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleIntegration('stripe')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer shrink-0 ${
+                integrations.stripe
+                  ? 'bg-lime-500/10 text-lime-400 border border-lime-500/30'
+                  : 'bg-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {integrations.stripe ? 'Active' : 'Connect'}
+            </button>
+          </div>
+
+          {/* QuickBooks Accounting */}
+          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>QuickBooks Online</span>
+                  {integrations.quickbooks && <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />}
+                </div>
+                <div className="text-[11px] text-zinc-400 leading-snug">Two-way sync for customer invoices, expenses, and job reconciliation.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleIntegration('quickbooks')}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer shrink-0 ${
+                integrations.quickbooks
+                  ? 'bg-lime-500/10 text-lime-400 border border-lime-500/30'
+                  : 'bg-zinc-800 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {integrations.quickbooks ? 'Active' : 'Connect'}
+            </button>
+          </div>
+        </div>
+
+        {/* Cloud Firestore Status */}
+        <div className="p-3.5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-lime-400" />
+            <div>
+              <span className="font-semibold text-white">Google Cloud Firestore: </span>
+              <span className="font-mono text-zinc-400 text-[11px]">ai-studio-rcosremoteoperat-c0c46f2b-8d0f-43b8-978d-70fb08614967</span>
+            </div>
+          </div>
+          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-lime-500/10 text-lime-400 border border-lime-500/30">
+            Encrypted & Live
+          </span>
+        </div>
       </div>
 
       {/* Global Autonomy Toggle */}

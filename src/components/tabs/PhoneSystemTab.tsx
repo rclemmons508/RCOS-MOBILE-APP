@@ -131,7 +131,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
             {/* Call Telemetry Row */}
             <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-900 text-center font-mono">
               <div className="p-1">
-                <div className="text-base sm:text-lg font-black text-white">38</div>
+                <div className="text-base sm:text-lg font-black text-white">{calls.length}</div>
                 <div className="text-[10px] text-zinc-400">Calls Handled</div>
               </div>
               <div className="p-1">
@@ -231,8 +231,15 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
             <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider px-1">
               Call Log & Live Transcripts
             </h3>
-            <div className="space-y-2">
-              {calls.map((call) => {
+            {calls.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
+                <PhoneIcon className="w-8 h-8 text-zinc-600 mx-auto" />
+                <div className="text-sm font-bold text-zinc-300">No calls in log yet</div>
+                <p className="text-xs text-zinc-500">Run a simulated call above or connect your business VoIP trunk.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {calls.map((call) => {
                 const isExpanded = expandedCallId === call.id;
                 return (
                   <div
@@ -318,6 +325,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                 );
               })}
             </div>
+            )}
           </div>
         </div>
       ) : (

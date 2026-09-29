@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RCLogo } from './RCLogo';
-import { Bell, User as UserIcon, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Bell, User as UserIcon, MessageSquare, ShieldCheck, Mail } from 'lucide-react';
 import { TabType, User } from '../types';
 
 interface HeaderProps {
@@ -11,6 +11,7 @@ interface HeaderProps {
   onOpenNotifications?: () => void;
   onOpenAuth?: () => void;
   onOpenChat?: () => void;
+  onOpenGmail?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNotifications,
   onOpenAuth,
   onOpenChat,
+  onOpenGmail,
 }) => {
   const [time, setTime] = useState<string>('12:00');
 
@@ -43,6 +45,8 @@ export const Header: React.FC<HeaderProps> = ({
         return 'Operations Dashboard';
       case 'phone':
         return 'Voice AI Phone';
+      case 'gmail':
+        return 'Gmail Workspace';
       case 'jobs':
         return 'Jobs & Dispatch';
       case 'clients':
@@ -78,8 +82,25 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Header Controls: AI Chat Quick Toggle, Notifications Bell, Operator Profile */}
+        {/* Right Header Controls: Gmail Workspace, AI Chat Quick Toggle, Notifications Bell, Operator Profile */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Quick Gmail Workspace Icon */}
+          {onOpenGmail && (
+            <button
+              type="button"
+              onClick={onOpenGmail}
+              className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+                activeTab === 'gmail'
+                  ? 'bg-red-500/20 text-red-400 border-red-500/50'
+                  : 'bg-zinc-900/90 text-zinc-400 hover:text-white border-zinc-800'
+              }`}
+              title="Open Gmail Workspace"
+              aria-label="Gmail Workspace"
+            >
+              <Mail className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {/* Quick AI Chat Icon */}
           {onOpenChat && (
             <button

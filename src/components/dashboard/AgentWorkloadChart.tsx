@@ -8,6 +8,18 @@ interface AgentWorkloadChartProps {
 }
 
 export const AgentWorkloadChart: React.FC<AgentWorkloadChartProps> = ({ agents }) => {
+  if (agents.length === 0) {
+    return (
+      <div className="rounded-2xl bg-zinc-950 border border-zinc-800/80 p-3.5 sm:p-4 space-y-2 shadow-xl text-center">
+        <div className="flex items-center gap-2 justify-center text-xs font-extrabold text-white uppercase tracking-wider">
+          <Cpu className="w-4 h-4 text-lime-400" />
+          <span>Agent Workload Distribution</span>
+        </div>
+        <p className="text-xs text-zinc-500 py-3">No active agents initialized. Manage your fleet in the More tab.</p>
+      </div>
+    );
+  }
+
   const chartData = agents.map((agent) => ({
     name: agent.name.split(' ')[0],
     tasks: agent.tasksCompletedToday,

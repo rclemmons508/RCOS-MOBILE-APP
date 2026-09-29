@@ -14,7 +14,8 @@ import {
   Bell, 
   ShieldCheck, 
   Lock,
-  MessageSquare
+  MessageSquare,
+  Mail
 } from 'lucide-react';
 
 interface DashboardTabProps {
@@ -301,6 +302,28 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Gmail Workspace Integration Card */}
+      <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 hover:border-red-500/40 flex items-center justify-between gap-3 shadow-lg transition-all">
+        <div className="space-y-0.5 min-w-0">
+          <div className="text-xs font-bold text-white flex items-center gap-1.5">
+            <Mail className="w-4 h-4 text-red-400" />
+            <span>Gmail Workspace Operations</span>
+            <span className="text-[9px] font-mono text-lime-400 bg-lime-500/10 px-1.5 py-0.2 rounded-full border border-lime-500/20">Active</span>
+          </div>
+          <p className="text-[10px] text-zinc-400 truncate">
+            Manage dispatch emails, work orders, quotes, and client communications
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigateTab('gmail')}
+          className="px-3 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-300 font-semibold text-xs whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+        >
+          <span>Open Mail</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* RCOS System Architecture Shortcut */}

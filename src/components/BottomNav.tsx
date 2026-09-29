@@ -6,7 +6,8 @@ import {
   Users, 
   MoreHorizontal, 
   Settings2,
-  MessageSquare
+  MessageSquare,
+  Mail
 } from 'lucide-react';
 import { TabType, User } from '../types';
 
@@ -24,9 +25,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const tabs: { id: TabType; label: string; icon: any }[] = [
     { id: 'dashboard', label: 'Dash', icon: Gauge },
     { id: 'phone', label: 'Voice AI', icon: Phone },
+    { id: 'gmail', label: 'Gmail', icon: Mail },
     { id: 'jobs', label: 'Tasks', icon: Briefcase },
     { id: 'clients', label: 'Clients', icon: Users },
-    { id: 'chat', label: 'AI Chat', icon: MessageSquare },
     { id: 'more', label: 'RCOS', icon: MoreHorizontal },
   ];
 

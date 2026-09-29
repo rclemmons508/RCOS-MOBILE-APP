@@ -1,4 +1,4 @@
-package com.rcsolutions.app;
+package com.rcsolutions.rcosmobile;
 
 import com.getcapacitor.BridgeActivity;
 

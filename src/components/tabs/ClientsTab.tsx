@@ -105,7 +105,21 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
 
       {/* Client Cards List */}
       <div className="space-y-3">
-        {clients.map((client) => (
+        {clients.length === 0 ? (
+          <div className="p-8 text-center rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
+            <Users className="w-8 h-8 text-zinc-600 mx-auto" />
+            <div className="text-sm font-bold text-zinc-300">No client accounts yet</div>
+            <p className="text-xs text-zinc-500">Onboard client accounts to track health scores, automated SMS follow-ups, and active service contracts.</p>
+            <button
+              type="button"
+              onClick={() => setIsAddClientModalOpen(true)}
+              className="mt-2 px-3 py-1.5 rounded-xl bg-purple-500/20 text-purple-400 text-xs font-semibold border border-purple-500/30 cursor-pointer hover:bg-purple-500/30 transition-colors"
+            >
+              + Onboard First Client
+            </button>
+          </div>
+        ) : (
+          clients.map((client) => (
           <div
             key={client.id}
             className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3 hover:border-purple-500/40 transition-all shadow-md"
@@ -186,7 +200,8 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
               </button>
             </div>
           </div>
-        ))}
+        ))
+        )}
       </div>
 
       {/* AI Draft Proposal Modal */}

@@ -1,44 +1,18 @@
-// Firebase and Google Services configurations using environment variables
+import firebaseAppletConfig from '../../firebase-applet-config.json';
+import googleServicesJson from '../../android/app/google-services.json';
+
+// Firebase and Google Services configurations
 export const firebaseConfig = {
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  firestoreDatabaseId: process.env.EXPO_PUBLIC_FIRESTORE_DATABASE_ID,
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  measurementId: "",
-  oAuthClientId: process.env.EXPO_PUBLIC_OAUTH_CLIENT_ID,
-  recaptchaSiteKey: "",
+  projectId: firebaseAppletConfig.projectId,
+  appId: firebaseAppletConfig.appId,
+  apiKey: firebaseAppletConfig.apiKey,
+  authDomain: firebaseAppletConfig.authDomain,
+  firestoreDatabaseId: firebaseAppletConfig.firestoreDatabaseId || "ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967",
+  storageBucket: firebaseAppletConfig.storageBucket,
+  messagingSenderId: firebaseAppletConfig.messagingSenderId,
+  measurementId: firebaseAppletConfig.measurementId || "",
+  oAuthClientId: firebaseAppletConfig.oAuthClientId,
+  recaptchaSiteKey: firebaseAppletConfig.recaptchaSiteKey || ""
 };
 
-export const googleServicesConfig = {
-  project_info: {
-    project_number: process.env.EXPO_PUBLIC_GOOGLE_PROJECT_NUMBER,
-    project_id: process.env.EXPO_PUBLIC_GOOGLE_PROJECT_ID,
-    storage_bucket: process.env.EXPO_PUBLIC_GOOGLE_STORAGE_BUCKET,
-  },
-  client: [
-    {
-      client_info: {
-        mobilesdk_app_id: process.env.EXPO_PUBLIC_MOBILESDK_APP_ID,
-        android_client_info: {
-          package_name: "com.rcsolutions.rcosmobile",
-        },
-      },
-      oauth_client: [],
-      api_key: [
-        {
-          current_key: process.env.EXPO_PUBLIC_GOOGLE_SERVICES_API_KEY,
-        },
-      ],
-      services: {
-        appinvite_service: {
-          other_platform_oauth_client: [],
-        },
-      },
-    },
-  ],
-  configuration_version: "1",
-};
-
+export const googleServicesConfig = googleServicesJson;

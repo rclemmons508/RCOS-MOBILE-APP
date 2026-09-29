@@ -16,7 +16,16 @@ import {
   Database, 
   Search, 
   Receipt, 
-  Download 
+  Download,
+  Cpu,
+  Layers,
+  BookOpen,
+  Users,
+  Phone,
+  Briefcase,
+  Globe,
+  Wrench,
+  CheckCircle
 } from 'lucide-react';
 import { hitlEscalationHandler } from '../../rcos/hitl_escalation_handler';
 import { telemetryAuditLogger } from '../../rcos/telemetry_audit_logger';
@@ -27,9 +36,10 @@ interface MoreTabProps {
   files: RCOSFileItem[];
   onUploadFiles: (uploadedFiles: RCOSFileItem[]) => void;
   agents: Agent[];
+  onNavigateTab?: (tab: any) => void;
 }
 
-export const MoreTab: React.FC<MoreTabProps> = ({ files, onUploadFiles, agents }) => {
+export const MoreTab: React.FC<MoreTabProps> = ({ files, onUploadFiles, agents, onNavigateTab }) => {
   const [selectedModule, setSelectedModule] = useState<string>('All');
   const [activeFile, setActiveFile] = useState<RCOSFileItem | null>(files[0] || null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -187,6 +197,116 @@ export const MoreTab: React.FC<MoreTabProps> = ({ files, onUploadFiles, agents }
     <div className="space-y-4 pb-6 px-3 sm:px-4 pt-2 max-w-full overflow-x-hidden">
       {/* Official RC Solutions Hero Brand Card */}
       <RCLogo variant="hero" showTagline />
+
+      {/* RCOS Master Module Launcher Grid */}
+      {onNavigateTab && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2.5 shadow-xl">
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+            <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5 font-mono">
+              <Layers className="w-3.5 h-3.5 text-lime-400" />
+              <span>RCOS System Module Direct Launchers</span>
+            </span>
+            <span className="text-[10px] text-zinc-500 font-mono">1-Tap Direct Access</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => onNavigateTab('automation')}
+              className="p-2.5 rounded-xl bg-black border border-zinc-800 hover:border-lime-500/50 text-left transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-1.5 text-lime-400 font-bold text-xs">
+                <Cpu className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                <span>Automation Engine</span>
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">1-Click Installer & Auto Loader</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab('docs')}
+              className="p-2.5 rounded-xl bg-black border border-zinc-800 hover:border-purple-500/50 text-left transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-1.5 text-purple-400 font-bold text-xs">
+                <BookOpen className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                <span>Architecture & Docs</span>
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">100+ Complete System Files</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab('clients')}
+              className="p-2.5 rounded-xl bg-black border border-zinc-800 hover:border-blue-500/50 text-left transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-1.5 text-blue-400 font-bold text-xs">
+                <Users className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                <span>Client Nurture CRM</span>
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">Health Scores & AI SMS Nurture</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab('portal')}
+              className="p-2.5 rounded-xl bg-black border border-zinc-800 hover:border-emerald-500/50 text-left transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
+                <Globe className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                <span>Client Request Portal</span>
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">Public Intake & Lead Triage</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab('phone')}
+              className="p-2.5 rounded-xl bg-black border border-zinc-800 hover:border-blue-500/50 text-left transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-1.5 text-blue-400 font-bold text-xs">
+                <Phone className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                <span>Voice AI Phone</span>
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">24/7 Call Intake & Team Radio</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab('jobs')}
+              className="p-2.5 rounded-xl bg-black border border-zinc-800 hover:border-amber-500/50 text-left transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+                <Briefcase className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                <span>Smart Dispatch</span>
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">Work Orders & Technician Route</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab('jobpacks')}
+              className="p-2.5 rounded-xl bg-black border border-zinc-800 hover:border-amber-500/50 text-left transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+                <Wrench className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                <span>Industry Job Packs</span>
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">Checklists & Safety SOPs</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab('approvals')}
+              className="p-2.5 rounded-xl bg-black border border-zinc-800 hover:border-lime-500/50 text-left transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-1.5 text-lime-400 font-bold text-xs">
+                <CheckCircle className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                <span>Approval Queue (HITL)</span>
+              </div>
+              <div className="text-[10px] text-zinc-400 mt-0.5">Quotes & Financial Sign-off</div>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Enterprise Multi-Agent Interactive Suite */}
       <div className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-lime-500/30 space-y-4 shadow-xl">

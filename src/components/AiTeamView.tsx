@@ -19,7 +19,12 @@ import {
   User,
   ToggleLeft,
   ToggleRight,
-  ArrowUpRight
+  ArrowUpRight,
+  Phone,
+  Mail,
+  FileCheck,
+  Share2,
+  Sparkles
 } from 'lucide-react';
 import { BusinessAccount, AIEmployee, ChatMessage } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
@@ -138,6 +143,11 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       case 'Megaphone': return <Megaphone className="w-4 h-4 text-yellow-400" />;
       case 'FileText': return <FileText className="w-4 h-4 text-slate-300" />;
       case 'BarChart3': return <BarChart3 className="w-4 h-4 text-indigo-400" />;
+      case 'Phone': return <Phone className="w-4 h-4 text-blue-400" />;
+      case 'Mail': return <Mail className="w-4 h-4 text-indigo-400" />;
+      case 'FileCheck': return <FileCheck className="w-4 h-4 text-emerald-400" />;
+      case 'Share2': return <Share2 className="w-4 h-4 text-purple-400" />;
+      case 'Sparkles': return <Sparkles className="w-4 h-4 text-lime-400" />;
       default: return <Bot className="w-4 h-4 text-[#00ff66]" />;
     }
   };
@@ -150,11 +160,11 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <span>AI Employee Roster</span>
             <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
-              All 12 Included
+              All 16 Included
             </span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Every account gets the full 12-person operational system. Toggle roles on/off or chat directly with any specialist.
+            Every account gets the full 16-person operational system. Toggle roles on/off or chat directly with any specialist.
           </p>
         </div>
       </div>
