@@ -1,5 +1,5 @@
 import firebaseAppletConfig from '../../firebase-applet-config.json';
-import googleServicesJson from '../../android/app/google-services.json';
+import googleServicesJson from '../../google-services.json';
 
 // Firebase and Google Services configurations
 export const firebaseConfig = {
