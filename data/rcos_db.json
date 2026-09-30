@@ -79,6 +79,72 @@
       "dollarAmount": 0,
       "createdAt": "2026-09-25T00:47:31.560Z",
       "updatedAt": "2026-09-25T00:47:59.425Z"
+    },
+    {
+      "id": "act_1790657373682",
+      "businessId": "biz_1790297242341",
+      "employeeId": "executive_assistant",
+      "actionType": "generate_quote",
+      "riskCategory": "commitment_outbound",
+      "title": "Quote Approval: Service Inquiry for David Sterling",
+      "description": "Voice request from David Sterling: \"Can I get a quote for a 5-ton rooftop AC repair? Estimate is about $1,400.\"",
+      "status": "awaiting_approval",
+      "dollarAmount": 1250,
+      "financialAmount": 1250,
+      "requiresApproval": true,
+      "requiresReview": true,
+      "result": {
+        "summary": "Quote generated during Voice Receptionist call for David Sterling",
+        "quoteDetails": {
+          "clientName": "David Sterling",
+          "items": [
+            {
+              "description": "Service Inquiry",
+              "quantity": 1,
+              "unitPrice": 1250,
+              "total": 1250
+            }
+          ],
+          "totalAmount": 1250,
+          "validDays": 30,
+          "terms": "Standard 30-Day Commercial Guarantee"
+        }
+      },
+      "createdAt": "2026-09-29T04:49:33.682Z",
+      "updatedAt": "2026-09-29T04:49:33.682Z"
+    },
+    {
+      "id": "act_1790658183916",
+      "businessId": "biz_1790297242341",
+      "employeeId": "executive_assistant",
+      "actionType": "generate_quote",
+      "riskCategory": "commitment_outbound",
+      "title": "Quote Approval: 10-ton condenser replacement for  14155552671",
+      "description": "Real phone caller requested quote during live call: \"I need an urgent quote to replace an emergency 10-ton condenser for about 3500 dollars\". Estimated value: $3500.",
+      "status": "awaiting_approval",
+      "dollarAmount": 3500,
+      "financialAmount": 3500,
+      "requiresApproval": true,
+      "requiresReview": true,
+      "result": {
+        "summary": "Real phone inquiry quote created for  14155552671",
+        "quoteDetails": {
+          "clientName": " 14155552671",
+          "items": [
+            {
+              "description": "10-ton condenser replacement",
+              "quantity": 1,
+              "unitPrice": 3500,
+              "total": 3500
+            }
+          ],
+          "totalAmount": 3500,
+          "validDays": 30,
+          "terms": "Standard Net-30 Upon Completion"
+        }
+      },
+      "createdAt": "2026-09-29T05:03:03.916Z",
+      "updatedAt": "2026-09-29T05:03:03.916Z"
     }
   ],
   "chatMessages": [],
@@ -877,6 +943,74 @@
       "troubleshootingNotes": [
         "If volunteer turnout is lower than expected, reassign participants to critical path tasks first"
       ]
+    }
+  ],
+  "voicemails": [],
+  "telephonyConfig": {
+    "provider": "twilio",
+    "accountSidConfigured": false,
+    "authTokenConfigured": false,
+    "phoneNumber": "+1 (800) 555-7267",
+    "webhookUrl": "https://ais-dev-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app/api/twilio/voice/incoming",
+    "answeringStrategy": "ai_first",
+    "ringDurationSeconds": 15,
+    "operatorForwardingPhone": "+1 (555) 019-4820",
+    "departmentForwardingNumbers": {
+      "dispatch": "+1 (555) 392-8811",
+      "billing": "+1 (555) 741-2290",
+      "emergency": "+1 (555) 883-1120",
+      "sales": "+1 (555) 612-4490",
+      "support": "+1 (555) 902-3310"
+    },
+    "greetingMessage": "Thank you for calling RC Solutions smart mechanical, electrical, and automation services. How may I direct your call or assist you today?",
+    "ttsVoice": "Polly.Joanna",
+    "recordingEnabled": true,
+    "transcriptionEnabled": true,
+    "liveCallsActive": 0
+  },
+  "calls": [
+    {
+      "id": "call_1790658168916",
+      "twilioCallSid": "CA1234567890abcdef",
+      "callerName": " 14155552671 (San Francisco, CA)",
+      "callerNumber": " 14155552671",
+      "type": "inbound",
+      "status": "transferred",
+      "timestamp": "Just now",
+      "duration": "0m 00s",
+      "answeredBy": "ai_receptionist",
+      "isRealPstnCall": true,
+      "summary": "Real incoming telephone call from carrier line  14155552671. Routing mode: ai_first.",
+      "transcript": [
+        {
+          "speaker": "System",
+          "text": "📞 Inbound call received via Twilio PSTN from  14155552671.",
+          "time": "00:00"
+        },
+        {
+          "speaker": "Caller",
+          "text": "Can you please transfer me to Dispatch",
+          "time": "00:15"
+        },
+        {
+          "speaker": "RCOS AI",
+          "text": "I'd be glad to transfer you to Dispatch. Please hold while I connect you to Marcus Vance and the field operations team.",
+          "time": "00:20"
+        },
+        {
+          "speaker": "Caller",
+          "text": "I need an urgent quote to replace an emergency 10-ton condenser for about 3500 dollars",
+          "time": "00:15"
+        },
+        {
+          "speaker": "RCOS AI",
+          "text": "I can certainly help you get an urgent quote for replacing your 10-ton condenser. Let me log these details and connect you with our Sales and Project Estimates team right away.",
+          "time": "00:20"
+        }
+      ],
+      "department": "Dispatch & Field Operations",
+      "forwardedToNumber": "+1 (555) 392-8811",
+      "actionRequired": "Quote Approval Requested: $3500 for  14155552671"
     }
   ]
 }

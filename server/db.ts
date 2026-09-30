@@ -5,7 +5,10 @@ import {
   CustomerRequest, 
   ActionRecord, 
   ChatMessage, 
-  JobPack 
+  JobPack,
+  VoicemailRecord,
+  TelephonyConfig,
+  PhoneCall
 } from '../src/types';
 import { INDUSTRY_PRESETS } from '../src/data/presets';
 
@@ -18,6 +21,35 @@ interface DatabaseSchema {
   actions: ActionRecord[];
   chatMessages: ChatMessage[];
   jobPacks: JobPack[];
+  voicemails?: VoicemailRecord[];
+  telephonyConfig?: TelephonyConfig;
+  calls?: PhoneCall[];
+}
+
+export function getDefaultTelephonyConfig(): TelephonyConfig {
+  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+  return {
+    provider: 'twilio',
+    accountSidConfigured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_ACCOUNT_SID.startsWith('AC')),
+    authTokenConfigured: !!(process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_AUTH_TOKEN.length > 5),
+    phoneNumber: process.env.TWILIO_PHONE_NUMBER || '+1 (800) 555-7267',
+    webhookUrl: appUrl ? `${appUrl}/api/twilio/voice/incoming` : '/api/twilio/voice/incoming',
+    answeringStrategy: 'ai_first',
+    ringDurationSeconds: 15,
+    operatorForwardingPhone: process.env.OPERATOR_FORWARDING_PHONE || '+1 (555) 019-4820',
+    departmentForwardingNumbers: {
+      dispatch: process.env.DISPATCH_FORWARDING_PHONE || '+1 (555) 392-8811',
+      billing: process.env.BILLING_FORWARDING_PHONE || '+1 (555) 741-2290',
+      emergency: process.env.EMERGENCY_FORWARDING_PHONE || '+1 (555) 883-1120',
+      sales: process.env.SALES_FORWARDING_PHONE || '+1 (555) 612-4490',
+      support: process.env.SUPPORT_FORWARDING_PHONE || '+1 (555) 902-3310'
+    },
+    greetingMessage: 'Thank you for calling RC Solutions smart mechanical, electrical, and automation services. How may I direct your call or assist you today?',
+    ttsVoice: 'Polly.Joanna',
+    recordingEnabled: true,
+    transcriptionEnabled: true,
+    liveCallsActive: 0
+  };
 }
 
 function ensureDb(): DatabaseSchema {
@@ -39,7 +71,8 @@ function ensureDb(): DatabaseSchema {
       requests: [],
       actions: [],
       chatMessages: [],
-      jobPacks: initialJobPacks
+      jobPacks: initialJobPacks,
+      voicemails: []
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(emptyDb, null, 2), 'utf-8');
     return emptyDb;
@@ -47,7 +80,9 @@ function ensureDb(): DatabaseSchema {
 
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed.voicemails) parsed.voicemails = [];
+    return parsed;
   } catch (err) {
     console.error('Failed to read db file, initializing clean DB', err);
     const fallbackDb: DatabaseSchema = {
@@ -55,7 +90,8 @@ function ensureDb(): DatabaseSchema {
       requests: [],
       actions: [],
       chatMessages: [],
-      jobPacks: []
+      jobPacks: [],
+      voicemails: []
     };
     return fallbackDb;
   }
@@ -191,5 +227,90 @@ export const db = {
     }
     saveDb(data);
     return jobPack;
+  },
+
+  // Voicemails & Transcribed Messages
+  getVoicemails(): VoicemailRecord[] {
+    const data = ensureDb();
+    return (data.voicemails || []).sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  },
+
+  saveVoicemail(vm: VoicemailRecord): VoicemailRecord {
+    const data = ensureDb();
+    if (!data.voicemails) data.voicemails = [];
+    const idx = data.voicemails.findIndex(v => v.id === vm.id);
+    if (idx >= 0) {
+      data.voicemails[idx] = vm;
+    } else {
+      data.voicemails.unshift(vm);
+    }
+    saveDb(data);
+    return vm;
+  },
+
+  deleteVoicemail(id: string): boolean {
+    const data = ensureDb();
+    if (!data.voicemails) return false;
+    const initialLen = data.voicemails.length;
+    data.voicemails = data.voicemails.filter(v => v.id !== id);
+    saveDb(data);
+    return data.voicemails.length < initialLen;
+  },
+
+  // Telephony Carrier Config
+  getTelephonyConfig(): TelephonyConfig {
+    const data = ensureDb();
+    const defaultConfig = getDefaultTelephonyConfig();
+    if (!data.telephonyConfig) {
+      data.telephonyConfig = defaultConfig;
+      saveDb(data);
+    }
+    // Always sync current runtime environment presence
+    data.telephonyConfig.accountSidConfigured = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_ACCOUNT_SID.startsWith('AC'));
+    data.telephonyConfig.authTokenConfigured = !!(process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_AUTH_TOKEN.length > 5);
+    if (process.env.TWILIO_PHONE_NUMBER) {
+      data.telephonyConfig.phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    }
+    const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+    if (appUrl) {
+      data.telephonyConfig.webhookUrl = `${appUrl}/api/twilio/voice/incoming`;
+    }
+    return data.telephonyConfig;
+  },
+
+  saveTelephonyConfig(cfg: Partial<TelephonyConfig>): TelephonyConfig {
+    const data = ensureDb();
+    const current = this.getTelephonyConfig();
+    data.telephonyConfig = {
+      ...current,
+      ...cfg,
+      departmentForwardingNumbers: {
+        ...current.departmentForwardingNumbers,
+        ...(cfg.departmentForwardingNumbers || {})
+      }
+    };
+    saveDb(data);
+    return data.telephonyConfig;
+  },
+
+  // Phone Calls
+  getCalls(): PhoneCall[] {
+    const data = ensureDb();
+    return data.calls || [];
+  },
+
+  saveCall(call: PhoneCall): PhoneCall {
+    const data = ensureDb();
+    if (!data.calls) data.calls = [];
+    const idx = data.calls.findIndex(c => c.id === call.id || (call.twilioCallSid && c.twilioCallSid === call.twilioCallSid));
+    if (idx >= 0) {
+      data.calls[idx] = { ...data.calls[idx], ...call };
+    } else {
+      data.calls.unshift(call);
+    }
+    saveDb(data);
+    return call;
   }
 };

@@ -13,17 +13,61 @@ export const ai = new GoogleGenAI({
   },
 });
 
-export const PRIMARY_MODEL = 'gemini-3.8-flash';
+export const PRIMARY_MODEL = 'gemini-3.1-flash-lite';
 export const FAST_MODEL = 'gemini-3.1-flash-lite';
 export const PRO_MODEL = 'gemini-3.1-pro-preview';
+export const TTS_MODEL = 'gemini-3.8-flash-lite-tts';
 
 // Exhaustive candidate model chain following SKILL.md valid models
 export const CANDIDATE_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-flash-latest',
   'gemini-3.1-flash-lite',
-  'gemini-3.1-pro-preview'
+  'gemini-flash-latest',
+  'gemini-2.5-flash',
+  'gemini-3.8-flash'
 ];
+
+export async function generateSpeechAudio(
+  text: string, 
+  voiceName: 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr' = 'Kore'
+): Promise<{ audioBase64: string | null; mimeType: string }> {
+  if (!hasValidApiKey) {
+    return { audioBase64: null, mimeType: 'audio/wav' };
+  }
+  try {
+    const response = await ai.models.generateContent({
+      model: TTS_MODEL,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              text: text.slice(0, 1000),
+              speechMetadata: {
+                style: 'Professional, warm, helpful customer service receptionist',
+              },
+            },
+          ],
+        },
+      ],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName },
+          },
+        },
+      },
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      return { audioBase64: base64Audio, mimeType: 'audio/wav' };
+    }
+  } catch (err: any) {
+    console.warn('[Gemini TTS] TTS generation failed:', err?.message || err);
+  }
+  return { audioBase64: null, mimeType: 'audio/wav' };
+}
 
 export async function executeGeminiWithFallback(params: {
   contents: any;

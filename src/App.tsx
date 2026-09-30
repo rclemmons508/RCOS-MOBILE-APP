@@ -417,6 +417,17 @@ export default function App() {
                 };
                 setMessages(prev => [...prev, newMessage]);
               }}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onTriggerNotification={(title, message) => {
+                sendPushNotification({
+                  type: 'call_event',
+                  title,
+                  message,
+                  priority: 'high',
+                  module: 'Phone System',
+                  actionTaken: 'Executed'
+                });
+              }}
             />
           )}
 

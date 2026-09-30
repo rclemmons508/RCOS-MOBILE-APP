@@ -347,18 +347,94 @@ export interface AgentMessage {
   };
 }
 
+export interface CallTranscriptEntry {
+  speaker: 'RCOS AI' | 'Caller' | 'Human Operator' | string;
+  text: string;
+  time: string;
+  audioBase64?: string;
+}
+
+export interface CallActionTriggered {
+  id: string;
+  type: 'send_email' | 'request_quote_approval' | 'transfer_call' | 'take_message' | 'dispatch_job';
+  description: string;
+  status: 'completed' | 'pending';
+  timestamp: string;
+  details?: Record<string, any>;
+}
+
+export interface VoicemailRecord {
+  id: string;
+  callerName: string;
+  callerNumber: string;
+  company?: string;
+  timestamp: string;
+  duration: string;
+  transcription: string;
+  summary: string;
+  urgency: 'low' | 'medium' | 'high' | 'urgent';
+  department?: string;
+  audioBase64?: string;
+  audioUrl?: string;
+  emailSent?: boolean;
+  quoteRequested?: boolean;
+  reviewed: boolean;
+}
+
+export interface DepartmentTransfer {
+  id: string;
+  name: string;
+  extension: string;
+  leadName: string;
+  description: string;
+  status: 'available' | 'busy' | 'on_call';
+  realPhoneNumber?: string;
+}
+
+export interface TelephonyConfig {
+  provider: 'twilio' | 'custom_sip';
+  accountSidConfigured: boolean;
+  authTokenConfigured: boolean;
+  phoneNumber: string;
+  webhookUrl: string;
+  answeringStrategy: 'ai_first' | 'human_first' | 'simultaneous_ring';
+  ringDurationSeconds: number;
+  operatorForwardingPhone: string;
+  departmentForwardingNumbers: {
+    dispatch: string;
+    billing: string;
+    emergency: string;
+    sales: string;
+    support: string;
+  };
+  greetingMessage: string;
+  ttsVoice: string;
+  recordingEnabled: boolean;
+  transcriptionEnabled: boolean;
+  liveCallsActive: number;
+}
+
 export interface PhoneCall {
   id: string;
   callerName: string;
   callerNumber: string;
   type: 'inbound' | 'outbound' | 'missed';
-  status: 'active' | 'completed' | 'voicemail' | 'transcribing';
+  status: 'active' | 'ringing' | 'completed' | 'voicemail' | 'transcribing' | 'transferred' | 'missed';
   timestamp: string;
   duration: string;
   summary?: string;
   sentiment?: 'positive' | 'neutral' | 'urgent';
-  transcript?: { speaker: string; text: string; time: string }[];
+  transcript?: CallTranscriptEntry[];
   actionRequired?: string;
+  answeredBy?: 'ai_receptionist' | 'human_operator';
+  transferredTo?: string;
+  department?: string;
+  voicemailAudioBase64?: string;
+  actionsTriggered?: CallActionTriggered[];
+  twilioCallSid?: string;
+  recordingUrl?: string;
+  forwardedToNumber?: string;
+  isRealPstnCall?: boolean;
 }
 
 export interface Job {

@@ -5,17 +5,20 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from './server/db';
 import { RcosEngine } from './server/engine';
-import { ai, PRIMARY_MODEL, FAST_MODEL, PRO_MODEL, executeGeminiWithFallback } from './server/gemini';
+import { ai, PRIMARY_MODEL, FAST_MODEL, PRO_MODEL, executeGeminiWithFallback, generateSpeechAudio } from './server/gemini';
 import { 
   BusinessAccount, 
   CustomerRequest, 
   ActionRecord, 
   ChatMessage, 
   JobPack,
-  StarterDraft
+  StarterDraft,
+  VoicemailRecord
 } from './src/types';
 import { INDUSTRY_PRESETS } from './src/data/presets';
 import { AI_EMPLOYEES } from './src/data/employees';
+
+import { telephonyRouter } from './server/telephony';
 
 dotenv.config();
 
@@ -26,6 +29,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+// Mount Twilio PSTN Telephony Router
+app.use('/api/twilio', telephonyRouter);
 
 // ==================== API ROUTES ====================
 
@@ -452,7 +459,437 @@ app.post('/api/agent/chat', async (req: Request, res: Response) => {
   }
 });
 
-// 2. Simulate Inbound Phone Call dialogue turn
+// 2. Real Voice Receptionist TTS endpoint (gemini-3.8-flash-lite-tts)
+app.post('/api/phone/tts', async (req: Request, res: Response) => {
+  const { text = '', voiceName = 'Kore' } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: 'Text is required for TTS synthesis' });
+  }
+
+  try {
+    const audioResult = await generateSpeechAudio(text, voiceName);
+    return res.json({
+      success: !!audioResult.audioBase64,
+      audioBase64: audioResult.audioBase64,
+      mimeType: audioResult.mimeType || 'audio/wav',
+      voice: voiceName
+    });
+  } catch (err: any) {
+    console.error('[Phone TTS] Synthesis failed:', err);
+    return res.status(500).json({ error: 'TTS synthesis failed', details: err?.message });
+  }
+});
+
+// 2b. Intelligent Multi-Turn Voice Receptionist Engine
+app.post('/api/phone/receptionist-chat', async (req: Request, res: Response) => {
+  const { 
+    userSpeech = '', 
+    callerName = 'Inbound Caller', 
+    callerNumber = '(555) 019-4820',
+    callerTopic = 'Service Inquiry',
+    conversationHistory = [],
+    answeredBy = 'ai_receptionist', // 'ai_receptionist' | 'human_operator'
+    businessId,
+    withAudio = true
+  } = req.body;
+
+  const defaultBiz = (businessId && db.getBusiness(businessId)) || db.getAllBusinesses()[0] || {
+    id: 'biz_rc_solutions',
+    name: 'RC Solutions',
+    industry: 'automation_field_services',
+    dollarThreshold: 250
+  };
+
+  const isHuman = answeredBy === 'human_operator';
+
+  // Fallback heuristic response generator
+  const fallbackGenerator = () => {
+    const lower = userSpeech.toLowerCase();
+    let intent: 'take_message' | 'send_email' | 'request_quote_approval' | 'transfer_call' | 'general_qa' = 'general_qa';
+    let aiResponse = `Thank you for calling RC Solutions. How can I assist you with our smart mechanical, electrical, or automation services today?`;
+    let actionTriggered: any = null;
+    let sentiment: 'positive' | 'neutral' | 'urgent' = 'neutral';
+    let callStatus: 'active' | 'transferred' | 'voicemail_recorded' = 'active';
+
+    if (lower.includes('transfer') || lower.includes('dispatch') || lower.includes('marcus') || lower.includes('billing') || lower.includes('sales')) {
+      intent = 'transfer_call';
+      let dept = 'Dispatch & Field Operations';
+      let ext = '101';
+      let lead = 'Marcus Vance';
+      if (lower.includes('billing') || lower.includes('invoice')) {
+        dept = 'Billing & Invoicing';
+        ext = '102';
+        lead = 'Elena Rostova';
+      } else if (lower.includes('sales') || lower.includes('pricing')) {
+        dept = 'Sales & Project Estimates';
+        ext = '104';
+        lead = 'Sarah Chen';
+      } else if (lower.includes('emergency') || lower.includes('technician')) {
+        dept = 'Emergency Mechanical Tech';
+        ext = '103';
+        lead = 'Dave Miller';
+      }
+      aiResponse = `I'd be glad to connect you. I am transferring your call right now to ${dept} at Extension ${ext}, connecting with ${lead}. Please stay on the line.`;
+      callStatus = 'transferred';
+      actionTriggered = {
+        type: 'transfer_call',
+        targetDepartment: dept,
+        extension: ext,
+        agentName: lead
+      };
+    } else if (lower.includes('quote') || lower.includes('estimate') || lower.includes('price') || lower.includes('cost') || lower.includes('bid')) {
+      intent = 'request_quote_approval';
+      const est = 1250;
+      aiResponse = `I have logged your request for a project quote for ${userSpeech.slice(0, 60)}. Because this is an official estimate, I have submitted an Approval Request to our Operations Supervisor for formal review.`;
+      actionTriggered = {
+        type: 'request_quote_approval',
+        clientName: callerName,
+        serviceName: callerTopic || 'Diagnostic & Installation Quote',
+        estimatedAmount: est,
+        details: `Voice request from ${callerName}: "${userSpeech}"`
+      };
+    } else if (lower.includes('message') || lower.includes('voicemail') || lower.includes('not available') || lower.includes('leave a note')) {
+      intent = 'take_message';
+      callStatus = 'voicemail_recorded';
+      aiResponse = `I have transcribed and saved your message for the team. We will ensure the assigned specialist reviews it and follows up promptly.`;
+      actionTriggered = {
+        type: 'take_message',
+        callerName,
+        callerNumber,
+        messageText: userSpeech || 'Please call back regarding urgent project updates.',
+        urgency: lower.includes('urgent') || lower.includes('asap') ? 'urgent' : 'medium',
+        department: 'Operations'
+      };
+    } else if (lower.includes('email') || lower.includes('confirmation') || lower.includes('send me')) {
+      intent = 'send_email';
+      aiResponse = `I have sent a confirmation email summary regarding your inquiry to your registered contact address.`;
+      actionTriggered = {
+        type: 'send_email',
+        recipient: `${callerName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'client'}@example.com`,
+        subject: `RC Solutions Call Confirmation: ${callerTopic}`,
+        body: `Hello ${callerName},\n\nThank you for speaking with our Voice Receptionist today regarding: "${userSpeech}". Your inquiry has been routed to our team.\n\nBest regards,\nRC Solutions Concierge`
+      };
+    } else if (lower.includes('emergency') || lower.includes('leak') || lower.includes('tripping') || lower.includes('fire') || lower.includes('smoke')) {
+      sentiment = 'urgent';
+      aiResponse = `Understood, this sounds like an urgent priority. I am escalating your details directly to our emergency dispatch queue and transferring you to our on-call technician Dave Miller immediately.`;
+      intent = 'transfer_call';
+      callStatus = 'transferred';
+      actionTriggered = {
+        type: 'transfer_call',
+        targetDepartment: 'Emergency Field Tech',
+        extension: '103',
+        agentName: 'Dave Miller'
+      };
+    }
+
+    return {
+      aiResponse,
+      intent,
+      actionTriggered,
+      sentiment,
+      callStatus
+    };
+  };
+
+  try {
+    const prompt = `You are "Kore", the intelligent AI Voice Receptionist for RC Solutions, a premier commercial mechanical, electrical, and AI automation field service company.
+Caller Name: ${callerName}
+Caller Phone: ${callerNumber}
+Caller Topic: ${callerTopic}
+Answered Mode: ${answeredBy} (If 'human_operator', the human answered; otherwise AI Receptionist is speaking)
+
+Conversation History:
+${conversationHistory.map((c: any) => `${c.speaker}: ${c.text}`).join('\n')}
+
+Caller just said: "${userSpeech}"
+
+RC Solutions Departments Available for Transfer:
+- "Dispatch & Field Operations" (Ext: 101, Lead: Marcus Vance) - for urgent tech dispatch, work orders, on-site arrival.
+- "Billing & Invoicing" (Ext: 102, Lead: Elena Rostova) - for invoice questions, payment, statements.
+- "Emergency Mechanical & Electrical" (Ext: 103, Lead: Dave Miller) - for active leaks, power outage, chiller failure, critical hazards.
+- "Sales & Project Estimates" (Ext: 104, Lead: Sarah Chen) - for new contracts, facility assessments, upgrades.
+- "Customer Accounts & Support" (Ext: 105, Lead: Alex Rivera) - for general account status and maintenance schedules.
+
+Tasks you can perform:
+1. "transfer_call": If the caller explicitly or implicitly requests a transfer or mentions a department/person.
+2. "request_quote_approval": If caller asks for a quote, estimate, proposal, or price for a service or repair.
+3. "send_email": If caller requests an email confirmation, summary, or document.
+4. "take_message": If caller wants to leave a voicemail or note for someone.
+5. "general_qa": Answer inquiries politely, concisely, and professionally (1 to 3 spoken sentences).
+
+Respond in JSON with exact format:
+{
+  "aiResponse": "spoken response to the caller (natural, polite, concise, professional)",
+  "intent": "transfer_call" | "request_quote_approval" | "send_email" | "take_message" | "general_qa",
+  "sentiment": "positive" | "neutral" | "urgent",
+  "callStatus": "active" | "transferred" | "voicemail_recorded",
+  "actionTriggered": null or {
+    "type": "transfer_call" | "request_quote_approval" | "send_email" | "take_message",
+    "targetDepartment"?: "Dispatch & Field Operations" | "Billing & Invoicing" | "Emergency Mechanical & Electrical" | "Sales & Project Estimates" | "Customer Accounts & Support",
+    "extension"?: string,
+    "agentName"?: string,
+    "clientName"?: string,
+    "serviceName"?: string,
+    "estimatedAmount"?: number,
+    "details"?: string,
+    "recipient"?: string,
+    "subject"?: string,
+    "body"?: string,
+    "callerName"?: string,
+    "callerNumber"?: string,
+    "messageText"?: string,
+    "urgency"?: "low" | "medium" | "high" | "urgent",
+    "department"?: string
+  }
+}`;
+
+    const result = await executeGeminiWithFallback({
+      preferredModel: PRIMARY_MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+      },
+      fallbackFn: () => JSON.stringify(fallbackGenerator())
+    });
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(result.text);
+    } catch {
+      parsed = fallbackGenerator();
+    }
+
+    // Side-effect: If actionTriggered is request_quote_approval, save ActionRecord directly into RCOS approvals ledger
+    if (parsed.actionTriggered && parsed.actionTriggered.type === 'request_quote_approval') {
+      const q = parsed.actionTriggered;
+      const amt = Number(q.estimatedAmount) || 1200;
+      const newAction: ActionRecord = {
+        id: `act_${Date.now()}`,
+        businessId: defaultBiz.id,
+        employeeId: 'executive_assistant',
+        actionType: 'generate_quote',
+        riskCategory: 'commitment_outbound',
+        title: `Quote Approval: ${q.serviceName || 'Service Quote'} for ${q.clientName || callerName}`,
+        description: q.details || `Voice Receptionist quote request for ${callerName} (${callerNumber}): "${userSpeech}"`,
+        status: 'awaiting_approval',
+        dollarAmount: amt,
+        financialAmount: amt,
+        requiresApproval: true,
+        requiresReview: true,
+        result: {
+          summary: `Quote generated during Voice Receptionist call for ${callerName}`,
+          quoteDetails: {
+            clientName: q.clientName || callerName,
+            items: [
+              {
+                description: q.serviceName || 'Mechanical & Automation Service Scope',
+                quantity: 1,
+                unitPrice: amt,
+                total: amt
+              }
+            ],
+            totalAmount: amt,
+            validDays: 30,
+            terms: 'Standard 30-Day Commercial Guarantee'
+          }
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      db.saveAction(newAction);
+      parsed.actionTriggered.actionId = newAction.id;
+    }
+
+    // Side-effect: If actionTriggered is take_message, save to voicemails DB
+    if (parsed.actionTriggered && parsed.actionTriggered.type === 'take_message') {
+      const m = parsed.actionTriggered;
+      const newVoicemail: VoicemailRecord = {
+        id: `vm_${Date.now()}`,
+        callerName: m.callerName || callerName,
+        callerNumber: m.callerNumber || callerNumber,
+        company: callerName.includes('(') ? callerName.replace(/.*\((.*?)\).*/, '$1') : 'RC Client',
+        timestamp: new Date().toISOString(),
+        duration: '0m 35s',
+        transcription: m.messageText || userSpeech,
+        summary: `Transcribed message regarding ${callerTopic}: ${m.messageText || userSpeech}`,
+        urgency: m.urgency || (parsed.sentiment === 'urgent' ? 'urgent' : 'medium'),
+        department: m.department || 'General Operations',
+        reviewed: false
+      };
+      db.saveVoicemail(newVoicemail);
+      parsed.actionTriggered.voicemailId = newVoicemail.id;
+    }
+
+    // Synthesize real voice speech audio via Gemini TTS if requested and answered by AI
+    let audioBase64: string | null = null;
+    let mimeType = 'audio/wav';
+    if (withAudio && !isHuman && parsed.aiResponse) {
+      const speechRes = await generateSpeechAudio(parsed.aiResponse, 'Kore');
+      audioBase64 = speechRes.audioBase64;
+      mimeType = speechRes.mimeType;
+    }
+
+    return res.json({
+      ...parsed,
+      audioBase64,
+      mimeType,
+      voice: 'Kore'
+    });
+  } catch (err: any) {
+    console.error('[Receptionist Error]', err);
+    const fallback = fallbackGenerator();
+    return res.json(fallback);
+  }
+});
+
+// 2b-2. Calls Log Store (Web & Real PSTN Carrier Calls)
+app.get('/api/phone/calls', (req: Request, res: Response) => {
+  try {
+    const list = db.getCalls();
+    res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch calls', details: err?.message });
+  }
+});
+
+app.post('/api/phone/calls', (req: Request, res: Response) => {
+  try {
+    const saved = db.saveCall(req.body);
+    res.status(201).json(saved);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to save call', details: err?.message });
+  }
+});
+
+// 2c. Voicemails & Transcribed Messages Store
+app.get('/api/phone/voicemails', (req: Request, res: Response) => {
+  try {
+    const list = db.getVoicemails();
+    res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch voicemails', details: err?.message });
+  }
+});
+
+app.post('/api/phone/voicemails', (req: Request, res: Response) => {
+  try {
+    const body = req.body;
+    const vm: VoicemailRecord = {
+      id: body.id || `vm_${Date.now()}`,
+      callerName: body.callerName || 'Inbound Caller',
+      callerNumber: body.callerNumber || '(555) 019-4820',
+      company: body.company || 'Commercial Partner',
+      timestamp: body.timestamp || new Date().toISOString(),
+      duration: body.duration || '0m 45s',
+      transcription: body.transcription || 'No transcription provided.',
+      summary: body.summary || 'Voicemail transcribed by RCOS Voice Receptionist.',
+      urgency: body.urgency || 'medium',
+      department: body.department || 'Operations',
+      audioBase64: body.audioBase64,
+      reviewed: !!body.reviewed
+    };
+    const saved = db.saveVoicemail(vm);
+    res.status(201).json(saved);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to save voicemail', details: err?.message });
+  }
+});
+
+app.delete('/api/phone/voicemails/:id', (req: Request, res: Response) => {
+  try {
+    const deleted = db.deleteVoicemail(req.params.id);
+    res.json({ success: deleted });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete voicemail', details: err?.message });
+  }
+});
+
+// 2d. Direct Email task execution from receptionist/operator
+app.post('/api/phone/send-email', (req: Request, res: Response) => {
+  const { recipient, subject, body, callerName } = req.body;
+  if (!recipient || !subject) {
+    return res.status(400).json({ error: 'Recipient and subject are required' });
+  }
+
+  // Record simulated outbound email
+  const emailRecord = {
+    id: `email_${Date.now()}`,
+    recipient,
+    subject,
+    body,
+    callerName,
+    status: 'sent',
+    sentAt: new Date().toISOString(),
+    sender: 'receptionist@rcsolutions.com'
+  };
+
+  return res.json({
+    success: true,
+    message: `Confirmation email dispatched to ${recipient}`,
+    email: emailRecord
+  });
+});
+
+// 2e. Direct Quote Approval Request from Phone System
+app.post('/api/phone/request-quote', (req: Request, res: Response) => {
+  const { 
+    clientName = 'Inbound Caller', 
+    serviceName = 'Facility Mechanical Service', 
+    estimatedAmount = 850, 
+    details = '', 
+    businessId 
+  } = req.body;
+
+  const defaultBiz = (businessId && db.getBusiness(businessId)) || db.getAllBusinesses()[0] || {
+    id: 'biz_rc_solutions',
+    name: 'RC Solutions',
+    dollarThreshold: 250
+  };
+
+  const amt = Number(estimatedAmount) || 850;
+  const newAction: ActionRecord = {
+    id: `act_${Date.now()}`,
+    businessId: defaultBiz.id,
+    employeeId: 'executive_assistant',
+    actionType: 'generate_quote',
+    riskCategory: 'commitment_outbound',
+    title: `Quote Approval: ${serviceName} for ${clientName}`,
+    description: details || `Generated quote requested via Voice Receptionist call for ${clientName}. Estimated value: $${amt}.`,
+    status: 'awaiting_approval',
+    dollarAmount: amt,
+    financialAmount: amt,
+    requiresApproval: true,
+    requiresReview: true,
+    result: {
+      summary: `Quote generated via Phone Receptionist for ${clientName}`,
+      quoteDetails: {
+        clientName,
+        items: [
+          {
+            description: serviceName,
+            quantity: 1,
+            unitPrice: amt,
+            total: amt
+          }
+        ],
+        totalAmount: amt,
+        validDays: 30,
+        terms: 'Standard Net-30 Upon Completion of Diagnostic and Parts Installation'
+      }
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  const saved = db.saveAction(newAction);
+  res.status(201).json({
+    success: true,
+    action: saved,
+    message: `Quote approval request of $${amt} for ${clientName} logged into RCOS Approvals Queue`
+  });
+});
+
+// 2f. Backward compatibility simulate call endpoint
 app.post('/api/phone/simulate-call', async (req: Request, res: Response) => {
   const { userSpeech = '', callerName = 'Caller', callerTopic = 'General Inquiry' } = req.body;
 
