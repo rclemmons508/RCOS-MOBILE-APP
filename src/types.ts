@@ -300,15 +300,33 @@ export interface NotificationPreferences {
   quietHoursEnd: string;
 }
 
+export interface UserPreferences {
+  industryProfile: string;
+  telemetryIntervalMs: number;
+  autoDispatchThreshold: 'all' | 'critical' | 'high' | 'manual';
+  ringerMode: 'sound' | 'vibrate' | 'silent';
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+  biometricsEnabled: boolean;
+  autoLockOnBackground: boolean;
+  autoLockTimeoutMinutes: number;
+  defaultTab?: TabType;
+  theme?: 'dark' | 'light' | 'oled';
+  notificationPreferences?: NotificationPreferences;
+}
+
 export interface User {
   id: string;
   email: string;
   fullName: string;
-  role: 'System Administrator' | 'Operations Lead' | 'Field Manager' | 'AI Specialist';
+  role: 'System Administrator' | 'Operations Lead' | 'Field Manager' | 'AI Specialist' | 'Field Technician' | 'Dispatcher';
   avatar: string;
   organization: string;
   authenticated: boolean;
   biometricsEnabled?: boolean;
+  biometricsEnrolledAt?: string;
+  biometryType?: 'fingerprint' | 'face' | 'iris' | 'passcode';
+  preferences?: UserPreferences;
   lastLogin?: string;
 }
 

@@ -636,28 +636,88 @@ telephonyRouter.post('/voice/voicemail-transcription', (req: Request, res: Respo
  * Place a real outbound telephone call to any real cell phone or landline
  */
 telephonyRouter.post('/voice/outbound-call', async (req: Request, res: Response) => {
-  const { toPhone, callerTopic = 'Customer Service Follow-up' } = req.body;
+  const { toPhone, callerTopic = 'Customer Service Follow-up', simulateFallback = false } = req.body;
   if (!toPhone) {
     return res.status(400).json({ error: 'Target phone number is required (e.g. +14155552671)' });
+  }
+
+  // Normalize phone number to E.164 standard
+  let formattedTo = String(toPhone).trim().replace(/[\s()-]/g, '');
+  if (!formattedTo.startsWith('+')) {
+    if (formattedTo.length === 10) {
+      formattedTo = `+1${formattedTo}`;
+    } else if (formattedTo.length === 11 && formattedTo.startsWith('1')) {
+      formattedTo = `+${formattedTo}`;
+    } else {
+      formattedTo = `+${formattedTo}`;
+    }
   }
 
   const client = getTwilioClient();
   const config = db.getTelephonyConfig();
   const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
 
-  if (!client) {
-    return res.status(400).json({
-      error: 'Twilio carrier credentials not configured',
-      message: 'To place real phone calls to cell phones and landlines, set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in environment secrets.',
-      telephonyConfig: config
+  // If simulation is explicitly requested or client is missing, provide a safe simulated call
+  if (simulateFallback || !client) {
+    const simulatedCall: PhoneCall = {
+      id: `sim_call_${Date.now()}`,
+      twilioCallSid: `sim_${Date.now()}`,
+      callerName: formattedTo,
+      callerNumber: formattedTo,
+      type: 'outbound',
+      status: 'active',
+      timestamp: 'Just now',
+      duration: '0m 00s',
+      answeredBy: 'ai_receptionist',
+      isRealPstnCall: false,
+      summary: `Simulated test call to ${formattedTo} for topic: "${callerTopic}". Voice AI receptionist connected.`,
+      transcript: [
+        {
+          speaker: 'AI Receptionist',
+          text: `Hello, this is the automated Voice AI dispatch assistant for ${config.phoneNumber || 'RC Solutions'}. Calling regarding ${callerTopic}. How can we assist you today?`,
+          time: '00:01'
+        }
+      ]
+    };
+    db.saveCall(simulatedCall);
+
+    return res.json({
+      success: true,
+      simulated: true,
+      callSid: simulatedCall.twilioCallSid,
+      status: 'in-progress',
+      to: formattedTo,
+      from: config.phoneNumber || '+1 (800) 555-7267',
+      message: `Simulated test voice call initiated to ${formattedTo}. You can view the real-time AI transcript in Call History.`
     });
+  }
+
+  // Auto-detect real Twilio assigned incoming phone number if config is placeholder or empty
+  let fromNumber = config.phoneNumber;
+  try {
+    const incomingNumbers = await client.incomingPhoneNumbers.list({ limit: 5 });
+    if (incomingNumbers && incomingNumbers.length > 0) {
+      const activeNumber = incomingNumbers.find(n => n.capabilities?.voice) || incomingNumbers[0];
+      if (activeNumber?.phoneNumber) {
+        fromNumber = activeNumber.phoneNumber;
+        if (config.phoneNumber !== fromNumber) {
+          db.saveTelephonyConfig({ phoneNumber: fromNumber });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Twilio] Notice while inspecting assigned numbers:', err);
+  }
+
+  if (!fromNumber) {
+    fromNumber = '+18335557267';
   }
 
   try {
     const call = await client.calls.create({
       url: `${appUrl || 'https://example.com'}/api/twilio/voice/incoming`,
-      to: toPhone,
-      from: config.phoneNumber,
+      to: formattedTo,
+      from: fromNumber,
       statusCallback: `${appUrl || ''}/api/twilio/voice/status`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
     });
@@ -665,15 +725,15 @@ telephonyRouter.post('/voice/outbound-call', async (req: Request, res: Response)
     const newCall: PhoneCall = {
       id: `call_${Date.now()}`,
       twilioCallSid: call.sid,
-      callerName: toPhone,
-      callerNumber: toPhone,
+      callerName: formattedTo,
+      callerNumber: formattedTo,
       type: 'outbound',
       status: 'active',
       timestamp: 'Just now',
       duration: '0m 00s',
       answeredBy: 'ai_receptionist',
       isRealPstnCall: true,
-      summary: `Real outbound call placed to ${toPhone} via carrier Twilio.`
+      summary: `Real outbound call placed to ${formattedTo} via Twilio carrier line ${fromNumber}.`
     };
     db.saveCall(newCall);
 
@@ -681,15 +741,68 @@ telephonyRouter.post('/voice/outbound-call', async (req: Request, res: Response)
       success: true,
       callSid: call.sid,
       status: call.status,
-      to: toPhone,
-      from: config.phoneNumber,
-      message: `Outbound call initiated to ${toPhone}. Your carrier line is now dialing.`
+      to: formattedTo,
+      from: fromNumber,
+      message: `Outbound call initiated to ${formattedTo}. Your carrier line is now dialing.`
     });
   } catch (err: any) {
-    console.error('[Outbound Call Error]', err);
-    return res.status(500).json({
+    const errorCode = err?.code;
+    const errorMessage = err?.message || '';
+
+    // Check for Twilio Trial Account destination verification restrictions (Error 573002, 21215, 21608)
+    const isTrialRestriction = 
+      errorCode === 573002 || 
+      errorCode === 21215 || 
+      errorCode === 21608 || 
+      errorMessage.toLowerCase().includes('verified recipient') ||
+      errorMessage.toLowerCase().includes('trial phone number') ||
+      errorMessage.toLowerCase().includes('trial account') ||
+      errorMessage.includes('573002');
+
+    if (isTrialRestriction) {
+      console.warn(`[Twilio Trial Restriction] Recipient ${formattedTo} is not yet a Verified Caller ID on this Twilio Trial project.`);
+
+      // Record notice in call history so the operator has visibility
+      const noticeCall: PhoneCall = {
+        id: `call_notice_${Date.now()}`,
+        callerName: `${formattedTo} (Twilio Trial Unverified)`,
+        callerNumber: formattedTo,
+        type: 'outbound',
+        status: 'missed',
+        timestamp: 'Just now',
+        duration: '0m 00s',
+        answeredBy: 'ai_receptionist',
+        isRealPstnCall: true,
+        summary: `Twilio Trial Warning: Destination ${formattedTo} must be added to Twilio Console Verified Caller IDs (or upgrade Twilio project).`
+      };
+      db.saveCall(noticeCall);
+
+      return res.status(200).json({
+        success: false,
+        isTrialRestriction: true,
+        errorCode: errorCode || 573002,
+        to: formattedTo,
+        from: fromNumber,
+        error: 'Twilio Trial Account Restriction: Recipient Unverified',
+        message: `Twilio free trial requires "${formattedTo}" to be added to your Verified Caller IDs before calls can be made to it.`,
+        verificationUrl: 'https://console.twilio.com/us1/develop/phone-numbers/manage/verified',
+        moreInfo: err?.moreInfo || 'https://www.twilio.com/docs/errors/573002',
+        instructions: [
+          'Open your Twilio Console at console.twilio.com',
+          'Go to Phone Numbers > Manage > Verified Caller IDs',
+          `Click "Add a new number" and verify ${formattedTo}`,
+          'Or upgrade your Twilio project from Trial to Full to call any number without verification'
+        ]
+      });
+    }
+
+    console.warn('[Twilio Outbound Notice]', errorMessage);
+    return res.status(400).json({
+      success: false,
       error: 'Failed to place real outbound call',
-      details: err?.message
+      details: errorMessage,
+      errorCode,
+      moreInfo: err?.moreInfo || null
     });
   }
 });

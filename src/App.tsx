@@ -20,7 +20,6 @@ import {
   INITIAL_CALLS,
   INITIAL_JOBS,
   INITIAL_CLIENTS,
-  INITIAL_FILES,
   INITIAL_METRICS,
   INITIAL_NOTIFICATIONS,
   INITIAL_NOTIFICATION_PREFERENCES,
@@ -36,7 +35,6 @@ import { DashboardTab } from './components/tabs/DashboardTab';
 import { PhoneSystemTab } from './components/tabs/PhoneSystemTab';
 import { JobsTab } from './components/tabs/JobsTab';
 import { ClientsTab } from './components/tabs/ClientsTab';
-import { MoreTab } from './components/tabs/MoreTab';
 import { SettingsTab } from './components/tabs/SettingsTab';
 import { GmailTab } from './components/tabs/GmailTab';
 import { GeminiChatView } from './components/GeminiChatView';
@@ -44,39 +42,53 @@ import { NotificationToast } from './components/notifications/NotificationToast'
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
 import { NotificationPreferencesModal } from './components/notifications/NotificationPreferencesModal';
 import { AuthModal } from './components/auth/AuthModal';
+import { useBiometrics } from './context/BiometricContext';
+import { BiometricLockScreen } from './components/biometrics/BiometricLockScreen';
+import { biometricService } from './services/biometricService';
+import { LoginView } from './components/auth/LoginView';
+import { authService } from './services/authService';
+import { userPreferencesService } from './services/userPreferencesService';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const { isDashboardLocked, isBiometricEnabled } = useBiometrics();
+
+  // Authentication State - check for persistent active session on start
+  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getActiveSession());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Application Core Data
   const [agents] = useState<Agent[]>(INITIAL_AGENTS);
   const [calls, setCalls] = useState<PhoneCall[]>(INITIAL_CALLS);
   const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
   const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
-  const [files, setFiles] = useState<RCOSFileItem[]>(INITIAL_FILES);
   const [metrics, setMetrics] = useState<SystemMetric>(INITIAL_METRICS);
   const [automationTasks, setAutomationTasks] = useState(INITIAL_AUTOMATION_TASKS);
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(true);
 
-  // System Settings State
-  const [industryProfile, setIndustryProfile] = useState('Commercial HVAC');
-  const [telemetryIntervalMs, setTelemetryIntervalMs] = useState(3500);
-  const [autoDispatchThreshold, setAutoDispatchThreshold] = useState<'all' | 'critical' | 'high' | 'manual'>('all');
+  // System Settings State (initialized from user preferences if available)
+  const initialPrefs = currentUser?.email 
+    ? userPreferencesService.getUserPreferences(currentUser.email)
+    : null;
+
+  const [industryProfile, setIndustryProfile] = useState(initialPrefs?.industryProfile || 'Commercial HVAC');
+  const [telemetryIntervalMs, setTelemetryIntervalMs] = useState(initialPrefs?.telemetryIntervalMs || 3500);
+  const [autoDispatchThreshold, setAutoDispatchThreshold] = useState<'all' | 'critical' | 'high' | 'manual'>(
+    initialPrefs?.autoDispatchThreshold || 'all'
+  );
 
   // Real-Time Telemetry Streaming State
   const [telemetrySeries, setTelemetrySeries] = useState<TelemetryPoint[]>(INITIAL_TELEMETRY_SERIES);
 
   // Notification System State
   const [notifications, setNotifications] = useState<RCOSNotification[]>(INITIAL_NOTIFICATIONS);
-  const [notifPreferences, setNotifPreferences] = useState<NotificationPreferences>(INITIAL_NOTIFICATION_PREFERENCES);
+  const [notifPreferences, setNotifPreferences] = useState<NotificationPreferences>(
+    initialPrefs?.notificationPreferences || INITIAL_NOTIFICATION_PREFERENCES
+  );
   const [activePushToast, setActivePushToast] = useState<RCOSNotification | null>(null);
   const [isNotifCenterOpen, setIsNotifCenterOpen] = useState(false);
   const [isNotifPrefsOpen, setIsNotifPrefsOpen] = useState(false);
-
-  // Authentication State
-  const [currentUser, setCurrentUser] = useState<User | null>(INITIAL_USER);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Business context for Chat & Enterprise operations
   const [businessAccount] = useState<BusinessAccount>({
@@ -245,17 +257,6 @@ export default function App() {
     setClients((prev) => prev.filter(c => c.id !== id));
   };
 
-  const handleUploadFiles = (newFiles: RCOSFileItem[]) => {
-    setFiles((prev) => [...newFiles, ...prev]);
-    sendPushNotification({
-      type: 'task_completion',
-      title: 'System Files Compiled & Saved',
-      message: `${newFiles.length} new RCOS agent configuration files loaded into runtime memory.`,
-      priority: 'medium',
-      module: 'Orchestrator',
-    });
-  };
-
   const handleSimulateInboundCall = () => {
     const newCall: PhoneCall = {
       id: 'call-' + Date.now(),
@@ -331,7 +332,19 @@ export default function App() {
   };
 
   const handleLoginSuccess = (user: User) => {
+    authService.saveActiveSession(user);
     setCurrentUser(user);
+    setIsAuthModalOpen(false);
+
+    // Load and apply that specific operator's personal preferences
+    const prefs = userPreferencesService.getUserPreferences(user.email || user.id);
+    setIndustryProfile(prefs.industryProfile || 'Commercial HVAC');
+    setTelemetryIntervalMs(prefs.telemetryIntervalMs || 3500);
+    setAutoDispatchThreshold(prefs.autoDispatchThreshold || 'all');
+    if (prefs.notificationPreferences) {
+      setNotifPreferences(prefs.notificationPreferences);
+    }
+
     sendPushNotification({
       type: 'system_alert',
       title: 'Operator Session Authenticated',
@@ -341,18 +354,26 @@ export default function App() {
     });
   };
 
-  const handleLogout = () => {
-    setCurrentUser((prev) => (prev ? { ...prev, authenticated: false } : null));
+  const handleLogout = async () => {
+    await authService.logout();
+    biometricService.setLocked(false);
+    setCurrentUser(null);
+    setIsAuthModalOpen(false);
     sendPushNotification({
       type: 'system_alert',
       title: 'Operator Session Ended',
-      message: 'Session signed out safely. RCOS controls reverted to read-only state.',
+      message: 'Session signed out safely. Dashboard secured behind login gate.',
       priority: 'low',
       module: 'Core',
     });
   };
 
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
+
+  // If no user is logged in, show the full-screen Login & Registration gate!
+  if (!currentUser) {
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div className="h-screen h-[100dvh] max-h-[100dvh] w-full bg-black text-zinc-100 flex flex-col items-center justify-start overflow-hidden selection:bg-lime-500 selection:text-black">
@@ -484,16 +505,10 @@ export default function App() {
             <GeminiChatView business={businessAccount} />
           )}
 
-          {activeTab === 'more' && (
-            <MoreTab
-              files={files}
-              onUploadFiles={handleUploadFiles}
-              agents={agents}
-            />
-          )}
-
           {activeTab === 'settings' && (
             <SettingsTab
+              currentUser={currentUser}
+              onLogout={handleLogout}
               automationTasks={automationTasks}
               onToggleAutomation={(taskId, isAutomated) => {
                 setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, isAutomated } : t));
@@ -504,13 +519,33 @@ export default function App() {
               aiAssistantEnabled={aiAssistantEnabled}
               onToggleAiAssistant={() => setAiAssistantEnabled(!aiAssistantEnabled)}
               industryProfile={industryProfile}
-              onUpdateIndustry={(ind) => setIndustryProfile(ind)}
+              onUpdateIndustry={(ind) => {
+                setIndustryProfile(ind);
+                if (currentUser?.email) {
+                  userPreferencesService.saveUserPreferences(currentUser.email, { industryProfile: ind });
+                }
+              }}
               telemetryIntervalMs={telemetryIntervalMs}
-              onUpdateTelemetryInterval={(val) => setTelemetryIntervalMs(val)}
+              onUpdateTelemetryInterval={(val) => {
+                setTelemetryIntervalMs(val);
+                if (currentUser?.email) {
+                  userPreferencesService.saveUserPreferences(currentUser.email, { telemetryIntervalMs: val });
+                }
+              }}
               autoDispatchThreshold={autoDispatchThreshold}
-              onUpdateAutoDispatchThreshold={(val) => setAutoDispatchThreshold(val)}
+              onUpdateAutoDispatchThreshold={(val) => {
+                setAutoDispatchThreshold(val);
+                if (currentUser?.email) {
+                  userPreferencesService.saveUserPreferences(currentUser.email, { autoDispatchThreshold: val });
+                }
+              }}
               notifPreferences={notifPreferences}
-              onUpdateNotifPreferences={(updated) => setNotifPreferences(updated)}
+              onUpdateNotifPreferences={(updated) => {
+                setNotifPreferences(updated);
+                if (currentUser?.email) {
+                  userPreferencesService.saveUserPreferences(currentUser.email, { notificationPreferences: updated });
+                }
+              }}
               onTriggerTestPush={handleTriggerTestPush}
               onOpenNotifPrefsModal={() => setIsNotifPrefsOpen(true)}
             />
@@ -562,6 +597,14 @@ export default function App() {
           onLoginSuccess={handleLoginSuccess}
           onLogout={handleLogout}
         />
+
+        {/* Biometric Shield Lock Screen */}
+        {isBiometricEnabled && isDashboardLocked && (
+          <BiometricLockScreen 
+            currentUser={currentUser} 
+            onLogout={handleLogout}
+          />
+        )}
       </div>
     </div>
   );

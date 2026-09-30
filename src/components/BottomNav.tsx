@@ -28,7 +28,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     { id: 'gmail', label: 'Gmail', icon: Mail },
     { id: 'jobs', label: 'Tasks', icon: Briefcase },
     { id: 'clients', label: 'Clients', icon: Users },
-    { id: 'more', label: 'RCOS', icon: MoreHorizontal },
+    { id: 'settings', label: 'Settings', icon: Settings2 },
   ];
 
   return (

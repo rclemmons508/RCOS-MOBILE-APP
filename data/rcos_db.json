@@ -948,11 +948,11 @@
   "voicemails": [],
   "telephonyConfig": {
     "provider": "twilio",
-    "accountSidConfigured": false,
-    "authTokenConfigured": false,
-    "phoneNumber": "+1 (800) 555-7267",
+    "accountSidConfigured": true,
+    "authTokenConfigured": true,
+    "phoneNumber": "17372583478",
     "webhookUrl": "https://ais-dev-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app/api/twilio/voice/incoming",
-    "answeringStrategy": "ai_first",
+    "answeringStrategy": "human_first",
     "ringDurationSeconds": 15,
     "operatorForwardingPhone": "+1 (555) 019-4820",
     "departmentForwardingNumbers": {
@@ -966,9 +966,43 @@
     "ttsVoice": "Polly.Joanna",
     "recordingEnabled": true,
     "transcriptionEnabled": true,
-    "liveCallsActive": 0
+    "liveCallsActive": 0,
+    "hasRealTwilioCredentials": true,
+    "appUrl": "https://ais-dev-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app"
   },
   "calls": [
+    {
+      "id": "sim_call_1790796163637",
+      "twilioCallSid": "sim_1790796163637",
+      "callerName": "+14155552671",
+      "callerNumber": "+14155552671",
+      "type": "outbound",
+      "status": "active",
+      "timestamp": "Just now",
+      "duration": "0m 00s",
+      "answeredBy": "ai_receptionist",
+      "isRealPstnCall": false,
+      "summary": "Simulated test call to +14155552671 for topic: \"Customer Service Follow-up\". Voice AI receptionist connected.",
+      "transcript": [
+        {
+          "speaker": "AI Receptionist",
+          "text": "Hello, this is the automated Voice AI dispatch assistant for 17372583478. Calling regarding Customer Service Follow-up. How can we assist you today?",
+          "time": "00:01"
+        }
+      ]
+    },
+    {
+      "id": "call_notice_1790796156032",
+      "callerName": "+14155552671 (Twilio Trial Unverified)",
+      "callerNumber": "+14155552671",
+      "type": "outbound",
+      "status": "missed",
+      "timestamp": "Just now",
+      "duration": "0m 00s",
+      "answeredBy": "ai_receptionist",
+      "isRealPstnCall": true,
+      "summary": "Twilio Trial Warning: Destination +14155552671 must be added to Twilio Console Verified Caller IDs (or upgrade Twilio project)."
+    },
     {
       "id": "call_1790658168916",
       "twilioCallSid": "CA1234567890abcdef",

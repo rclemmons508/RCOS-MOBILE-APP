@@ -91,13 +91,44 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
       if (data.success && onTriggerNotification) {
         onTriggerNotification(
           'Outbound Call Dispatched',
-          `Calling ${testPhoneNumber} from carrier line ${config.phoneNumber || ''}`
+          `Calling ${testPhoneNumber} from carrier line ${config?.phoneNumber || ''}`
         );
       }
     } catch (err: any) {
       setTestCallResult({
         success: false,
         error: err?.message || 'Failed to place call'
+      });
+    } finally {
+      setIsPlacingCall(false);
+    }
+  };
+
+  const handleSimulateCall = async () => {
+    if (!testPhoneNumber) return;
+    setIsPlacingCall(true);
+    setTestCallResult(null);
+    try {
+      const res = await fetch('/api/twilio/voice/outbound-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          toPhone: testPhoneNumber,
+          simulateFallback: true
+        })
+      });
+      const data = await res.json();
+      setTestCallResult(data);
+      if (data.success && onTriggerNotification) {
+        onTriggerNotification(
+          'Simulated Call Initiated',
+          `Voice AI test session opened for ${testPhoneNumber}`
+        );
+      }
+    } catch (err: any) {
+      setTestCallResult({
+        success: false,
+        error: err?.message || 'Failed to simulate call'
       });
     } finally {
       setIsPlacingCall(false);
@@ -526,21 +557,70 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
             </div>
 
             {testCallResult && (
-              <div className={`p-3 rounded-2xl text-xs font-mono border ${
-                testCallResult.success
-                  ? 'bg-lime-500/10 border-lime-500/30 text-lime-300'
-                  : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-              }`}>
-                <div className="font-bold flex items-center gap-1.5">
-                  {testCallResult.success ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                  <span>{testCallResult.message || testCallResult.error}</span>
-                </div>
-                {testCallResult.callSid && (
-                  <div className="text-[10.5px] mt-1 text-zinc-400">
-                    Twilio Call SID: <span className="text-white">{testCallResult.callSid}</span>
+              testCallResult.isTrialRestriction ? (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-mono space-y-2.5">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-400">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>Twilio Trial Account Notice</span>
                   </div>
-                )}
-              </div>
+                  <p className="text-[11px] text-zinc-300 font-sans leading-relaxed">
+                    Twilio free trial accounts require outbound test numbers to be registered in your Twilio Console under Verified Caller IDs.
+                  </p>
+                  <div className="p-2.5 rounded-xl bg-black/60 border border-zinc-800 space-y-1 text-[11px] font-sans">
+                    <div className="text-zinc-400 text-[10px] uppercase tracking-wider font-mono">To place real calls:</div>
+                    <div className="text-zinc-200">
+                      1. Open{' '}
+                      <a
+                        href={testCallResult.verificationUrl || 'https://console.twilio.com/us1/develop/phone-numbers/manage/verified'}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-lime-400 underline inline-flex items-center gap-0.5 font-bold"
+                      >
+                        Twilio Verified Caller IDs <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <div className="text-zinc-200">
+                      2. Add and verify your phone number: <strong className="text-white font-mono">{testCallResult.to || testPhoneNumber}</strong>
+                    </div>
+                  </div>
+                  <div className="pt-1 flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleSimulateCall}
+                      disabled={isPlacingCall}
+                      className="px-3 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <PhoneCall className="w-3.5 h-3.5" />
+                      <span>Simulate In-App Voice Test Call</span>
+                    </button>
+                    <a
+                      href="https://console.twilio.com/us1/develop/phone-numbers/manage/verified"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-bold transition inline-flex items-center gap-1"
+                    >
+                      <span>Verify in Twilio</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className={`p-3 rounded-2xl text-xs font-mono border ${
+                  testCallResult.success
+                    ? 'bg-lime-500/10 border-lime-500/30 text-lime-300'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                }`}>
+                  <div className="font-bold flex items-center gap-1.5">
+                    {testCallResult.success ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                    <span>{testCallResult.message || testCallResult.error}</span>
+                  </div>
+                  {testCallResult.callSid && (
+                    <div className="text-[10.5px] mt-1 text-zinc-400">
+                      Twilio Call SID: <span className="text-white">{testCallResult.callSid}</span>
+                    </div>
+                  )}
+                </div>
+              )
             )}
           </div>
         )}

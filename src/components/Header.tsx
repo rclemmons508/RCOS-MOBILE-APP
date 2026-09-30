@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { RCLogo } from './RCLogo';
-import { Bell, User as UserIcon, MessageSquare, ShieldCheck, Mail } from 'lucide-react';
+import { Bell, User as UserIcon, MessageSquare, ShieldCheck, Mail, Fingerprint, Lock } from 'lucide-react';
 import { TabType, User } from '../types';
+import { useBiometrics } from '../context/BiometricContext';
 
 interface HeaderProps {
   activeTab: TabType;
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenGmail,
 }) => {
   const [time, setTime] = useState<string>('12:00');
+  const { isBiometricEnabled, lockDashboard, biometryLabel } = useBiometrics();
 
   useEffect(() => {
     const updateTime = () => {
@@ -115,6 +117,19 @@ export const Header: React.FC<HeaderProps> = ({
               aria-label="AI Chat"
             >
               <MessageSquare className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Quick Biometric Lock Button */}
+          {isBiometricEnabled && (
+            <button
+              type="button"
+              onClick={lockDashboard}
+              className="w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-lime-500/50 text-zinc-400 hover:text-lime-400 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+              title={`Lock Dashboard (${biometryLabel} Protected)`}
+              aria-label="Lock Dashboard with Biometrics"
+            >
+              <Fingerprint className="w-3.5 h-3.5 text-lime-400" />
             </button>
           )}
 
