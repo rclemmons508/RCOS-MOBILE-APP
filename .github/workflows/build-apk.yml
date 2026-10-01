@@ -24,14 +24,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+          cache: npm
 
       - name: Install Web Dependencies
-        run: bun install
+        run: npm ci
 
       - name: Verify Versions
         run: |
@@ -40,13 +36,21 @@ jobs:
           npx cap --version
 
       - name: Build Web Assets
-        run: bun run build
+        run: npm run build
 
       - name: Set up Java JDK
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Platform
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
