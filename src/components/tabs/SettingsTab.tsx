@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { AutomationTask, NotificationPreferences, User } from '../../types';
 import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
+import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
+import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
 import { 
   Settings2, 
   Plus, 
@@ -86,6 +88,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   // App Agents State
   const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>('autonomous');
   const [agentTone, setAgentTone] = useState<'strategic' | 'customer' | 'technical'>('strategic');
+  const [customEmployees, setCustomEmployees] = useState<CustomAIEmployee[]>(() =>
+    employeeCustomizationService.getEmployees()
+  );
+  const [selectedEmployeeForCustomizer, setSelectedEmployeeForCustomizer] = useState<CustomAIEmployee | null>(null);
 
   // Custom Task Modal State
   const [isAddingTask, setIsAddingTask] = useState(false);
@@ -524,6 +530,54 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           </div>
 
+          {/* AI Employee Fleet & Job Customization */}
+          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bot className="w-4 h-4 text-lime-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  AI Employee Fleet & Job Roles ({customEmployees.length})
+                </h3>
+              </div>
+              <span className="text-[10px] text-zinc-500 font-mono">1-Tap Customizer</span>
+            </div>
+            <p className="text-[11px] text-zinc-400">
+              Customize job responsibilities, operational boundaries, and escalation triggers for each AI specialist:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
+              {customEmployees.slice(0, 8).map((emp) => (
+                <div
+                  key={emp.id}
+                  onClick={() => setSelectedEmployeeForCustomizer(emp)}
+                  className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-lime-500/40 transition cursor-pointer text-left flex items-center justify-between gap-2.5 group"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-white group-hover:text-lime-300 transition-colors truncate">
+                      {emp.name}
+                    </div>
+                    <div className="text-[10px] text-zinc-400 truncate">
+                      {emp.roleTitle}
+                    </div>
+                    <div className="text-[9px] text-zinc-500 font-mono mt-0.5">
+                      Autonomy: <span className="text-lime-400">{emp.autonomyLevel || 'autonomous'}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedEmployeeForCustomizer(emp);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 text-[10px] font-bold border border-lime-500/30 shrink-0 cursor-pointer"
+                  >
+                    Edit Job
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Automated Workflow Tasks & Rules */}
           <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
             <div className="flex items-center justify-between">
@@ -869,6 +923,18 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* AI Employee Job Customizer Modal */}
+      <EmployeeJobCustomizerModal
+        isOpen={!!selectedEmployeeForCustomizer}
+        onClose={() => setSelectedEmployeeForCustomizer(null)}
+        employee={selectedEmployeeForCustomizer}
+        onSaved={(updated) => {
+          setCustomEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
+          setSelectedEmployeeForCustomizer(null);
+          showToast(`Saved customized job profile for ${updated.name}!`);
+        }}
+      />
     </div>
   );
 };

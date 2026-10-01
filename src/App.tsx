@@ -38,6 +38,7 @@ import { ClientsTab } from './components/tabs/ClientsTab';
 import { SettingsTab } from './components/tabs/SettingsTab';
 import { GmailTab } from './components/tabs/GmailTab';
 import { GeminiChatView } from './components/GeminiChatView';
+import { AiTeamView } from './components/AiTeamView';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
 import { NotificationPreferencesModal } from './components/notifications/NotificationPreferencesModal';
@@ -236,6 +237,14 @@ export default function App() {
       module: 'Jobs Dispatcher',
       actionTaken: 'Route Sent to Tech',
     });
+  };
+
+  const handleUpdateJob = (updatedJob: Job) => {
+    setJobs((prev) => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
+  };
+
+  const handleDeleteJob = (id: string) => {
+    setJobs((prev) => prev.filter(j => j.id !== id));
   };
 
   const handleAddClient = (newClient: Client) => {
@@ -489,6 +498,24 @@ export default function App() {
             <JobsTab
               jobs={jobs}
               onAddJob={handleAddJob}
+              onUpdateJob={handleUpdateJob}
+              onDeleteJob={handleDeleteJob}
+              onTriggerNotification={(title, message) => {
+                sendPushNotification({
+                  type: 'task_completion',
+                  title,
+                  message,
+                  priority: 'medium',
+                  module: 'Jobs Dispatcher'
+                });
+              }}
+            />
+          )}
+
+          {activeTab === 'team' && (
+            <AiTeamView 
+              business={businessAccount}
+              onUpdateBusiness={() => {}}
             />
           )}
 

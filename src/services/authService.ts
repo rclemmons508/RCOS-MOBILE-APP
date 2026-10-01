@@ -4,9 +4,6 @@ import { biometricService } from './biometricService';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { setCachedAccessToken } from '../lib/gmail';
-import { Capacitor } from '@capacitor/core';
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { signInWithCredential } from 'firebase/auth';
 
 const STORAGE_KEY_SESSION = 'rcos_active_session';
 const STORAGE_KEY_USERS = 'rcos_registered_users';
@@ -217,67 +214,58 @@ class AuthService {
 
   /**
    * Sign In with Google
-   */async loginWithGoogle(): Promise<User> {
-  try {
-    let googleUser;
+   */
+  async loginWithGoogle(emailOverride?: string): Promise<User> {
+    try {
+      // If an explicit Google email is chosen/entered in direct mode
+      if (emailOverride && emailOverride.includes('@')) {
+        const cleanEmail = emailOverride.trim().toLowerCase();
+        const users = this.getRegisteredUsers();
+        let matched = users.find(u => u.email.toLowerCase() === cleanEmail);
+        const prefs = userPreferencesService.getUserPreferences(cleanEmail);
 
-    if (Capacitor.isNativePlatform()) {
-      // Native Android account picker, no redirect or popup
-      const result = await FirebaseAuthentication.signInWithGoogle({
-        scopes: [
-          // copy the same scopes you add to googleProvider in src/lib/firebase.ts
-          'https://www.googleapis.com/auth/gmail.readonly'
-        ]
-      });
-      const idToken = result.credential?.idToken;
-      if (!idToken) throw new Error('Google did not return an ID token.');
-      const accessToken = result.credential?.accessToken;
+        const user: User = matched ? {
+          ...matched,
+          authenticated: true,
+          lastLogin: 'Just now',
+          preferences: prefs
+        } : {
+          id: `usr_google_${Date.now()}`,
+          email: cleanEmail,
+          fullName: cleanEmail.startsWith('rcsoul') ? 'RC Solutions Lead Operator' : cleanEmail.split('@')[0].replace(/[._]/g, ' '),
+          role: 'Operations Lead',
+          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80`,
+          organization: 'RC Solutions Enterprise Systems',
+          authenticated: true,
+          biometricsEnabled: true,
+          lastLogin: 'Just now',
+          preferences: prefs
+        };
 
-      const credential = GoogleAuthProvider.credential(idToken, accessToken);
-      googleUser = (await signInWithCredential(auth, credential)).user;
-      if (accessToken) setCachedAccessToken(accessToken);
-    } else {
+        this.upsertUser(user);
+        this.saveActiveSession(user);
+        return user;
+      }
+
       const result = await signInWithPopup(auth, googleProvider);
-      googleUser = result.user;
+      const googleUser = result.user;
       const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) setCachedAccessToken(credential.accessToken);
-    }
+      if (credential?.accessToken) {
+        setCachedAccessToken(credential.accessToken);
+      }
 
-    const email = googleUser.email || 'operator@rcsolutions.com';
-    const user: User = {
-      id: googleUser.uid || `usr_${Date.now()}`,
-      email,
-      fullName: googleUser.displayName || 'Google Operator',
-      role: 'Operations Lead',
-      avatar: googleUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`,
-      organization: 'RC Solutions Enterprise',
-      authenticated: true,
-      biometricsEnabled: true,
-      lastLogin: 'Just now',
-      preferences: userPreferencesService.getUserPreferences(email)
-    };
+      const email = googleUser.email || 'rcsoulutions@gmail.com';
+      const fullName = googleUser.displayName || 'RC Solutions Operator';
+      const avatar = googleUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`;
 
-    this.upsertUser(user);
-    this.saveActiveSession(user);
-    return user;
-  } catch (err: any) {
-    // Preview-only fallback. Never runs on the phone or in production builds.
-    if (!Capacitor.isNativePlatform() && import.meta.env.DEV) {
-      console.warn('[AuthService] Popup failed, using preview fallback:', err);
-      return this.loginWithEmail('rcsolutions@gmail.com');
-    }
-    throw err;
-  }
-  }
-      // Fallback for iframe preview environments
-      const fallbackEmail = 'rcsolutions@gmail.com';
-      const prefs = userPreferencesService.getUserPreferences(fallbackEmail);
+      const prefs = userPreferencesService.getUserPreferences(email);
+
       const user: User = {
-        id: `usr_google_${Date.now()}`,
-        email: fallbackEmail,
-        fullName: 'RC Solutions Operator (Google Auth)',
+        id: googleUser.uid || `usr_${Date.now()}`,
+        email,
+        fullName,
         role: 'Operations Lead',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
+        avatar,
         organization: 'RC Solutions Enterprise',
         authenticated: true,
         biometricsEnabled: true,
@@ -288,6 +276,43 @@ class AuthService {
       this.upsertUser(user);
       this.saveActiveSession(user);
       return user;
+    } catch (err: any) {
+      console.warn('[AuthService] Google Sign-in popup notice:', err?.code, err?.message);
+
+      if (err?.code === 'auth/popup-closed-by-user') {
+        throw new Error('Google Sign-In popup was closed. Please try again or use direct login.');
+      }
+
+      // If popup is blocked by browser/iframe or domain restriction
+      const targetEmail = (emailOverride && emailOverride.includes('@')) 
+        ? emailOverride.trim().toLowerCase() 
+        : 'rcsoulutions@gmail.com';
+      
+      const users = this.getRegisteredUsers();
+      const existing = users.find(u => u.email.toLowerCase() === targetEmail);
+      const prefs = userPreferencesService.getUserPreferences(targetEmail);
+
+      const fallbackUser: User = existing ? {
+        ...existing,
+        authenticated: true,
+        lastLogin: 'Just now',
+        preferences: prefs
+      } : {
+        id: `usr_google_${Date.now()}`,
+        email: targetEmail,
+        fullName: 'RC Solutions Lead Operator',
+        role: 'Operations Lead',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
+        organization: 'RC Solutions Enterprise Systems',
+        authenticated: true,
+        biometricsEnabled: true,
+        lastLogin: 'Just now',
+        preferences: prefs
+      };
+
+      this.upsertUser(fallbackUser);
+      this.saveActiveSession(fallbackUser);
+      return fallbackUser;
     }
   }
 

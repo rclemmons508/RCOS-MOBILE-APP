@@ -1,4 +1,4 @@
-import { auth, googleProvider, GMAIL_SCOPES } from './firebase';
+import { auth, gmailOAuthProvider, GMAIL_SCOPES } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 
 export interface GmailMessageSummary {
@@ -75,7 +75,7 @@ onAuthStateChanged(auth, (user) => {
  * Trigger Google Sign-in specifically for Gmail OAuth token
  */
 export async function authenticateGmail(): Promise<{ user: User; accessToken: string }> {
-  const result = await signInWithPopup(auth, googleProvider);
+  const result = await signInWithPopup(auth, gmailOAuthProvider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
   const token = credential?.accessToken;
 

@@ -9,25 +9,14 @@ interface RCLogoProps {
 }
 
 export const RCLogoIcon: React.FC<{ className?: string }> = ({ className = 'w-8 h-8' }) => (
-  <svg 
-    viewBox="0 0 280 120" 
-    className={`inline-block shrink-0 ${className}`} 
-    fill="none" 
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    {/* Letter R (Stark White) */}
-    <path 
-      d="M 12 42           L 42 12           L 122 12           C 146 12 158 24 158 45           C 158 64 145 74 122 76           L 156 112           L 120 112           L 92 76           L 52 76           L 52 112           L 16 112           Z           M 52 36           L 110 36           C 120 36 124 40 124 46           C 124 52 120 56 110 56           L 52 56           Z" 
-      fill="#FFFFFF" 
+  <div className={`relative shrink-0 overflow-hidden rounded-xl bg-black border border-lime-500/30 shadow-md flex items-center justify-center ${className}`}>
+    <img 
+      src="/app-icon.png" 
+      alt="RC Solutions App Icon" 
+      className="w-full h-full object-cover object-center select-none"
+      loading="eager"
     />
-    {/* Diagonal Accent Slash (Neon Lime Green) */}
-    <path d="M 106 86 L 130 112 L 115 112 L 91 86 Z" fill="#84CC16" />
-    {/* Letter C (Neon Lime Green) */}
-    <path 
-      d="M 230 12           L 262 42           L 218 42           C 190 42 182 52 182 62           C 182 72 190 82 218 82           L 252 82           L 222 112           L 172 112           C 142 112 132 90 132 62           C 132 34 142 12 172 12           Z" 
-      fill="#84CC16" 
-    />
-  </svg>
+  </div>
 );
 
 export const RCLogo: React.FC<RCLogoProps> = ({
@@ -43,8 +32,8 @@ export const RCLogo: React.FC<RCLogoProps> = ({
 
   if (variant === 'compact') {
     return (
-      <div className={`flex items-center gap-2 select-none ${className}`}>
-        <RCLogoIcon className="h-7 w-auto" />
+      <div className={`flex items-center gap-2.5 select-none ${className}`}>
+        <RCLogoIcon className="h-8 w-8" />
         {showText && (
           <div className="flex flex-col leading-none">
             <span className="font-black text-xs tracking-[0.2em] text-white">RC</span>
@@ -59,11 +48,11 @@ export const RCLogo: React.FC<RCLogoProps> = ({
     return (
       <div className={`flex flex-col items-center justify-center select-none ${className}`}>
         <div className="flex items-center gap-3">
-          <RCLogoIcon className="h-12 w-auto" />
+          <RCLogoIcon className="h-14 w-14 rounded-2xl border-lime-500/50 shadow-lg shadow-lime-500/20" />
           {showText && (
             <div className="flex flex-col">
               <span className="text-2xl font-black tracking-[0.3em] text-white leading-none">RC</span>
-              <span className="text-[10px] font-black tracking-[0.4em] text-lime-400 mt-0.5">SOLUTIONS</span>
+              <span className="text-[10px] font-black tracking-[0.4em] text-lime-400 mt-1">SOLUTIONS</span>
             </div>
           )}
         </div>
@@ -82,10 +71,10 @@ export const RCLogo: React.FC<RCLogoProps> = ({
 
   // Hero Card Variant
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-zinc-950 border border-zinc-800/80 p-5 shadow-xl select-none ${className}`}>
+    <div className={`relative overflow-hidden rounded-3xl bg-zinc-950 border border-zinc-800/80 p-6 shadow-2xl select-none ${className}`}>
       <div className="relative z-10 flex flex-col items-center text-center">
-        <div className="my-1.5 p-3 rounded-2xl bg-black/80 border border-zinc-800 shadow-lg">
-          <RCLogoIcon className="h-14 w-auto" />
+        <div className="my-2 p-1 rounded-3xl bg-black border border-lime-500/40 shadow-xl shadow-lime-500/10">
+          <RCLogoIcon className="h-20 w-20 rounded-2xl" />
         </div>
         <h1 className="text-xl sm:text-2xl font-black tracking-[0.35em] text-white mt-2">
           RC SOLUTIONS

@@ -45,15 +45,24 @@ export const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.settings.sharing',
 ];
 
-// Configure Google Auth Provider with account selector and Gmail scopes
+// Configure Standard Google Auth Provider for user login (only profile, email, openid)
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
 googleProvider.addScope('email');
 googleProvider.addScope('profile');
+googleProvider.addScope('openid');
+
+// Separate provider specifically for Google Workspace Gmail API integration
+export const gmailOAuthProvider = new GoogleAuthProvider();
+gmailOAuthProvider.setCustomParameters({
+  prompt: 'select_account'
+});
+gmailOAuthProvider.addScope('email');
+gmailOAuthProvider.addScope('profile');
 GMAIL_SCOPES.forEach((scope) => {
-  googleProvider.addScope(scope);
+  gmailOAuthProvider.addScope(scope);
 });
 
 // Ensure browser local session persistence

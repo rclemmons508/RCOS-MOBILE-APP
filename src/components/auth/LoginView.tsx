@@ -51,7 +51,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [regIndustry, setRegIndustry] = useState('Commercial HVAC');
   const [regAutoDispatch, setRegAutoDispatch] = useState<'all' | 'critical' | 'manual'>('all');
   const [regRingerMode, setRegRingerMode] = useState<'sound' | 'vibrate' | 'silent'>('sound');
-  const [regBiometricChoice, setRegBiometricChoice] = useState<'fingerprint' | 'face' | 'none'>('fingerprint');
+  const [regEnableBiometrics, setRegEnableBiometrics] = useState(true);
 
   const getPasswordStrength = (pass: string) => {
     if (!pass) return { score: 0, label: '', color: 'bg-zinc-800' };
@@ -66,14 +66,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   };
 
   // Google Login Handler
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = async (emailOverride?: string) => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const user = await authService.loginWithGoogle();
+      const user = await authService.loginWithGoogle(emailOverride);
       onLoginSuccess(user);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Google authentication failed.');
+      setErrorMsg(err?.message || 'Google authentication was dismissed. Try direct sign-in below.');
     } finally {
       setIsLoading(false);
     }
@@ -203,7 +203,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         {/* PRIMARY AUTH OPTION 1: GOOGLE SIGN-IN */}
         <button
           type="button"
-          onClick={handleGoogleLogin}
+          onClick={() => handleGoogleLogin()}
           disabled={isLoading}
           className="w-full py-3 px-4 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 text-white font-bold text-xs flex items-center justify-center gap-3 shadow-md transition active:scale-98 cursor-pointer"
         >
@@ -227,6 +227,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           </svg>
           <span>Continue with Google</span>
         </button>
+
+        {/* Direct Google One-Tap for iframe / mobile browser environments */}
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => handleGoogleLogin('rcsoulutions@gmail.com')}
+            disabled={isLoading}
+            className="text-[11px] text-zinc-400 hover:text-lime-400 transition-colors font-mono underline cursor-pointer"
+          >
+            Direct Google Login as rcsoulutions@gmail.com
+          </button>
+        </div>
 
         {/* PRIMARY AUTH OPTION 2: BIOMETRIC LOGIN */}
         <div className="relative">
