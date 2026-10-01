@@ -4,5 +4,27 @@ dist/
 coverage/
 .DS_Store
 *.log
-.env*
+
+# Environment files - NEVER commit secrets
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Keep example file for reference
 !.env.example
+
+# Build output
+server.js
+server.js.map
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+.DS_Store

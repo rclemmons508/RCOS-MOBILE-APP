@@ -7,7 +7,7 @@ import {
   AuthError,
   GoogleAuthProvider
 } from 'firebase/auth';
-import { auth, googleProvider, googleServicesConfig, firebaseConfig } from '../lib/firebase';
+import { auth, googleProvider, googleServicesConfig, firebaseConfig, hasValidFirebaseConfig } from '../lib/firebase';
 import { setCachedAccessToken, getCachedAccessToken } from '../lib/gmail';
 
 export interface AuthErrorInfo {
@@ -26,6 +26,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<boolean>;
   signInWithDirectAccount: (email?: string, name?: string) => void;
   logout: () => Promise<void>;
+  isFirebaseReady: boolean;
   googleServicesInfo: {
     mobileProjectId: string;
     mobilePackageName: string;
@@ -43,6 +44,7 @@ const AuthContext = createContext<AuthContextType>({
   signInWithGoogle: async () => false,
   signInWithDirectAccount: () => {},
   logout: async () => {},
+  isFirebaseReady: false,
   googleServicesInfo: {
     mobileProjectId: '',
     mobilePackageName: '',
@@ -56,8 +58,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
   const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
   const [authError, setAuthError] = useState<AuthErrorInfo | null>(null);
+  const isFirebaseReady = hasValidFirebaseConfig() && !!auth;
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -73,6 +81,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGoogle = async (): Promise<boolean> => {
+    if (!isFirebaseReady) {
+      setAuthError({
+        code: 'firebase_not_configured',
+        message: 'Firebase is not properly configured. Please check environment settings.'
+      });
+      return false;
+    }
+
     setIsSigningIn(true);
     setAuthError(null);
 
@@ -87,13 +103,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (err: any) {
       setIsSigningIn(false);
-      console.warn('Google Sign-in status:', err);
+      console.warn('[Auth] Google Sign-in error:', err);
 
       const errorCode = err?.code || '';
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
 
       if (errorCode === 'auth/popup-closed-by-user') {
-        // User closed popup deliberately, no need for scary alert
         return false;
       }
 
@@ -109,25 +124,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setAuthError({
           code: 'unauthorized_domain',
           domain: currentHost,
-          message: `The preview domain "${currentHost}" needs to be authorized in Firebase Authentication -> Settings -> Authorized Domains, or you can use Quick Authorize below.`
+          message: `The preview domain "${currentHost}" needs to be authorized in Firebase Authentication -> Settings -> Authorized Domains.`
         });
         return false;
       }
 
-      // General error
       setAuthError({
         code: errorCode || 'auth_failed',
         domain: currentHost,
-        message: err?.message || 'Failed to authenticate with Google. You can use Quick Authorize to sign in directly.'
+        message: err?.message || 'Failed to authenticate with Google. Try again or use Quick Authorize.'
       });
       return false;
     }
   };
 
-  // Direct authentication helper ensuring users are never locked out in iframe/preview environments
-  const signInWithDirectAccount = (email: string = 'rcsoulutions@gmail.com', name: string = 'RC Solutions Owner') => {
+  const signInWithDirectAccount = (email: string = 'rcsolutions@gmail.com', name: string = 'RC Solutions Owner') => {
     const syntheticUser = {
-      uid: `google_${Date.now()}`,
+      uid: `local_${Date.now()}`,
       email,
       displayName: name,
       emailVerified: true,
@@ -135,7 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAnonymous: false,
       metadata: {},
       providerData: [{
-        providerId: 'google.com',
+        providerId: 'local',
         uid: email,
         displayName: name,
         email
@@ -151,20 +164,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       localStorage.removeItem('rcos_auth_user');
       setCachedAccessToken(null);
-      await signOut(auth);
+      if (auth) {
+        await signOut(auth);
+      }
       setUser(null);
       setAuthError(null);
     } catch (err) {
-      console.error('Sign-out failed:', err);
+      console.error('[Auth] Sign-out failed:', err);
       setCachedAccessToken(null);
       setUser(null);
     }
   };
 
   const googleServicesInfo = {
-    mobileProjectId: googleServicesConfig?.project_info?.project_id || 'rcos-mobile',
+    mobileProjectId: googleServicesConfig?.project_info?.project_id || firebaseConfig?.projectId || 'rcos-mobile',
     mobilePackageName: (googleServicesConfig?.client?.[0] as any)?.client_info?.android_client_info?.package_name || 'com.rcsolutions.rcosmobile',
-    webProjectId: firebaseConfig?.projectId || 'gen-lang-client-0370229208',
+    webProjectId: firebaseConfig?.projectId || 'demo-rcos-mobile',
     firestoreDatabaseId: firebaseConfig?.firestoreDatabaseId || ''
   };
 
@@ -178,6 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signInWithGoogle, 
       signInWithDirectAccount, 
       logout,
+      isFirebaseReady,
       googleServicesInfo 
     }}>
       {children}

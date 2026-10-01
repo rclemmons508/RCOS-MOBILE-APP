@@ -1,7 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import { defineConfig } from 'vite';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env files
+dotenv.config();
 
 export default defineConfig(() => {
   return {
@@ -18,5 +22,9 @@ export default defineConfig(() => {
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
+    define: {
+      // Ensure environment variables are properly injected
+      __ENV__: JSON.stringify(process.env)
+    }
   };
 });
