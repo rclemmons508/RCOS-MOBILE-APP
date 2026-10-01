@@ -4,6 +4,9 @@ import { biometricService } from './biometricService';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { setCachedAccessToken } from '../lib/gmail';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
+import { signInWithCredential } from 'firebase/auth';
 
 const STORAGE_KEY_SESSION = 'rcos_active_session';
 const STORAGE_KEY_USERS = 'rcos_registered_users';
@@ -214,40 +217,58 @@ class AuthService {
 
   /**
    * Sign In with Google
-   */
-  async loginWithGoogle(): Promise<User> {
-    try {
+   */async loginWithGoogle(): Promise<User> {
+  try {
+    let googleUser;
+
+    if (Capacitor.isNativePlatform()) {
+      // Native Android account picker, no redirect or popup
+      const result = await FirebaseAuthentication.signInWithGoogle({
+        scopes: [
+          // copy the same scopes you add to googleProvider in src/lib/firebase.ts
+          'https://www.googleapis.com/auth/gmail.readonly'
+        ]
+      });
+      const idToken = result.credential?.idToken;
+      if (!idToken) throw new Error('Google did not return an ID token.');
+      const accessToken = result.credential?.accessToken;
+
+      const credential = GoogleAuthProvider.credential(idToken, accessToken);
+      googleUser = (await signInWithCredential(auth, credential)).user;
+      if (accessToken) setCachedAccessToken(accessToken);
+    } else {
       const result = await signInWithPopup(auth, googleProvider);
-      const googleUser = result.user;
+      googleUser = result.user;
       const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setCachedAccessToken(credential.accessToken);
-      }
+      if (credential?.accessToken) setCachedAccessToken(credential.accessToken);
+    }
 
-      const email = googleUser.email || 'operator@rcsolutions.com';
-      const fullName = googleUser.displayName || 'Google Operator';
-      const avatar = googleUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`;
+    const email = googleUser.email || 'operator@rcsolutions.com';
+    const user: User = {
+      id: googleUser.uid || `usr_${Date.now()}`,
+      email,
+      fullName: googleUser.displayName || 'Google Operator',
+      role: 'Operations Lead',
+      avatar: googleUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`,
+      organization: 'RC Solutions Enterprise',
+      authenticated: true,
+      biometricsEnabled: true,
+      lastLogin: 'Just now',
+      preferences: userPreferencesService.getUserPreferences(email)
+    };
 
-      const prefs = userPreferencesService.getUserPreferences(email);
-
-      const user: User = {
-        id: googleUser.uid || `usr_${Date.now()}`,
-        email,
-        fullName,
-        role: 'Operations Lead',
-        avatar,
-        organization: 'RC Solutions Enterprise',
-        authenticated: true,
-        biometricsEnabled: true,
-        lastLogin: 'Just now',
-        preferences: prefs
-      };
-
-      this.upsertUser(user);
-      this.saveActiveSession(user);
-      return user;
-    } catch (err: any) {
-      console.warn('[AuthService] Google Popup failed, using direct Google profile fallback:', err);
+    this.upsertUser(user);
+    this.saveActiveSession(user);
+    return user;
+  } catch (err: any) {
+    // Preview-only fallback. Never runs on the phone or in production builds.
+    if (!Capacitor.isNativePlatform() && import.meta.env.DEV) {
+      console.warn('[AuthService] Popup failed, using preview fallback:', err);
+      return this.loginWithEmail('rcsolutions@gmail.com');
+    }
+    throw err;
+  }
+  }
       // Fallback for iframe preview environments
       const fallbackEmail = 'rcsolutions@gmail.com';
       const prefs = userPreferencesService.getUserPreferences(fallbackEmail);
