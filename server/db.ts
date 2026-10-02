@@ -44,7 +44,7 @@ export function getDefaultTelephonyConfig(): TelephonyConfig {
       sales: process.env.SALES_FORWARDING_PHONE || '+1 (555) 612-4490',
       support: process.env.SUPPORT_FORWARDING_PHONE || '+1 (555) 902-3310'
     },
-    greetingMessage: 'Thank you for calling RC Solutions smart mechanical, electrical, and automation services. How may I direct your call or assist you today?',
+    greetingMessage: 'Thank you for calling RC Solutions, how may I direct your call or assist you today?',
     ttsVoice: 'Polly.Joanna',
     recordingEnabled: true,
     transcriptionEnabled: true,
