@@ -39,7 +39,7 @@ export const BiometricSetupModal: React.FC<BiometricSetupModalProps> = ({
   if (!isOpen) return null;
 
   const targetEmail = currentUser?.email || 'rcsoulutions@gmail.com';
-  const targetName = currentUser?.fullName || 'RC Solutions;
+  const targetName = currentUser?.fullName || 'RC Solutions';
 
   const startEnrollment = async () => {
     setErrorMsg(null);
