@@ -41,26 +41,15 @@ jobs:
       - name: Set up Java JDK
         uses: actions/setup-java@v4
         with:
-          distribution: zulu
+          distribution: temurin
           java-version: 21
 
-      - name: Configure Android SDK & Command-Line Tools
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
         run: |
-          ANDROID_HOME="/usr/local/lib/android/sdk"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
-
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -f "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)
-          fi
-
-          yes | "$SDKMANAGER" --licenses || true
-          "$SDKMANAGER" --install "cmdline-tools;latest" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
-          mkdir -p android
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       - name: Set up Gradle
@@ -70,8 +59,7 @@ jobs:
         run: npx cap sync android
 
       - name: Grant Execute Permission to Gradle Wrapper
-        run: chmod +x gradlew
-        working-directory: android
+        run: chmod +x android/gradlew
 
       - name: Build Android Debug APK
         run: ./gradlew assembleDebug --stacktrace
