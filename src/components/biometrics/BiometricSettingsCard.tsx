@@ -45,7 +45,7 @@ export const BiometricSettingsCard: React.FC<BiometricSettingsCardProps> = ({ cu
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [editingPin, setEditingPin] = useState(false);
-  const [newPin, setNewPin] = useState(settings.operatorPin || '7267');
+  const [newPin, setNewPin] = useState(settings.operatorPin || '6073');
   const [pinSavedToast, setPinSavedToast] = useState(false);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [modalInitialType, setModalInitialType] = useState<'fingerprint' | 'face'>('fingerprint');
@@ -361,7 +361,7 @@ export const BiometricSettingsCard: React.FC<BiometricSettingsCardProps> = ({ cu
           {!editingPin ? (
             <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
               <span>Configured PIN: <strong className="text-white tracking-widest">••••</strong></span>
-              <span className="text-[10px] text-zinc-500">(Default: 7267 / R-C-O-S)</span>
+              <span className="text-[10px] text-zinc-500">(Default: 6073 / R-C-O-S)</span>
             </div>
           ) : (
             <form onSubmit={handleSavePin} className="flex items-center gap-2 pt-1">
