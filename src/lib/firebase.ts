@@ -24,8 +24,23 @@ import {
 } from 'firebase/firestore';
 import { firebaseConfig, googleServicesConfig } from '../config/firebase-config';
 
+// Validate Firebase configuration to avoid runtime crashes when env variables are unset
+export const validateFirebaseConfig = (): boolean => {
+  const required: (keyof typeof firebaseConfig)[] = ['apiKey', 'projectId', 'authDomain', 'appId'];
+  const missing = required.filter((key) => !firebaseConfig[key]);
+  if (missing.length > 0) {
+    console.warn(
+      `[Firebase] Missing configuration keys: ${missing.join(', ')}. Configure in .env.local or consult SETUP.md.`
+    );
+    return false;
+  }
+  return true;
+};
+
+export const isFirebaseConfigured = validateFirebaseConfig();
+
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
 export const auth = getAuth(app);
 
 export const GMAIL_SCOPES = [

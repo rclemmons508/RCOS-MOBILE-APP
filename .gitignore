@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+.env.local
+
+# Android Generated Assets (rebuilt via npm run build:android-web)
+android/app/src/main/assets/public/assets/*.js
+android/app/src/main/assets/public/assets/*.css
+android/app/src/main/assets/public/assets/*.map
+android/app/build/
+android/.gradle/

@@ -215,38 +215,8 @@ class AuthService {
   /**
    * Sign In with Google
    */
-  async loginWithGoogle(emailOverride?: string): Promise<User> {
+  async loginWithGoogle(): Promise<User> {
     try {
-      // If an explicit Google email is chosen/entered in direct mode
-      if (emailOverride && emailOverride.includes('@')) {
-        const cleanEmail = emailOverride.trim().toLowerCase();
-        const users = this.getRegisteredUsers();
-        let matched = users.find(u => u.email.toLowerCase() === cleanEmail);
-        const prefs = userPreferencesService.getUserPreferences(cleanEmail);
-
-        const user: User = matched ? {
-          ...matched,
-          authenticated: true,
-          lastLogin: 'Just now',
-          preferences: prefs
-        } : {
-          id: `usr_google_${Date.now()}`,
-          email: cleanEmail,
-          fullName: cleanEmail.startsWith('rcsoul') ? 'RC Solutions Lead Operator' : cleanEmail.split('@')[0].replace(/[._]/g, ' '),
-          role: 'Operations Lead',
-          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80`,
-          organization: 'RC Solutions Enterprise Systems',
-          authenticated: true,
-          biometricsEnabled: true,
-          lastLogin: 'Just now',
-          preferences: prefs
-        };
-
-        this.upsertUser(user);
-        this.saveActiveSession(user);
-        return user;
-      }
-
       const result = await signInWithPopup(auth, googleProvider);
       const googleUser = result.user;
       const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -254,10 +224,13 @@ class AuthService {
         setCachedAccessToken(credential.accessToken);
       }
 
-      const email = googleUser.email || 'rcsoulutions@gmail.com';
-      const fullName = googleUser.displayName || 'RC Solutions Operator';
-      const avatar = googleUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`;
+      if (!googleUser.email) {
+        throw new Error('Google Sign-In failed: No verified email returned.');
+      }
 
+      const email = googleUser.email;
+      const fullName = googleUser.displayName || email.split('@')[0];
+      const avatar = googleUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`;
       const prefs = userPreferencesService.getUserPreferences(email);
 
       const user: User = {
@@ -277,42 +250,37 @@ class AuthService {
       this.saveActiveSession(user);
       return user;
     } catch (err: any) {
-      console.warn('[AuthService] Google Sign-in popup notice:', err?.code, err?.message);
+      console.warn('[AuthService] Google Sign-In error:', err?.code, err?.message);
 
       if (err?.code === 'auth/popup-closed-by-user') {
-        throw new Error('Google Sign-In popup was closed. Please try again or use direct login.');
+        throw new Error('Google Sign-In popup was closed. Please try again.');
       }
 
-      // If popup is blocked by browser/iframe or domain restriction
-      const targetEmail = (emailOverride && emailOverride.includes('@')) 
-        ? emailOverride.trim().toLowerCase() 
-        : 'rcsoulutions@gmail.com';
-      
-      const users = this.getRegisteredUsers();
-      const existing = users.find(u => u.email.toLowerCase() === targetEmail);
-      const prefs = userPreferencesService.getUserPreferences(targetEmail);
+      // Explicitly check for local developer demo flag
+      const isDemoAuthEnabled = import.meta.env?.VITE_ENABLE_DEMO_AUTH === 'true';
+      if (isDemoAuthEnabled) {
+        console.warn('[AuthService] VITE_ENABLE_DEMO_AUTH is enabled. Falling back to dev account.');
+        const fallbackEmail = 'rcsolutions@gmail.com';
+        const prefs = userPreferencesService.getUserPreferences(fallbackEmail);
+        const fallbackUser: User = {
+          id: `usr_demo_${Date.now()}`,
+          email: fallbackEmail,
+          fullName: 'RC Solutions Lead Operator (Demo)',
+          role: 'Operations Lead',
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
+          organization: 'RC Solutions Enterprise Systems',
+          authenticated: true,
+          biometricsEnabled: true,
+          lastLogin: 'Just now',
+          preferences: prefs
+        };
+        this.upsertUser(fallbackUser);
+        this.saveActiveSession(fallbackUser);
+        return fallbackUser;
+      }
 
-      const fallbackUser: User = existing ? {
-        ...existing,
-        authenticated: true,
-        lastLogin: 'Just now',
-        preferences: prefs
-      } : {
-        id: `usr_google_${Date.now()}`,
-        email: targetEmail,
-        fullName: 'RC Solutions Lead Operator',
-        role: 'Operations Lead',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-        organization: 'RC Solutions Enterprise Systems',
-        authenticated: true,
-        biometricsEnabled: true,
-        lastLogin: 'Just now',
-        preferences: prefs
-      };
-
-      this.upsertUser(fallbackUser);
-      this.saveActiveSession(fallbackUser);
-      return fallbackUser;
+      // In production / normal operation, strictly fail without creating fake sessions
+      throw new Error(err?.message || 'Google Sign-In failed. Please try again or use email login.');
     }
   }
 

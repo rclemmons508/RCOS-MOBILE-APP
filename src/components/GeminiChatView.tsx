@@ -7,7 +7,8 @@ import {
   BrainCircuit, 
   Cpu, 
   RotateCcw, 
-  Loader2
+  Loader2,
+  X
 } from 'lucide-react';
 import { BusinessAccount } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
@@ -23,6 +24,7 @@ interface ChatMessageItem {
 
 interface GeminiChatViewProps {
   business?: BusinessAccount | null;
+  onClose?: () => void;
 }
 
 const DEFAULT_BIZ: BusinessAccount = {
@@ -43,7 +45,7 @@ const DEFAULT_BIZ: BusinessAccount = {
   updatedAt: new Date().toISOString()
 };
 
-export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBusiness }) => {
+export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBusiness, onClose }) => {
   const business = propBusiness || DEFAULT_BIZ;
 
   const [messages, setMessages] = useState<ChatMessageItem[]>(() => {
@@ -256,6 +258,18 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBu
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
+
+          {/* Close / Return to Dash */}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+              title="Return to Dashboard"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

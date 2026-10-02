@@ -529,7 +529,10 @@ export default function App() {
           )}
 
           {activeTab === 'chat' && (
-            <GeminiChatView business={businessAccount} />
+            <GeminiChatView 
+              business={businessAccount} 
+              onClose={() => setActiveTab('dashboard')} 
+            />
           )}
 
           {activeTab === 'settings' && (

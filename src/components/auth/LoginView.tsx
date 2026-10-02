@@ -36,9 +36,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Sign In Form State
-  const [loginEmail, setLoginEmail] = useState('rcsolutions@gmail.com');
-  const [loginPassword, setLoginPassword] = useState('RCOS#2026');
+  const isDemoAuthEnabled = import.meta.env?.VITE_ENABLE_DEMO_AUTH === 'true';
+
+  // Sign In Form State - Secure empty defaults
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -66,14 +68,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   };
 
   // Google Login Handler
-  const handleGoogleLogin = async (emailOverride?: string) => {
+  const handleGoogleLogin = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const user = await authService.loginWithGoogle(emailOverride);
+      const user = await authService.loginWithGoogle();
       onLoginSuccess(user);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Google authentication was dismissed. Try direct sign-in below.');
+      setErrorMsg(err?.message || 'Google Sign-In failed. Please try again or use email login.');
     } finally {
       setIsLoading(false);
     }
@@ -228,17 +230,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           <span>Continue with Google</span>
         </button>
 
-        {/* Direct Google One-Tap for iframe / mobile browser environments */}
-        <div className="text-center">
-          <button
-            type="button"
-            onClick={() => handleGoogleLogin('rcsoulutions@gmail.com')}
-            disabled={isLoading}
-            className="text-[11px] text-zinc-400 hover:text-lime-400 transition-colors font-mono underline cursor-pointer"
-          >
-            Direct Google Login as rcsoulutions@gmail.com
-          </button>
-        </div>
+        {/* Demo Mode Security Banner if enabled */}
+        {isDemoAuthEnabled && (
+          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono text-center font-bold">
+            DEMO MODE - This is development data only
+          </div>
+        )}
 
         {/* PRIMARY AUTH OPTION 2: BIOMETRIC LOGIN */}
         <div className="relative">
@@ -404,25 +401,27 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 )}
               </button>
 
-              {/* Quick Preset Accounts */}
-              <div className="pt-2 border-t border-zinc-900">
-                <span className="text-[10px] text-zinc-500 font-mono block mb-1.5">
-                  Quick Demo Accounts:
-                </span>
-                <div className="flex gap-2">
-                  {SEED_USERS.map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => handleQuickSeedLogin(u)}
-                      className="flex-1 p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-left transition cursor-pointer"
-                    >
-                      <div className="text-[11px] font-bold text-white truncate">{u.fullName}</div>
-                      <div className="text-[9px] text-lime-400 font-mono truncate">{u.role}</div>
-                    </button>
-                  ))}
+              {/* Quick Preset Accounts (Only in Demo Mode) */}
+              {isDemoAuthEnabled && (
+                <div className="pt-2 border-t border-zinc-900">
+                  <span className="text-[10px] text-amber-400 font-mono block mb-1.5 font-bold">
+                    Quick Demo Accounts (Dev Only):
+                  </span>
+                  <div className="flex gap-2">
+                    {SEED_USERS.map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => handleQuickSeedLogin(u)}
+                        className="flex-1 p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-left transition cursor-pointer"
+                      >
+                        <div className="text-[11px] font-bold text-white truncate">{u.fullName}</div>
+                        <div className="text-[9px] text-lime-400 font-mono truncate">{u.role}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </form>
           )}
 

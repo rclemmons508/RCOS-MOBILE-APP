@@ -38,74 +38,7 @@ app.use('/api/twilio', telephonyRouter);
 
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', service: 'RCOS Operational System', time: new Date().toISOString() });
-});
-
-// Direct access to rcos_db.json
-app.get(['/rcos_db.json', '/data/rcos_db.json', '/api/rcos_db.json', '/api/db'], (req: Request, res: Response, next) => {
-  if (req.query.import !== undefined) {
-    return next();
-  }
-  try {
-    const dbPath = path.resolve(process.cwd(), 'data', 'rcos_db.json');
-    if (fs.existsSync(dbPath)) {
-      const raw = fs.readFileSync(dbPath, 'utf-8');
-      res.setHeader('Content-Type', 'application/json');
-      return res.send(raw);
-    }
-    res.status(404).json({ error: 'rcos_db.json file not found on disk' });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Failed to read rcos_db.json', details: err.message });
-  }
-});
-
-// Direct access to google-services.json for mobile/client integrations
-app.get(['/google-services.json', '/api/google-services.json'], (req: Request, res: Response, next) => {
-  if (req.query.import !== undefined) {
-    return next();
-  }
-  try {
-    const gsPath = path.resolve(process.cwd(), 'google-services.json');
-    if (fs.existsSync(gsPath)) {
-      const raw = fs.readFileSync(gsPath, 'utf-8');
-      res.setHeader('Content-Type', 'application/json');
-      return res.send(raw);
-    }
-    res.status(404).json({ error: 'google-services.json not found on disk' });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Failed to read google-services.json', details: err.message });
-  }
-});
-
-// System connectivity diagnostics endpoint
-app.get('/api/firebase-config', (req: Request, res: Response) => {
-  try {
-    const webConfigPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-    const mobileConfigPath = path.resolve(process.cwd(), 'google-services.json');
-
-    let webConfig = null;
-    let mobileConfig = null;
-
-    if (fs.existsSync(webConfigPath)) {
-      webConfig = JSON.parse(fs.readFileSync(webConfigPath, 'utf-8'));
-    }
-    if (fs.existsSync(mobileConfigPath)) {
-      mobileConfig = JSON.parse(fs.readFileSync(mobileConfigPath, 'utf-8'));
-    }
-
-    res.json({
-      status: 'connected',
-      webProject: webConfig?.projectId || null,
-      firestoreDatabaseId: webConfig?.firestoreDatabaseId || null,
-      mobileProject: mobileConfig?.project_info?.project_id || null,
-      mobilePackage: mobileConfig?.client?.[0]?.client_info?.android_client_info?.package_name || null,
-      hasGoogleServices: !!mobileConfig,
-      hasWebConfig: !!webConfig,
-      serverTime: new Date().toISOString()
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Failed to inspect configuration', details: err.message });
-  }
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Businesses
@@ -1482,6 +1415,11 @@ app.get('/api/business/:id/export', (req: Request, res: Response) => {
   }
 
   res.json(actions);
+});
+
+// 404 handler for unknown API routes
+app.all('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({ error: 'API endpoint not found' });
 });
 
 // ==================== VITE SPA INTEGRATION ====================

@@ -38,8 +38,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     currentUser?.authenticated ? 'profile' : 'login'
   );
 
-  const [email, setEmail] = useState('rcsolutions@gmail.com');
-  const [password, setPassword] = useState('RCOS#Secure2026');
+  const isDemoAuthEnabled = import.meta.env?.VITE_ENABLE_DEMO_AUTH === 'true';
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<User['role']>('Operations Lead');
@@ -114,10 +116,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }, 400);
   };
 
-  const handleGoogleSignIn = async (emailOverride?: string) => {
+  const handleGoogleSignIn = async () => {
     setErrorMsg('');
     try {
-      const user = await authService.loginWithGoogle(emailOverride);
+      const user = await authService.loginWithGoogle();
       setSuccessMsg(`Welcome, ${user.fullName}!`);
       setTimeout(() => {
         onLoginSuccess(user);
@@ -384,15 +386,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </svg>
                   <span>Continue with Google</span>
                 </button>
-                
-                <button
-                  type="button"
-                  onClick={handleQuickOperatorLogin}
-                  className="w-full py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-lime-400" />
-                  <span>Fast Login as Lead Operator</span>
-                </button>
+
+                {isDemoAuthEnabled && (
+                  <button
+                    type="button"
+                    onClick={handleQuickOperatorLogin}
+                    className="w-full py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer font-mono"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Demo Fast Login (Dev Only)</span>
+                  </button>
+                )}
               </div>
 
               <div className="pt-2 border-t border-zinc-800/80 text-center text-xs text-zinc-400">

@@ -186,21 +186,11 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
                 type="button"
                 onClick={() => {
                   setIsOpen(false);
-                  if (onOpenTab) onOpenTab('automation');
+                  if (onOpenTab) onOpenTab('dashboard');
                 }}
                 className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-lime-400 hover:border-lime-500/50 whitespace-nowrap cursor-pointer font-bold"
               >
-                1-Click Installer
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  if (onOpenTab) onOpenTab('phone');
-                }}
-                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-blue-400 hover:border-blue-500/50 whitespace-nowrap cursor-pointer"
-              >
-                Voice AI Phone
+                Dashboard
               </button>
               <button
                 type="button"
@@ -210,17 +200,37 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
                 }}
                 className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-amber-400 hover:border-amber-500/50 whitespace-nowrap cursor-pointer"
               >
-                Smart Dispatch
+                Smart Tasks
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setIsOpen(false);
-                  if (onOpenTab) onOpenTab('docs');
+                  if (onOpenTab) onOpenTab('team');
                 }}
                 className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-purple-400 hover:border-purple-500/50 whitespace-nowrap cursor-pointer"
               >
-                100+ Docs
+                AI Team
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  if (onOpenTab) onOpenTab('phone');
+                }}
+                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-blue-400 hover:border-blue-500/50 whitespace-nowrap cursor-pointer"
+              >
+                Voice AI
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  if (onOpenTab) onOpenTab('gmail');
+                }}
+                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-indigo-400 hover:border-indigo-500/50 whitespace-nowrap cursor-pointer"
+              >
+                Gmail
               </button>
               <button
                 type="button"
