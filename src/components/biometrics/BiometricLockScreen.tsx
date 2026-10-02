@@ -90,7 +90,7 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
   const verifyPin = (pinToTest: string) => {
     const ok = unlockWithPin(pinToTest);
     if (!ok) {
-      setPinError('Invalid Operator PIN. Try 7267 (R-C-O-S).');
+      setPinError('Invalid Operator PIN. Try 6073 (R-C-O-S).');
       setPin('');
     }
   };
@@ -135,7 +135,7 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
               {currentUser?.role || 'Operations Lead'}
             </div>
             <div className="text-[10px] text-zinc-400 font-mono truncate">
-              {currentUser?.email || 'rcsolutions@gmail.com'}
+              {currentUser?.email || 'rcsoulutions@gmail.com'}
             </div>
           </div>
           <div className="p-2 rounded-xl bg-zinc-800 text-lime-400 shrink-0">
@@ -264,7 +264,7 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
                 className="h-12 rounded-xl bg-lime-500/10 hover:bg-lime-500/20 border border-lime-500/30 text-lime-400 text-[10px] font-bold font-mono transition cursor-pointer flex items-center justify-center"
                 title="RCOS Emergency Master PIN"
               >
-                7267
+                6073
               </button>
             </div>
           </div>
@@ -292,7 +292,7 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
           className="flex items-center gap-1.5 text-xs text-lime-400 hover:text-lime-300 font-mono font-bold px-3 py-2 rounded-xl hover:bg-lime-500/10 transition cursor-pointer"
         >
           <KeyRound className="w-3.5 h-3.5" />
-          <span>{usePinMode ? 'Use Biometrics' : 'Use PIN (7267)'}</span>
+          <span>{usePinMode ? 'Use Biometrics' : 'Use PIN (6073)'}</span>
         </button>
       </div>
 
