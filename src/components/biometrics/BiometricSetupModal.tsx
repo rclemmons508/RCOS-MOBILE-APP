@@ -33,13 +33,13 @@ export const BiometricSetupModal: React.FC<BiometricSetupModalProps> = ({
   const [selectedType, setSelectedType] = useState<'fingerprint' | 'face'>(initialType);
   const [step, setStep] = useState<'choose' | 'scanning' | 'success'>('choose');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [backupPin, setBackupPin] = useState('7267');
+  const [backupPin, setBackupPin] = useState('6073');
   const [isProcessing, setIsProcessing] = useState(false);
 
   if (!isOpen) return null;
 
-  const targetEmail = currentUser?.email || 'rcsolutions@gmail.com';
-  const targetName = currentUser?.fullName || 'RC Solutions Operator';
+  const targetEmail = currentUser?.email || 'rcsoulutions@gmail.com';
+  const targetName = currentUser?.fullName || 'RC Solutions;
 
   const startEnrollment = async () => {
     setErrorMsg(null);
