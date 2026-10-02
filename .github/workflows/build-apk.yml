@@ -44,11 +44,24 @@ jobs:
           distribution: zulu
           java-version: 21
 
-      - name: Install Android SDK Platform & Tools
+      - name: Configure Android SDK & Command-Line Tools
         run: |
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          ANDROID_HOME="/usr/local/lib/android/sdk"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -f "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+          "$SDKMANAGER" --install "cmdline-tools;latest" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+          mkdir -p android
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
