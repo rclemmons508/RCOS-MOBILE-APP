@@ -22,11 +22,47 @@ import {
   onSnapshot,
   FirestoreError
 } from 'firebase/firestore';
-import { firebaseConfig, googleServicesConfig } from '../config/firebase-config';
+import { firebaseConfig, googleServicesConfig, hasValidFirebaseConfig } from '../config/firebase-config';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
+// Initialize Firebase only if config is valid
+let app: any;
+let db: any;
+let auth: any;
+
+if (hasValidFirebaseConfig()) {
+  try {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    auth = getAuth(app);
+
+    // Ensure browser local session persistence
+    setPersistence(auth, browserLocalPersistence).catch((err) => {
+      console.warn('[Firebase] Session persistence warning:', err);
+    });
+
+    // Startup connection verification
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+        console.log('[Firebase] Connection test passed');
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('offline')) {
+          console.warn('[Firebase] Client is offline - will retry on reconnect');
+        }
+      }
+    }
+    testConnection();
+  } catch (err: any) {
+    console.error('[Firebase] Initialization failed:', err?.message);
+    console.info('[Firebase] Running in demo mode - features will be limited');
+  }
+} else {
+  console.warn(
+    '[Firebase] Configuration incomplete. Please set VITE_FIREBASE_API_KEY and other required environment variables.'
+  );
+}
+
+export { db, auth, firebaseConfig, googleServicesConfig };
 
 export const GMAIL_SCOPES = [
   'https://mail.google.com/',
@@ -65,13 +101,6 @@ GMAIL_SCOPES.forEach((scope) => {
   gmailOAuthProvider.addScope(scope);
 });
 
-// Ensure browser local session persistence
-setPersistence(auth, browserLocalPersistence).catch((err) => {
-  console.warn('Firebase session persistence warning:', err);
-});
-
-export { firebaseConfig, googleServicesConfig };
-
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -99,6 +128,10 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  if (!auth) {
+    throw new Error('Firebase not initialized. Check environment configuration.');
+  }
+
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -107,7 +140,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
       tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+      providerInfo: auth.currentUser?.providerData?.map((provider: any) => ({
         providerId: provider.providerId,
         email: provider.email,
       })) || []
@@ -115,18 +148,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.error('[Firestore] Error:', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
-
-// Startup connection verification
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Firebase client initial test note:", error.message);
-    }
-  }
-}
-testConnection();

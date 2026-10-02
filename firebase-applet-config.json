@@ -1,12 +1,12 @@
 {
-  "projectId": "rcos-mobile",
-  "appId": "1:627752468605:web:f9ea1940489bfda9e07114",
-  "apiKey": "AIzaSyDBFhrYAsHNOCfBZkL4uVNMLk06BsUEjgQ",
-  "authDomain": "rcos-mobile.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967",
-  "storageBucket": "rcos-mobile.firebasestorage.app",
-  "messagingSenderId": "627752468605",
+  "projectId": "demo-rcos-mobile",
+  "appId": "1:000000000000:web:0000000000000000000000",
+  "apiKey": "REPLACE_WITH_FIREBASE_API_KEY",
+  "authDomain": "demo-rcos-mobile.firebaseapp.com",
+  "firestoreDatabaseId": "demo-rcos-mobile",
+  "storageBucket": "demo-rcos-mobile.firebasestorage.app",
+  "messagingSenderId": "000000000000",
   "measurementId": "",
-  "oAuthClientId": "627752468605-fhitnsirn55i4u6osuovt0l84mhvp64q.apps.googleusercontent.com",
+  "oAuthClientId": "000000000000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }
