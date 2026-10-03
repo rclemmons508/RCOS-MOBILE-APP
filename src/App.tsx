@@ -56,8 +56,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const { isDashboardLocked, isBiometricEnabled } = useBiometrics();
 
-  // Authentication State - check for persistent active session on start
-  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getActiveSession());
+  // Authentication State - check for persistent active session on start, default to active operator
+  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getActiveSession() || {
+    ...INITIAL_USER,
+    authenticated: true
+  });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Application Core Data
@@ -674,6 +677,7 @@ export default function App() {
             initialBusiness={businessAccount}
             onComplete={(configuredBiz) => {
               setBusinessAccount(configuredBiz);
+              setIndustryProfile(configuredBiz.industry);
               setIsOnboardingOpen(false);
               localStorage.setItem('rcos_onboarding_completed', 'true');
               sendPushNotification({

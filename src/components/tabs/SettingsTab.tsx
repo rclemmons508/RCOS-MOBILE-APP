@@ -306,22 +306,24 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-zinc-400 font-mono block mb-1">Primary Industry Sector:</label>
-                  <select
-                    value={industryProfile}
-                    onChange={(e) => {
-                      onUpdateIndustry(e.target.value);
-                      showToast(`Industry updated to ${e.target.value}`);
-                    }}
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none cursor-pointer"
-                  >
-                    <option value="Commercial HVAC">Commercial HVAC</option>
-                    <option value="Industrial Electrical">Industrial Electrical</option>
-                    <option value="Smart Automation">Smart Automation</option>
-                    <option value="Facilities & Energy">Facilities & Energy</option>
-                    <option value="Plumbing & Mechanical">Plumbing & Mechanical</option>
-                  </select>
+                <div className="p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 flex flex-col justify-between">
+                  <div>
+                    <label className="text-[10px] text-zinc-400 font-mono block mb-0.5">Active Industry:</label>
+                    <div className="text-xs font-bold text-lime-400 truncate">{industryProfile}</div>
+                  </div>
+                  {onReopenOnboarding && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        haptic.light();
+                        onReopenOnboarding();
+                      }}
+                      className="mt-1.5 text-[10px] text-zinc-400 hover:text-white flex items-center gap-1 font-mono transition cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3 text-lime-400" />
+                      <span>Re-tune with AI</span>
+                    </button>
+                  )}
                 </div>
 
                 <div>
@@ -852,80 +854,26 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           </div>
 
-          {/* Telemetry Stream Frequency */}
-          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Activity className="w-4 h-4 text-lime-400" />
-                <span>Telemetry Refresh & Data Saver</span>
-              </span>
-              <span className="text-[10px] text-zinc-400 font-mono">
-                {telemetryIntervalMs / 1000}s Polling
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => onUpdateTelemetryInterval(1500)}
-                className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
-                  telemetryIntervalMs === 1500
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="font-mono text-[11px]">Real-Time (1.5s)</div>
-                <div className="text-[9px] text-zinc-500">Live SCADA stream</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onUpdateTelemetryInterval(3500)}
-                className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
-                  telemetryIntervalMs === 3500
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="font-mono text-[11px]">Normal (3.5s)</div>
-                <div className="text-[9px] text-zinc-500">Recommended</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onUpdateTelemetryInterval(10000)}
-                className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
-                  telemetryIntervalMs === 10000
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="font-mono text-[11px]">Data Saver (10s)</div>
-                <div className="text-[9px] text-zinc-500">Conserves battery</div>
-              </button>
-            </div>
-          </div>
-
           {/* Local Storage & Cache Maintenance */}
           <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
             <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
               <HardDrive className="w-4 h-4 text-lime-400" />
-              <span>Storage & Diagnostics</span>
+              <span>Offline Storage & App Data</span>
             </span>
 
             <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between text-xs font-mono">
               <div>
-                <div className="text-white font-bold">App Edition:</div>
-                <div className="text-[10px] text-zinc-400">RCOS Enterprise v8.5.2 (Multi-Tenant)</div>
+                <div className="text-white font-bold">App Status:</div>
+                <div className="text-[10px] text-zinc-400">Connected & Synced</div>
               </div>
               <div className="text-right">
-                <div className="text-lime-400 font-bold">ONLINE</div>
-                <div className="text-[10px] text-zinc-400">Capacitor Native 8+</div>
+                <div className="text-lime-400 font-bold">OPERATIONAL</div>
+                <div className="text-[10px] text-zinc-400">Fast Local Storage</div>
               </div>
             </div>
 
             <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-zinc-400">Local Operational Cache:</span>
+              <span className="text-xs text-zinc-400">Clear Temporary Data:</span>
               <button
                 type="button"
                 onClick={handleClearCache}
