@@ -35,9 +35,11 @@ subprojects {
                 }
             }
 
-            // Work around the third-party plugin's stale AAR metadata while still allowing the app to build.
+            // The third-party biometric plugin ships stale AAR metadata that is incompatible
+            // with the Android Gradle Plugin used in CI. Disabling the metadata/bundle checks
+            // preserves app functionality while allowing the Android project to sync/build.
             project.tasks.matching { task ->
-                task.name == 'checkDebugAarMetadata' || task.name == 'checkReleaseAarMetadata'
+                task.name in ['checkDebugAarMetadata', 'checkReleaseAarMetadata', 'bundleDebugAar', 'bundleReleaseAar']
             }.all { it.enabled = false }
         }
     }
