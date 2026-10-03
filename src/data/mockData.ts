@@ -76,7 +76,7 @@ export const INITIAL_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 
 export const INITIAL_USER: User = {
   id: 'usr-rcos-admin',
-  email: 'rcsolutions@gmail.com',
+  email: 'rcsoulutions@gmail.com',
   fullName: 'RC Solutions Lead Operator',
   role: 'System Administrator',
   avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',

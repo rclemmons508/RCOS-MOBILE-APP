@@ -99,7 +99,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleQuickOperatorLogin = () => {
     const defaultUser: User = {
       id: 'usr-rcos-lead',
-      email: 'rcsolutions@gmail.com',
+      email: 'rcsoulutions@gmail.com',
       fullName: 'RC Solutions Lead Operator',
       role: 'System Administrator',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
@@ -557,7 +557,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="rcsolutions@gmail.com"
+                      placeholder="rcsoulutions@gmail.com"
                       className="w-full bg-black border border-zinc-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:border-lime-500 focus:outline-none"
                     />
                   </div>

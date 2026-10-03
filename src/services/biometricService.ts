@@ -336,7 +336,7 @@ class BiometricService {
       this.recordActiveTimestamp();
       return {
         success: true,
-        userEmail: enrolledInfo.userEmail || 'rcsolutions@gmail.com'
+        userEmail: enrolledInfo.userEmail || 'rcsoulutions@gmail.com'
       };
     } catch (err: any) {
       console.warn('[Biometrics] Device authentication error:', err);

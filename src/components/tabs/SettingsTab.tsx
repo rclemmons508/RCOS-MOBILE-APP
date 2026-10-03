@@ -250,7 +250,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     {currentUser?.role || 'Operations Lead'}
                   </div>
                   <div className="text-[11px] text-zinc-400 font-mono truncate">
-                    {currentUser?.email || 'rcsolutions@gmail.com'}
+                    {currentUser?.email || 'rcsoulutions@gmail.com'}
                   </div>
                 </div>
               </div>
