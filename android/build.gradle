@@ -1,7 +1,6 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
-    
     repositories {
         google()
         mavenCentral()
@@ -21,6 +20,21 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+}
+
+subprojects {
+    afterEvaluate { project ->
+        if (project.name == 'aparajita-capacitor-biometric-auth') {
+            def androidExt = project.extensions.findByName('android')
+            if (androidExt != null) {
+                androidExt.namespace = 'com.aparajita.capacitor.biometricauth'
+                androidExt.compileSdk = 35
+                if (androidExt.defaultConfig != null) {
+                    androidExt.defaultConfig.targetSdk = 35
+                }
+            }
+        }
     }
 }
 
