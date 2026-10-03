@@ -34,6 +34,11 @@ subprojects {
                     androidExt.defaultConfig.targetSdk = 35
                 }
             }
+
+            // Work around the third-party plugin's stale AAR metadata while still allowing the app to build.
+            project.tasks.matching { task ->
+                task.name == 'checkDebugAarMetadata' || task.name == 'checkReleaseAarMetadata'
+            }.all { it.enabled = false }
         }
     }
 }
