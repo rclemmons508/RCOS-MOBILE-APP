@@ -4,6 +4,7 @@ import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
 import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
+import { haptic } from '../../utils/haptics';
 import { 
   Settings2, 
   Plus, 
@@ -55,6 +56,7 @@ interface SettingsTabProps {
   onUpdateNotifPreferences: (prefs: NotificationPreferences) => void;
   onTriggerTestPush: () => void;
   onOpenNotifPrefsModal: () => void;
+  onReopenOnboarding?: () => void;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -75,6 +77,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onUpdateNotifPreferences,
   onTriggerTestPush,
   onOpenNotifPrefsModal,
+  onReopenOnboarding,
 }) => {
   // Navigation: 3 clean client-facing sections
   const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>('user');
@@ -275,7 +278,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   Company / Organization Profile
                 </h3>
               </div>
-              <span className="text-[10px] text-zinc-500 font-mono">Multi-Tenant</span>
+              {onReopenOnboarding && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptic.light();
+                    onReopenOnboarding();
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Re-detect Industry</span>
+                </button>
+              )}
             </div>
 
             <div className="space-y-3 text-xs">

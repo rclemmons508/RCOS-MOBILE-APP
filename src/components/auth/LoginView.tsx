@@ -4,6 +4,7 @@ import { authService, SEED_USERS } from '../../services/authService';
 import { useBiometrics } from '../../context/BiometricContext';
 import { RCLogo } from '../RCLogo';
 import { BiometricSetupModal } from '../biometrics/BiometricSetupModal';
+import { haptic } from '../../utils/haptics';
 import { 
   Mail, 
   Lock, 
@@ -73,6 +74,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setErrorMsg(null);
     try {
       const user = await authService.loginWithGoogle();
+      await haptic.success();
       onLoginSuccess(user);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Google Sign-In failed. Please try again or use email login.');
@@ -87,6 +89,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setErrorMsg(null);
     try {
       const user = await authService.loginWithBiometrics();
+      await haptic.success();
       onLoginSuccess(user);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Biometric authentication was dismissed. You can also sign in with email or Google.');
@@ -106,6 +109,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setErrorMsg(null);
     try {
       const user = await authService.loginWithEmail(loginEmail, loginPassword);
+      await haptic.success();
       onLoginSuccess(user);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Login failed.');
@@ -144,6 +148,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         }
       });
 
+      await haptic.success();
       onLoginSuccess(user);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Registration failed.');
@@ -157,6 +162,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setErrorMsg(null);
     try {
       const logged = await authService.loginWithEmail(user.email);
+      await haptic.success();
       onLoginSuccess(logged);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Quick login failed.');

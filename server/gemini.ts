@@ -13,17 +13,16 @@ export const ai = new GoogleGenAI({
   },
 });
 
-export const PRIMARY_MODEL = 'gemini-3.1-flash-lite';
+export const PRIMARY_MODEL = 'gemini-3.8-flash';
 export const FAST_MODEL = 'gemini-3.1-flash-lite';
 export const PRO_MODEL = 'gemini-3.1-pro-preview';
 export const TTS_MODEL = 'gemini-3.8-flash-lite-tts';
 
 // Exhaustive candidate model chain following SKILL.md valid models
 export const CANDIDATE_MODELS = [
+  'gemini-3.8-flash',
   'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
-  'gemini-2.5-flash',
-  'gemini-3.8-flash'
+  'gemini-flash-latest'
 ];
 
 export async function generateSpeechAudio(

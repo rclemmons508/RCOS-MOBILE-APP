@@ -19,6 +19,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { JobDetailModal } from '../jobs/JobDetailModal';
+import { haptic } from '../../utils/haptics';
 
 interface JobsTabProps {
   jobs: Job[];
@@ -66,9 +67,15 @@ export const JobsTab: React.FC<JobsTabProps> = ({
     return matchesCategory && matchesStatus && matchesSearch;
   });
 
-  const handleCreateJob = (e: React.FormEvent) => {
+  const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !clientName) return;
+
+    if (priority === 'critical') {
+      await haptic.warning();
+    } else {
+      await haptic.medium();
+    }
 
     const newJob: Job = {
       id: `RC-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -99,12 +106,14 @@ export const JobsTab: React.FC<JobsTabProps> = ({
 
   const handleSmsClient = (e: React.MouseEvent, job: Job) => {
     e.stopPropagation();
+    haptic.light();
     setSmsFeedback(`Dispatched automated SMS ETA alert to ${job.clientName} (${job.clientPhone || '+1 (555) 000-1234'}).`);
     setTimeout(() => setSmsFeedback(null), 3000);
   };
 
   const handleQuickStatusChange = (e: React.MouseEvent, job: Job, nextStatus: Job['status']) => {
     e.stopPropagation();
+    haptic.medium();
     if (onUpdateJob) {
       onUpdateJob({ ...job, status: nextStatus });
     }
@@ -161,7 +170,10 @@ export const JobsTab: React.FC<JobsTabProps> = ({
         </div>
         <button
           type="button"
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            haptic.light();
+            setShowCreateModal(true);
+          }}
           className="p-2 sm:px-3 sm:py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md shadow-lime-500/20 shrink-0"
         >
           <Plus className="w-4 h-4" />
@@ -191,7 +203,10 @@ export const JobsTab: React.FC<JobsTabProps> = ({
             <button
               key={st}
               type="button"
-              onClick={() => setFilterStatus(st)}
+              onClick={() => {
+                haptic.selection();
+                setFilterStatus(st);
+              }}
               className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer border ${
                 filterStatus === st
                   ? 'bg-lime-500/20 text-lime-300 border-lime-500/50 font-bold shadow'
@@ -212,7 +227,10 @@ export const JobsTab: React.FC<JobsTabProps> = ({
             <button
               key={cat}
               type="button"
-              onClick={() => setFilterCategory(cat)}
+              onClick={() => {
+                haptic.selection();
+                setFilterCategory(cat);
+              }}
               className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer border ${
                 filterCategory === cat
                   ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 font-bold'
@@ -248,7 +266,10 @@ export const JobsTab: React.FC<JobsTabProps> = ({
           filteredJobs.map((job) => (
             <div
               key={job.id}
-              onClick={() => setSelectedJobForDetail(job)}
+              onClick={() => {
+                haptic.light();
+                setSelectedJobForDetail(job);
+              }}
               className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3 hover:border-lime-500/40 transition-all shadow-md cursor-pointer group"
             >
               {/* Top Info Bar */}
@@ -363,6 +384,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      haptic.light();
                       setSelectedJobForDetail(job);
                     }}
                     className="px-2.5 py-1 rounded-lg bg-lime-500/10 border border-lime-500/30 text-lime-400 hover:bg-lime-500/20 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"

@@ -9,6 +9,7 @@ import {
   Mail
 } from 'lucide-react';
 import { TabType, User } from '../types';
+import { haptic } from '../utils/haptics';
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -42,7 +43,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  haptic.light();
+                  setActiveTab(tab.id);
+                }}
                 className={`relative flex flex-col items-center justify-center flex-1 min-w-0 py-1 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer min-h-[44px] ${
                   isActive
                     ? 'text-lime-400 font-bold bg-lime-500/10 border border-lime-500/30'

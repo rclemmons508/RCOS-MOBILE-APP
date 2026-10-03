@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import { BusinessAccount, ChatMessage } from '../types';
 import { CustomAIEmployee, employeeCustomizationService } from '../services/employeeCustomizationService';
+import { INDUSTRY_PRESETS } from '../data/presets';
+import { haptic } from '../utils/haptics';
 
 interface AiTeamViewProps {
   business: BusinessAccount;
@@ -59,8 +61,39 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Identify the business's detected industry preset
+  const activePreset = INDUSTRY_PRESETS.find(p => 
+    p.id === business.industry || 
+    p.name.toLowerCase() === business.industry.toLowerCase() ||
+    business.industry.toLowerCase().includes(p.id)
+  ) || INDUSTRY_PRESETS[5]; // Default HVAC fallback
+
+  // Strictly filter only trade-relevant operational AI employees for this industry
+  const relevantEmployeeIds = [
+    'customer_service', // 24/7 Voice AI Receptionist
+    'operations',       // Job Dispatch & Field Routing
+    'sales',            // Trade Estimator & Proposal Drafter
+    'technician',       // Field Lead Specialist
+    'finance',          // Invoicing & Ledger Auditor
+    'executive_assistant', // Operations & Safety Chief
+    'marketing'         // Customer Reviews & Local Reach
+  ];
+
+  const industryEmployees = employees
+    .filter(emp => relevantEmployeeIds.includes(emp.id) || emp.isCustom)
+    .map(emp => {
+      if (emp.id === 'technician' && activePreset?.technicianRoleName) {
+        return {
+          ...emp,
+          roleTitle: activePreset.technicianRoleName,
+          coreJob: `Executes ${activePreset.name} jobs using standardized Job Pack checklists, tools, and safety protocols.`
+        };
+      }
+      return emp;
+    });
+
   // Customization Form Local State
-  const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || employees[0];
+  const selectedEmployee = industryEmployees.find(e => e.id === selectedEmployeeId) || industryEmployees[0] || employees[0];
   const isActive = business.activeEmployees[selectedEmployee.id] !== false;
 
   const [editName, setEditName] = useState(selectedEmployee.name);
@@ -161,6 +194,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
 
   // Toggle active employee
   const handleToggleEmployee = async (empId: string) => {
+    await haptic.selection();
     const currentStatus = business.activeEmployees[empId] !== false;
     const updatedEmployees = { ...business.activeEmployees, [empId]: !currentStatus };
     const updatedBiz = { ...business, activeEmployees: updatedEmployees };
@@ -174,7 +208,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       if (res.ok) {
         const saved = await res.json();
         onUpdateBusiness(saved);
-        showToast(`${employees.find(e => e.id === empId)?.name || 'Employee'} status updated.`);
+        showToast(`${industryEmployees.find(e => e.id === empId)?.name || 'Employee'} status updated.`);
       }
     } catch (err) {
       console.error('Failed to update employee toggle', err);
@@ -182,7 +216,8 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   };
 
   // Save employee customization
-  const handleSaveCustomization = () => {
+  const handleSaveCustomization = async () => {
+    await haptic.success();
     const updated = employeeCustomizationService.updateEmployee(selectedEmployee.id, {
       name: editName,
       roleTitle: editRoleTitle,
@@ -286,20 +321,23 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
               <Bot className="w-5 h-5 text-lime-400" />
-              <span>AI Employee Fleet & Job Customization</span>
+              <span>AI Assistants for {activePreset.name}</span>
             </h2>
             <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-bold">
-              {employees.length} Specialists
+              {industryEmployees.filter(e => business.activeEmployees[e.id] !== false).length} Active
             </span>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
-            Customize job roles, tasks, autonomy levels, and rules for every AI specialist on your team.
+            Enable or adjust the AI assistants specifically preset for your {activePreset.name} operations.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={handleCreateCustomSpecialist}
+          onClick={() => {
+            haptic.light();
+            handleCreateCustomSpecialist();
+          }}
           className="px-3.5 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-lime-500/20 shrink-0"
         >
           <Plus className="w-4 h-4" />
@@ -312,14 +350,17 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
         
         {/* Left Column: Employees Roster */}
         <div className="lg:col-span-5 space-y-2 max-h-[660px] overflow-y-auto pr-1">
-          {employees.map((emp) => {
+          {industryEmployees.map((emp) => {
             const isSelected = emp.id === selectedEmployeeId;
             const empActive = business.activeEmployees[emp.id] !== false;
 
             return (
               <div
                 key={emp.id}
-                onClick={() => setSelectedEmployeeId(emp.id)}
+                onClick={() => {
+                  haptic.light();
+                  setSelectedEmployeeId(emp.id);
+                }}
                 className={`p-3 rounded-2xl border transition cursor-pointer text-left flex items-center justify-between gap-3 ${
                   isSelected
                     ? 'bg-zinc-900 border-lime-500/60 shadow-lg shadow-lime-500/10'
@@ -393,7 +434,10 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
             <div className="flex items-center bg-black/60 p-0.5 rounded-xl border border-zinc-800 shrink-0">
               <button
                 type="button"
-                onClick={() => setRightViewMode('chat')}
+                onClick={() => {
+                  haptic.light();
+                  setRightViewMode('chat');
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
                   rightViewMode === 'chat'
                     ? 'bg-zinc-800 text-lime-400 border border-lime-500/30'
@@ -405,7 +449,10 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setRightViewMode('customize')}
+                onClick={() => {
+                  haptic.light();
+                  setRightViewMode('customize');
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
                   rightViewMode === 'customize'
                     ? 'bg-zinc-800 text-lime-400 border border-lime-500/30'

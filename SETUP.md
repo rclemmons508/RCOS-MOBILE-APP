@@ -4,22 +4,18 @@ Welcome to the **RCOS Mobile Operating System** repository. This guide explains 
 
 ---
 
-## 1. Environment Configuration
+## 1. Environment & Firebase Configuration
 
-1. Copy `.env.example` to `.env.local` (or `.env`):
-   ```bash
-   cp .env.example .env.local
-   ```
-2. Populate the environment variables with your Firebase project credentials from the [Firebase Console](https://console.firebase.google.com/):
-   - `VITE_FIREBASE_API_KEY`
-   - `VITE_FIREBASE_AUTH_DOMAIN`
-   - `VITE_FIREBASE_PROJECT_ID`
-   - `VITE_FIREBASE_STORAGE_BUCKET`
-   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
-   - `VITE_FIREBASE_APP_ID`
-   - `VITE_FIREBASE_DATABASE_ID` (if using custom named Firestore database)
-   - `VITE_FIREBASE_OAUTH_CLIENT_ID`
-3. **Security Rule:** Never commit `.env.local` or production API credentials to Git. `.gitignore` is pre-configured to ignore all `.env*` files except `.env.example`.
+Firebase is automatically configured for this app via `firebase-applet-config.json` provisioned directly by AI Studio. No manual environment variable entry or `.env` files are required.
+
+The app automatically reads credentials from `firebase-applet-config.json` for:
+- Firebase Auth & Google Sign-In
+- Firestore Database
+- Cloud Storage
+
+Optional server overrides can be defined in `.env`:
+- `PORT` (default 3000)
+- `NODE_ENV` (development/production)
 
 ---
 

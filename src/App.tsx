@@ -47,8 +47,10 @@ import { useBiometrics } from './context/BiometricContext';
 import { BiometricLockScreen } from './components/biometrics/BiometricLockScreen';
 import { biometricService } from './services/biometricService';
 import { LoginView } from './components/auth/LoginView';
+import { OnboardingModal } from './components/OnboardingModal';
 import { authService } from './services/authService';
 import { userPreferencesService } from './services/userPreferencesService';
+import { haptic } from './utils/haptics';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -92,22 +94,42 @@ export default function App() {
   const [isNotifPrefsOpen, setIsNotifPrefsOpen] = useState(false);
 
   // Business context for Chat & Enterprise operations
-  const [businessAccount] = useState<BusinessAccount>({
-    id: 'biz_rc_solutions',
-    name: 'RC Solutions',
-    industry: 'Commercial Operations & Automation',
-    size: '10-50 employees',
-    services: ['Commercial HVAC', 'SCADA Automation', 'Industrial Electrical', 'Multi-Agent Operations'],
-    pricingApproach: 'value_based',
-    brandTone: 'Crisp, strategic, authoritative, and responsive',
-    painPoints: ['Emergency dispatch latency', 'Off-hours voice routing'],
-    autonomyMode: 'autonomous',
-    dollarThreshold: 1500,
-    activeEmployees: {},
-    onboardingCompleted: true,
-    starterDrafts: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+  const [businessAccount, setBusinessAccount] = useState<BusinessAccount>(() => {
+    try {
+      const stored = localStorage.getItem('rcos_configured_business');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {}
+    return {
+      id: 'biz_rc_solutions',
+      name: 'RC Solutions',
+      industry: 'Commercial HVAC & Automation',
+      size: 'Solo Operator (1-5)',
+      services: ['Commercial HVAC', 'Emergency Diagnostics', 'Electrical Controls', 'Preventative Tune-Up'],
+      pricingApproach: 'value_based',
+      brandTone: 'Crisp, authoritative, and responsive',
+      painPoints: ['Emergency dispatch latency', 'Off-hours voice routing'],
+      autonomyMode: 'autonomous',
+      dollarThreshold: 1250,
+      activeEmployees: {
+        executive_assistant: true,
+        customer_service: true,
+        operations: true,
+        sales: true,
+        technician: true,
+        finance: true
+      },
+      onboardingCompleted: false,
+      starterDrafts: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  });
+
+  // Onboarding gate state - starts immediately if not completed
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(() => {
+    return localStorage.getItem('rcos_onboarding_completed') !== 'true';
   });
 
   // Real-Time Telemetry Pulse Simulator
@@ -295,20 +317,21 @@ export default function App() {
     setActiveTab('phone');
   };
 
-  const handleEmergencyJobTrigger = () => {
+  const handleEmergencyJobTrigger = async () => {
+    await haptic.warning();
     const emergencyJob: Job = {
       id: 'RC-' + Math.floor(9000 + Math.random() * 900),
-      title: 'Emergency Chiller & Automation Control Failure',
-      clientName: 'Apex Tower Facilities',
+      title: 'Emergency Service & Urgent System Diagnostic',
+      clientName: 'Priority Client Call',
       clientPhone: '+1 (555) 392-8811',
-      address: '450 Tech Parkway, Building B',
+      address: '450 Tech Parkway, Suite 100',
       status: 'urgent',
       priority: 'critical',
-      assignedTechnician: 'Marcus Vance (Senior Specialist)',
+      assignedTechnician: 'Marcus Vance (Lead Specialist)',
       estimatedValue: 2400,
       scheduledTime: 'Immediate Response',
-      description: 'Critical chiller pump failure detected via RCOS live telemetry.',
-      aiNotes: 'Auto-routed based on proximity and SLA requirements.',
+      description: 'Emergency service request captured and auto-routed for prompt arrival.',
+      aiNotes: 'Auto-routed based on urgent priority and nearest technician proximity.',
       category: 'HVAC',
     };
     handleAddJob(emergencyJob);
@@ -340,10 +363,17 @@ export default function App() {
     setNotifications([]);
   };
 
-  const handleLoginSuccess = (user: User) => {
+  const handleLoginSuccess = async (user: User) => {
+    await haptic.success();
     authService.saveActiveSession(user);
     setCurrentUser(user);
     setIsAuthModalOpen(false);
+
+    // If onboarding not yet completed for user, open it
+    const completed = localStorage.getItem('rcos_onboarding_completed');
+    if (completed !== 'true') {
+      setIsOnboardingOpen(true);
+    }
 
     // Load and apply that specific operator's personal preferences
     const prefs = userPreferencesService.getUserPreferences(user.email || user.id);
@@ -418,9 +448,10 @@ export default function App() {
               calls={calls}
               jobs={jobs}
               metrics={metrics}
-              telemetrySeries={telemetrySeries}
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
+              businessName={businessAccount.name}
+              industryName={businessAccount.industry}
               onNavigateTab={(tab) => setActiveTab(tab)}
               onSimulateCall={handleSimulateInboundCall}
               onTriggerEmergencyJob={handleEmergencyJobTrigger}
@@ -578,6 +609,7 @@ export default function App() {
               }}
               onTriggerTestPush={handleTriggerTestPush}
               onOpenNotifPrefsModal={() => setIsNotifPrefsOpen(true)}
+              onReopenOnboarding={() => setIsOnboardingOpen(true)}
             />
           )}
         </main>
@@ -633,6 +665,25 @@ export default function App() {
           <BiometricLockScreen 
             currentUser={currentUser} 
             onLogout={handleLogout}
+          />
+        )}
+
+        {/* Industry Setup & Onboarding System */}
+        {isOnboardingOpen && (
+          <OnboardingModal
+            initialBusiness={businessAccount}
+            onComplete={(configuredBiz) => {
+              setBusinessAccount(configuredBiz);
+              setIsOnboardingOpen(false);
+              localStorage.setItem('rcos_onboarding_completed', 'true');
+              sendPushNotification({
+                type: 'system_alert',
+                title: 'Workspace Initialized',
+                message: `System tailored for ${configuredBiz.name} (${configuredBiz.industry}).`,
+                priority: 'medium',
+                module: 'Core'
+              });
+            }}
           />
         )}
       </div>

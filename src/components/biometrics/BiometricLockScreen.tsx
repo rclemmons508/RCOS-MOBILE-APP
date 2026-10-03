@@ -3,6 +3,7 @@ import { useBiometrics } from '../../context/BiometricContext';
 import { User } from '../../types';
 import { RCLogo } from '../RCLogo';
 import { authService } from '../../services/authService';
+import { haptic } from '../../utils/haptics';
 import { 
   Fingerprint, 
   Scan, 
@@ -54,8 +55,10 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
 
     try {
       const success = await unlockWithBiometrics();
-      if (!success) {
-        // Kept on lock screen so user can retry or use PIN/Switch User
+      if (success) {
+        await haptic.success();
+      } else {
+        await haptic.warning();
       }
     } finally {
       setIsPromptingDevice(false);
@@ -64,6 +67,7 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
 
   // Switch User / Log Out handler - clears session so a new operator can log in
   const handleSwitchUser = () => {
+    haptic.light();
     authService.clearActiveSession();
     unlockDashboard();
     if (onLogout) {
@@ -72,6 +76,7 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
   };
 
   const handleKeypadPress = (digit: string) => {
+    haptic.light();
     setPinError(null);
     if (pin.length < 4) {
       const nextPin = pin + digit;
@@ -83,13 +88,17 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
   };
 
   const handleBackspace = () => {
+    haptic.light();
     setPinError(null);
     setPin(prev => prev.slice(0, -1));
   };
 
-  const verifyPin = (pinToTest: string) => {
+  const verifyPin = async (pinToTest: string) => {
     const ok = unlockWithPin(pinToTest);
-    if (!ok) {
+    if (ok) {
+      await haptic.success();
+    } else {
+      await haptic.error();
       setPinError('Invalid Operator PIN. Try 6073 (R-C-O-S).');
       setPin('');
     }

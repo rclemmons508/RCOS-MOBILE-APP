@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Job } from '../../types';
+import { haptic } from '../../utils/haptics';
 import { 
   X, 
   Briefcase, 
@@ -64,7 +65,8 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    await haptic.medium();
     const updated: Job = {
       ...job,
       title,
@@ -95,14 +97,17 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
   };
 
   const handleSmsClient = () => {
+    haptic.light();
     showToast(`Automated SMS dispatched to ${clientName} (${clientPhone}).`);
   };
 
   const handleCallClient = () => {
+    haptic.light();
     showToast(`Dialing client contact ${clientPhone} via RCOS Voice carrier...`);
   };
 
   const handleAdvanceStatus = (newStatus: Job['status']) => {
+    haptic.medium();
     setStatus(newStatus);
     const updated = { ...job, status: newStatus };
     onUpdateJob(updated);
