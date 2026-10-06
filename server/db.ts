@@ -102,7 +102,9 @@ function saveDb(data: DatabaseSchema): void {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const tempFile = `${DB_FILE}.${Date.now()}_${Math.random().toString(36).substring(7)}.tmp`;
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tempFile, DB_FILE);
   } catch (err) {
     console.error('Error saving DB to', DB_FILE, err);
   }

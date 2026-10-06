@@ -636,6 +636,21 @@ telephonyRouter.post('/voice/voicemail-transcription', (req: Request, res: Respo
  * Place a real outbound telephone call to any real cell phone or landline
  */
 telephonyRouter.post('/voice/outbound-call', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  const apiKey = req.headers['x-api-key'];
+  const expectedApiKey = process.env.RCOS_API_KEY || process.env.ADMIN_SECRET_KEY;
+
+  if (expectedApiKey) {
+    const isValidApiKey = apiKey === expectedApiKey;
+    const isValidBearer = authHeader === `Bearer ${expectedApiKey}`;
+    if (!isValidApiKey && !isValidBearer) {
+      return res.status(403).json({ error: 'Forbidden. Invalid Authorization credentials.' });
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    if (!authHeader && !apiKey) {
+      return res.status(401).json({ error: 'Authentication required for placing carrier outbound calls' });
+    }
+  }
   const { toPhone, callerTopic = 'Customer Service Follow-up', simulateFallback = false } = req.body;
   if (!toPhone) {
     return res.status(400).json({ error: 'Target phone number is required (e.g. +14155552671)' });
