@@ -76,7 +76,7 @@ service cloud.firestore {
     // Job Packs global or seeded collection
     match /jobPacks/{jobPackId} {
       allow read: if true;
-      allow write: if isSignedIn() && isValidId(jobPackId);
+      allow create, update, delete: if isSignedIn() && isValidId(jobPackId) && request.auth.token.admin == true;
     }
   }
 }

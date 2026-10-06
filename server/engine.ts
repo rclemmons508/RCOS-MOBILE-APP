@@ -24,6 +24,18 @@ interface RoutingClassification {
 
 export class RcosEngine {
   /**
+   * Helper to sanitize input strings against prompt injection attempts
+   */
+  static sanitizeInput(text: string): string {
+    if (!text) return '';
+    return text
+      .replace(/ignore\s+previous\s+instructions/gi, '[filtered_phrase]')
+      .replace(/system\s+prompt/gi, '[filtered_phrase]')
+      .replace(/override\s+safety/gi, '[filtered_phrase]')
+      .trim();
+  }
+
+  /**
    * Classify user command or customer request using Gemini with business context
    */
   static async classifyAndRoute(
@@ -31,6 +43,7 @@ export class RcosEngine {
     instruction: string,
     customerContext?: Record<string, any>
   ): Promise<RoutingClassification> {
+    const sanitizedInstruction = this.sanitizeInput(instruction);
     const activeEmployeeList = AI_EMPLOYEES.filter(
       emp => business.activeEmployees[emp.id] !== false
     ).map(e => `${e.id}: ${e.name} (${e.roleTitle} - ${e.department}) -> ${e.coreJob}`);
@@ -61,7 +74,7 @@ Routing Priority Hierarchy (HIGHEST PRIORITY WINS):
 12. Operational report, weekly analytics, performance metrics -> business_analyst
 
 User Instruction / Incoming Work Item:
-"${instruction}"
+"${sanitizedInstruction}"
 ${customerContext ? `Additional Customer Info: ${JSON.stringify(customerContext)}` : ''}
 
 Determine the single best assigned employee and action metadata.
@@ -78,7 +91,7 @@ Return ONLY valid JSON with this exact structure:
 }`;
 
     const fallbackClassification = (): string => {
-      const lower = instruction.toLowerCase();
+      const lower = sanitizedInstruction.toLowerCase();
       let empId = 'admin';
       let actType: ActionType = 'operational_task';
       let risk: RiskCategory = 'internal_draft';
@@ -109,7 +122,7 @@ Return ONLY valid JSON with this exact structure:
         employeeId: empId,
         actionType: actType,
         riskCategory: risk,
-        title: instruction.slice(0, 50),
+        title: sanitizedInstruction.slice(0, 50),
         dollarAmount: actType === 'send_invoice' ? 250 : 0,
         isSafetyIssue: false,
         isComplexMultiStep: false,
@@ -201,6 +214,7 @@ Return ONLY valid JSON with this exact structure:
     action: ActionRecord,
     instruction: string
   ): Promise<ActionRecord> {
+    const sanitizedInstruction = this.sanitizeInput(instruction);
     const employee = AI_EMPLOYEES.find(e => e.id === action.employeeId) || AI_EMPLOYEES[0];
     
     // Build initial trace step
@@ -210,7 +224,7 @@ Return ONLY valid JSON with this exact structure:
       action: 'Context ingestion and safety triage',
       checked: `Business preset: ${business.industry} | Active employee: ${employee.name} (${employee.roleTitle})`,
       ruleApplied: 'Priority routing & risk boundary check',
-      dataUsed: `Instruction: "${instruction}"`,
+      dataUsed: `Instruction: "${sanitizedInstruction}"`,
       timestamp: new Date().toISOString()
     };
     action.fullTrace = [initialTrace];
@@ -221,7 +235,7 @@ Return ONLY valid JSON with this exact structure:
 Brand Tone: ${business.brandTone}
 Pricing Approach: ${business.pricingApproach}
 Services Offered: ${business.services.join(', ')}
-Task to Execute: "${instruction}"
+Task to Execute: "${sanitizedInstruction}"
 Action Type: ${action.actionType}
 Risk Category: ${action.riskCategory}
 
@@ -320,7 +334,7 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
         ],
         result: {
           summary: `Task executed by ${employee.name} for ${business.name}`,
-          text: `Operational deliverable for: "${instruction}". Processed in adherence with ${business.industry} standards.`,
+          text: `Operational deliverable for: "${sanitizedInstruction}". Processed in adherence with ${business.industry} standards.`,
           quoteDetails: isQuote ? {
             clientName: 'Valued Client',
             items: [

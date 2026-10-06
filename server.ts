@@ -28,8 +28,37 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+// Production API Authentication & Secret Key Verification Middleware
+const requireAuth = (req: Request, res: Response, next: Function) => {
+  const fullPath = req.originalUrl || req.url;
+
+  // Allow public health checks, public customer requests intake, and Twilio voice webhook callbacks
+  if (fullPath === '/api/health' || fullPath.startsWith('/api/twilio/voice') || fullPath.includes('/requests')) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  const apiKey = req.headers['x-api-key'];
+  const expectedApiKey = process.env.RCOS_API_KEY || process.env.ADMIN_SECRET_KEY;
+
+  if (expectedApiKey) {
+    const isValidApiKey = apiKey === expectedApiKey;
+    const isValidBearer = authHeader === `Bearer ${expectedApiKey}`;
+    if (!isValidApiKey && !isValidBearer) {
+      return res.status(403).json({ error: 'Forbidden. Invalid Authorization credentials.' });
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    if (!authHeader && !apiKey) {
+      return res.status(401).json({ error: 'Authentication required. Please provide a valid Authorization header or x-api-key.' });
+    }
+  }
+  next();
+};
+
+app.use('/api', requireAuth);
 
 // Mount Twilio PSTN Telephony Router
 app.use('/api/twilio', telephonyRouter);
