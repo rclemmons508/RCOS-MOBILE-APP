@@ -1,5 +1,5 @@
 import React from 'react';
-import { Agent, PhoneCall, Job, SystemMetric, TabType, TelemetryPoint, User } from '../../types';
+import { Agent, PhoneCall, Job, SystemMetric, TabType, TelemetryPoint, User, IndustryOptimizationSuggestion } from '../../types';
 import { 
   PhoneCall as PhoneIcon, 
   Briefcase, 
@@ -17,9 +17,11 @@ import {
   MapPin,
   Clock,
   Mail,
-  ArrowRight
+  ArrowRight,
+  Wrench
 } from 'lucide-react';
 import { haptic } from '../../utils/haptics';
+import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
 
 interface DashboardTabProps {
   agents: Agent[];
@@ -31,6 +33,10 @@ interface DashboardTabProps {
   unreadNotifCount: number;
   businessName?: string;
   industryName?: string;
+  proactiveSuggestion?: IndustryOptimizationSuggestion | null;
+  onReviewSuggestion?: () => void;
+  onDismissSuggestion?: () => void;
+  onOpenServiceManager?: () => void;
   onNavigateTab: (tab: TabType) => void;
   onSimulateCall: () => void;
   onTriggerEmergencyJob: () => void;
@@ -47,6 +53,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   unreadNotifCount,
   businessName = 'My Business',
   industryName = 'Field Services',
+  proactiveSuggestion,
+  onReviewSuggestion,
+  onDismissSuggestion,
+  onOpenServiceManager,
   onNavigateTab,
   onSimulateCall,
   onTriggerEmergencyJob,
@@ -117,6 +127,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
         </button>
       </div>
+
+      {/* Proactive AI Industry Profile Optimization Banner */}
+      {proactiveSuggestion && onReviewSuggestion && onDismissSuggestion && (
+        <ProactiveSuggestionBanner
+          suggestion={proactiveSuggestion}
+          onReview={onReviewSuggestion}
+          onDismiss={onDismissSuggestion}
+        />
+      )}
 
       {/* Primary Operational Summary Counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

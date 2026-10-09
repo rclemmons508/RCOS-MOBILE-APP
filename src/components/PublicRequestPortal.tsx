@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { BusinessAccount, CustomerRequest } from '../types';
 import { RCLogo } from './RCLogo';
+import { apiFetch } from '../lib/api';
+import { firestoreService } from '../services/firestoreService';
 
 interface PublicRequestPortalProps {
   business: BusinessAccount;
@@ -47,34 +49,49 @@ export const PublicRequestPortal: React.FC<PublicRequestPortalProps> = ({
     if (!customerName.trim() || !description.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
+    const reqPayload = {
+      customerName,
+      customerPhone,
+      customerEmail,
+      preferredContact,
+      serviceLocation,
+      serviceType,
+      description,
+      urgency,
+      preferredDateTime: preferredDateTime || 'Next Available',
+      flexibility,
+      specialInstructions
+    };
+
     try {
-      const res = await fetch(`/api/business/${business.id}/requests`, {
+      const savedRequest = await apiFetch<CustomerRequest>(`/api/business/${business.id}/requests`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerName,
-          customerPhone,
-          customerEmail,
-          preferredContact,
-          serviceLocation,
-          serviceType,
-          description,
-          urgency,
-          preferredDateTime: preferredDateTime || 'Next Available',
-          flexibility,
-          specialInstructions
-        })
+        body: JSON.stringify(reqPayload)
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to submit request');
+      if (savedRequest) {
+        await firestoreService.saveRequest(business.id, savedRequest).catch(() => {});
+        setSubmittedRequest(savedRequest);
+        onRequestSubmitted(savedRequest);
       }
-
-      const savedRequest = await res.json();
-      setSubmittedRequest(savedRequest);
-      onRequestSubmitted(savedRequest);
     } catch (err) {
-      console.error('Submission error:', err);
+      console.warn('Backend request failed, falling back to direct Firestore intake:', err);
+      try {
+        const fallbackRequest: CustomerRequest = {
+          id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          businessId: business.id,
+          ...reqPayload,
+          stage: 'Intake',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await firestoreService.saveRequest(business.id, fallbackRequest);
+        setSubmittedRequest(fallbackRequest);
+        onRequestSubmitted(fallbackRequest);
+      } catch (fErr) {
+        console.error('Submission error:', fErr);
+      }
     } finally {
       setIsSubmitting(false);
     }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TelephonyConfig } from '../../types';
+import { apiFetch } from '../../lib/api';
 import { 
   Phone, 
   Settings, 
@@ -63,8 +64,7 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
     setIsTestingCarrier(true);
     setCarrierStatus(null);
     try {
-      const res = await fetch('/api/twilio/test-carrier', { method: 'POST' });
-      const data = await res.json();
+      const data = await apiFetch<any>('/api/twilio/test-carrier', { method: 'POST' });
       setCarrierStatus(data);
     } catch (err: any) {
       setCarrierStatus({
@@ -81,14 +81,12 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
     setIsPlacingCall(true);
     setTestCallResult(null);
     try {
-      const res = await fetch('/api/twilio/voice/outbound-call', {
+      const data = await apiFetch<any>('/api/twilio/voice/outbound-call', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toPhone: testPhoneNumber })
       });
-      const data = await res.json();
       setTestCallResult(data);
-      if (data.success && onTriggerNotification) {
+      if (data?.success && onTriggerNotification) {
         onTriggerNotification(
           'Outbound Call Dispatched',
           `Calling ${testPhoneNumber} from carrier line ${config?.phoneNumber || ''}`
@@ -109,17 +107,15 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
     setIsPlacingCall(true);
     setTestCallResult(null);
     try {
-      const res = await fetch('/api/twilio/voice/outbound-call', {
+      const data = await apiFetch<any>('/api/twilio/voice/outbound-call', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           toPhone: testPhoneNumber,
           simulateFallback: true
         })
       });
-      const data = await res.json();
       setTestCallResult(data);
-      if (data.success && onTriggerNotification) {
+      if (data?.success && onTriggerNotification) {
         onTriggerNotification(
           'Simulated Call Initiated',
           `Voice AI test session opened for ${testPhoneNumber}`

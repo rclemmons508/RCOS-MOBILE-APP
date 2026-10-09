@@ -30,6 +30,7 @@ import { LiveCallConsole } from '../phone/LiveCallConsole';
 import { IncomingCallModal } from '../phone/IncomingCallModal';
 import { VoicemailsView } from '../phone/VoicemailsView';
 import { RealPhoneSetupModal } from '../phone/RealPhoneSetupModal';
+import { apiFetch } from '../../lib/api';
 
 interface PhoneSystemTabProps {
   calls: PhoneCall[];
@@ -147,8 +148,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
 
   // Fetch telephony configuration on mount
   useEffect(() => {
-    fetch('/api/twilio/config')
-      .then(res => res.json())
+    apiFetch<TelephonyConfig>('/api/twilio/config')
       .then(data => {
         if (data) {
           setTelephonyConfig(data);
@@ -163,8 +163,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   // Fetch voicemails & calls on mount + poll periodically for real PSTN calls
   useEffect(() => {
     const fetchRealData = () => {
-      fetch('/api/phone/voicemails')
-        .then(res => res.json())
+      apiFetch<VoicemailRecord[]>('/api/phone/voicemails')
         .then(data => {
           if (Array.isArray(data) && data.length > 0) {
             setVoicemails(data);
@@ -172,8 +171,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
         })
         .catch(() => {});
 
-      fetch('/api/phone/calls')
-        .then(res => res.json())
+      apiFetch<PhoneCall[]>('/api/phone/calls')
         .then(data => {
           if (Array.isArray(data) && data.length > 0) {
             setCallsList(prev => {
@@ -205,7 +203,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   const defaultUser: User = currentUser || {
     id: 'usr-guest',
     fullName: 'Operations Operator',
-    email: 'ops@rcsolutions.com',
+    email: 'rcsoulutions@gmail.com',
     role: 'Operations Lead',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
     organization: 'RC Solutions',
@@ -214,13 +212,11 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
 
   // Save Telephony Configuration
   const handleSaveTelephonyConfig = async (updated: Partial<TelephonyConfig>) => {
-    const res = await fetch('/api/twilio/config', {
+    const data = await apiFetch<{ config: TelephonyConfig }>('/api/twilio/config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated)
-    });
-    const data = await res.json();
-    if (data.config) {
+    }).catch(() => null);
+    if (data?.config) {
       setTelephonyConfig(data.config);
       if (data.config.answeringStrategy === 'human_first') {
         setAnsweringMode('manual');
@@ -313,15 +309,13 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     setCallsList(prev => [finalCall, ...prev]);
 
     // Persist to server
-    fetch('/api/phone/calls', {
+    apiFetch('/api/phone/calls', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(finalCall)
     }).catch(() => {});
 
     // Sync voicemails
-    fetch('/api/phone/voicemails')
-      .then(res => res.json())
+    apiFetch<VoicemailRecord[]>('/api/phone/voicemails')
       .then(data => {
         if (Array.isArray(data)) setVoicemails(data);
       })
@@ -330,7 +324,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
 
   const handleDeleteVoicemail = async (id: string) => {
     try {
-      await fetch(`/api/phone/voicemails/${id}`, { method: 'DELETE' });
+      await apiFetch(`/api/phone/voicemails/${id}`, { method: 'DELETE' });
     } catch {}
     setVoicemails(prev => prev.filter(v => v.id !== id));
   };

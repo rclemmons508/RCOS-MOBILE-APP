@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FileText, X, CheckCircle2, ShieldAlert, DollarSign } from 'lucide-react';
+import { apiFetch } from '../../lib/api';
 
 interface DirectQuoteModalProps {
   isOpen: boolean;
@@ -32,9 +33,8 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/phone/request-quote', {
+      const data = await apiFetch<any>('/api/phone/request-quote', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientName,
           serviceName,
@@ -42,8 +42,7 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
           details
         })
       });
-      const data = await res.json();
-      if (data.success) {
+      if (data?.success) {
         setSubmittedSuccess(true);
         if (onQuoteCreated) {
           onQuoteCreated({

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { BusinessAccount } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
+import { apiFetch } from '../lib/api';
 
 interface ChatMessageItem {
   id: string;
@@ -100,9 +101,8 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBu
     setLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
+      const data = await apiFetch<any>('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
           roleId: selectedRole,
@@ -111,8 +111,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBu
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (data?.content) {
         const assistantMsg: ChatMessageItem = {
           id: `msg_${Date.now() + 1}`,
           role: 'assistant',
@@ -123,17 +122,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBu
         };
         setMessages(prev => [...prev, assistantMsg]);
       } else {
-        const errData = await res.json().catch(() => ({}));
-        setMessages(prev => [
-          ...prev,
-          {
-            id: `msg_${Date.now() + 1}`,
-            role: 'assistant',
-            content: `Operational notice: ${errData.details || 'Task logged and scheduled across operational workforce.'}`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            roleId: selectedRole
-          }
-        ]);
+        throw new Error('Empty response');
       }
     } catch {
       setMessages(prev => [

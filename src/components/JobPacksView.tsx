@@ -13,6 +13,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { BusinessAccount, JobPack } from '../types';
+import { apiFetch } from '../lib/api';
 
 interface JobPacksViewProps {
   business: BusinessAccount;
@@ -30,9 +31,8 @@ export const JobPacksView: React.FC<JobPacksViewProps> = ({ business }) => {
   useEffect(() => {
     const fetchPacks = async () => {
       try {
-        const res = await fetch(`/api/business/${business.id}/job-packs`);
-        if (res.ok) {
-          const data = await res.json();
+        const data = await apiFetch<JobPack[]>(`/api/business/${business.id}/job-packs`);
+        if (Array.isArray(data)) {
           setJobPacks(data);
           if (data.length > 0 && !selectedPackId) {
             setSelectedPackId(data[0].id);
@@ -53,17 +53,11 @@ export const JobPacksView: React.FC<JobPacksViewProps> = ({ business }) => {
     setIsGenerating(true);
     setError(null);
     try {
-      const res = await fetch(`/api/business/${business.id}/job-packs/generate`, {
+      const createdPack = await apiFetch<JobPack>(`/api/business/${business.id}/job-packs/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ serviceType: newServiceName.trim() })
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to generate job pack');
-      }
-
-      const createdPack = await res.json();
       setJobPacks(prev => [createdPack, ...prev]);
       setSelectedPackId(createdPack.id);
       setNewServiceName('');

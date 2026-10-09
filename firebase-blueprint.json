@@ -73,6 +73,86 @@
         "completedAt": { "type": "string" }
       },
       "required": ["id", "businessId", "employeeId", "actionType", "title", "status", "riskCategory"]
+    },
+    "Job": {
+      "title": "Dispatch Job",
+      "description": "Operational field job for the business dispatch system",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "title": { "type": "string", "maxLength": 200 },
+        "clientName": { "type": "string", "maxLength": 100 },
+        "clientPhone": { "type": "string", "maxLength": 30 },
+        "address": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["unassigned", "dispatched", "in_progress", "completed", "urgent"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "assignedTechnician": { "type": "string", "maxLength": 100 },
+        "estimatedValue": { "type": "number" },
+        "scheduledTime": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "aiNotes": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "businessId", "title", "clientName", "status", "priority", "estimatedValue"]
+    },
+    "Customer": {
+      "title": "Customer / Client Profile",
+      "description": "Client CRM record with relationship status and contact details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "company": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "email": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["active", "lead", "vip", "inactive"] },
+        "healthScore": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "activeJobsCount": { "type": "number" },
+        "lastContactDate": { "type": "string" },
+        "aiSummary": { "type": "string", "maxLength": 1000 },
+        "tags": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "businessId", "name", "email", "status"]
+    },
+    "ChatMessage": {
+      "title": "Team Chat Message",
+      "description": "Real-time communication message between operators and AI agents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "text": { "type": "string", "maxLength": 4000 },
+        "timestamp": { "type": "string" },
+        "isCurrentUser": { "type": "boolean" },
+        "role": { "type": "string", "enum": ["user", "assistant", "model"] },
+        "modelUsed": { "type": "string" }
+      },
+      "required": ["id", "businessId", "text", "timestamp"]
+    },
+    "AuditLog": {
+      "title": "Immutable Audit Log",
+      "description": "Tamper-evident operational audit trail for compliance and safety",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "businessId": { "type": "string" },
+        "actionId": { "type": "string" },
+        "userId": { "type": "string" },
+        "actionType": { "type": "string" },
+        "decision": { "type": "string" },
+        "details": { "type": "object" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "businessId", "actionType", "timestamp"]
     }
   },
   "firestore": {
@@ -86,7 +166,23 @@
     },
     "/businesses/{businessId}/actions/{actionId}": {
       "schema": "ActionRecord",
-      "description": "AI team actions for this business"
+      "description": "AI team actions and approvals for this business"
+    },
+    "/businesses/{businessId}/jobs/{jobId}": {
+      "schema": "Job",
+      "description": "Field dispatch jobs for this business"
+    },
+    "/businesses/{businessId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "CRM client records for this business"
+    },
+    "/businesses/{businessId}/chatMessages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Internal team and AI chat messages"
+    },
+    "/businesses/{businessId}/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Immutable audit log records"
     }
   }
 }

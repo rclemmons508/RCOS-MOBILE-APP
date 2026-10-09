@@ -12,6 +12,7 @@ import {
   X 
 } from 'lucide-react';
 import { AddClientModal } from '../clients/AddClientModal';
+import { apiFetch } from '../../lib/api';
 
 interface ClientsTabProps {
   clients: Client[];
@@ -38,16 +39,14 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
     setIsGenerating(true);
     setGeneratedDraft('');
     try {
-      const response = await fetch('/api/agent/chat', {
+      const data = await apiFetch<any>('/api/agent/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: 'agent-crm',
           prompt: `Draft a concise 2-sentence SMS follow-up for RC Solutions client ${client.name} from ${client.company}. Health score is ${client.healthScore}/100. Mention our new RCOS multi-agent AI system automation capabilities.`
         })
       });
-      const data = await response.json();
-      setGeneratedDraft(data.reply || `Hi ${client.name}, this is RC Solutions. Following up regarding your operational systems at ${client.company}. Our AI automated service dispatch is ready whenever you need us!`);
+      setGeneratedDraft(data?.reply || `Hi ${client.name}, this is RC Solutions. Following up regarding your operational systems at ${client.company}. Our AI automated service dispatch is ready whenever you need us!`);
     } catch {
       setGeneratedDraft(`Hi ${client.name}, this is RC Solutions! Our RCOS Voice AI and field dispatch modules are active and synchronized for ${client.company}. Let us know if we can schedule a quick check-in.`);
     } finally {

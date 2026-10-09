@@ -140,7 +140,7 @@ export interface CustomerRequest {
   specialInstructions?: string;
   serviceLocation?: string;
   description: string;
-  urgency: 'low' | 'normal' | 'emergency' | 'routine';
+  urgency: 'low' | 'normal' | 'routine' | 'soon' | 'urgent' | 'emergency';
   address?: string;
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   routedActionId?: string;
@@ -226,6 +226,21 @@ export interface IndustryPreset {
   recommendedTone: string;
   technicianRoleName: string;
   sampleJobPacks: JobPack[];
+}
+
+export interface IndustryOptimizationSuggestion {
+  currentIndustryId: string;
+  suggestedPresetId: string;
+  suggestedPresetName: string;
+  confidence: number;
+  matchScore: number; // 0 to 100
+  reason: string;
+  newServicesDetected: string[];
+  recommendedTone: string;
+  technicianRoleName: string;
+  suggestedServices: string[];
+  activeEmployees: Record<string, boolean>;
+  triggers: string[]; // reasons why current services diverge from current preset
 }
 
 /* -------------------------------------------------------------

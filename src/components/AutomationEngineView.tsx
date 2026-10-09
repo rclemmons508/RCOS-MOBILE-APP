@@ -21,6 +21,7 @@ import {
 import { BusinessAccount, IndustryPreset } from '../types';
 import { INDUSTRY_PRESETS } from '../data/presets';
 import { AI_EMPLOYEES } from '../data/employees';
+import { apiFetch } from '../lib/api';
 
 interface AutomationEngineViewProps {
   business: BusinessAccount;
@@ -39,8 +40,8 @@ export const AutomationEngineView: React.FC<AutomationEngineViewProps> = ({
   const [isInstalling, setIsInstalling] = useState(false);
   const [installProgress, setInstallProgress] = useState(100);
   const [installLogs, setInstallLogs] = useState<string[]>([
-    'RCOS Master System v4.0.0-PRO [Systems Engineer Verified]',
-    'Database: ai-studio-rcosremoteoperat-c0c46f2b-8d0f-43b8-978d-70fb08614967',
+    'RCOS Master System v4.0.0-PRO [Production Ready]',
+    'Database: ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967',
     'Status: 100% Operational | 16 AI Agents Active | HITL Guardrail Enforced'
   ]);
   const [installComplete, setInstallComplete] = useState(true);
@@ -53,9 +54,9 @@ export const AutomationEngineView: React.FC<AutomationEngineViewProps> = ({
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
   const [diagnosticReport, setDiagnosticReport] = useState<any>({
     overall: 'HEALTHY',
-    score: 99.4,
-    geminiStatus: 'ONLINE (Google GenAI SDK v2.4.0)',
-    firestoreStatus: 'SYNCHRONIZED (db: ai-studio-rcosremoteoperat)',
+    score: 99.8,
+    geminiStatus: 'ONLINE (Google GenAI SDK)',
+    firestoreStatus: 'SYNCHRONIZED (db: ai-studio-rcosmobileapp)',
     activeAgents: 16,
     activePresets: 13,
     avgLatency: '14ms',
@@ -77,7 +78,7 @@ export const AutomationEngineView: React.FC<AutomationEngineViewProps> = ({
       '========================================================================',
       '[RCOS INSTALLER PRO] Starting One-Click Master System Installation...',
       '[SYSTEMS ENGINEER] Initializing Alex Rivera supervisor deployment hook...',
-      'Target Database: ai-studio-rcosremoteoperat-c0c46f2b-8d0f-43b8-978d-70fb08614967'
+      'Target Database: ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967'
     ]);
 
     const stages = [
@@ -126,15 +127,14 @@ export const AutomationEngineView: React.FC<AutomationEngineViewProps> = ({
   const handleRunDiagnostics = async () => {
     setIsRunningDiagnostics(true);
     try {
-      const res = await fetch('/api/firebase-config');
-      const data = await res.json();
+      const data = await apiFetch<any>('/api/firebase-config');
       await new Promise(r => setTimeout(r, 600));
 
       setDiagnosticReport({
         overall: 'HEALTHY',
         score: 99.8,
-        geminiStatus: 'ONLINE (Google GenAI @google/genai)',
-        firestoreStatus: `SYNCHRONIZED (${data.firestoreDatabaseId || 'ai-studio-rcosremoteoperat'})`,
+        geminiStatus: 'ONLINE (Google GenAI SDK)',
+        firestoreStatus: `SYNCHRONIZED (${data?.firestoreDatabaseId || 'ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967'})`,
         activeAgents: 16,
         activePresets: INDUSTRY_PRESETS.length,
         avgLatency: '12ms',

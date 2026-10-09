@@ -35,7 +35,8 @@ import {
   Edit3,
   Layers,
   ShieldCheck,
-  SmartphoneNfc
+  SmartphoneNfc,
+  Wrench
 } from 'lucide-react';
 
 interface SettingsTabProps {
@@ -57,6 +58,8 @@ interface SettingsTabProps {
   onTriggerTestPush: () => void;
   onOpenNotifPrefsModal: () => void;
   onReopenOnboarding?: () => void;
+  onOpenServiceManager?: () => void;
+  businessServices?: string[];
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -78,6 +81,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onTriggerTestPush,
   onOpenNotifPrefsModal,
   onReopenOnboarding,
+  onOpenServiceManager,
+  businessServices = [],
 }) => {
   // Navigation: 3 clean client-facing sections
   const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>('user');
@@ -347,6 +352,39 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   placeholder="dispatch@company.com"
                   className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none font-mono"
                 />
+              </div>
+
+              {/* Service Catalog & Proactive AI Monitor Card */}
+              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Wrench className="w-3.5 h-3.5 text-lime-400" />
+                    <span className="text-xs font-bold text-white">Offered Services & Capabilities</span>
+                  </div>
+                  {onOpenServiceManager && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        haptic.light();
+                        onOpenServiceManager();
+                      }}
+                      className="px-2 py-1 rounded-lg bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Manage Services</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {(businessServices && businessServices.length > 0 ? businessServices : ['General Commercial Services']).map((svc, idx) => (
+                    <span key={idx} className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-mono">
+                      {svc}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[10px] text-zinc-500 italic">
+                  AI Context Monitor automatically suggests optimized industry presets as you add or alter services.
+                </p>
               </div>
 
               <label className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 cursor-pointer">

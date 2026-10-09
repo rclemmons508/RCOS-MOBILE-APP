@@ -20,6 +20,7 @@ import { playChime, playBase64Wav, speakWithBrowserSynthesis, stopAllSpeech } fr
 import { DepartmentTransferModal } from './DepartmentTransferModal';
 import { DirectEmailModal } from './DirectEmailModal';
 import { DirectQuoteModal } from './DirectQuoteModal';
+import { apiFetch } from '../../lib/api';
 
 interface LiveCallConsoleProps {
   activeCall: PhoneCall;
@@ -99,13 +100,11 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
     if (isMuted) return;
     setIsSpeaking(true);
     try {
-      const res = await fetch('/api/phone/tts', {
+      const data = await apiFetch<any>('/api/phone/tts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voiceName: 'Kore' })
       });
-      const data = await res.json();
-      if (data.audioBase64) {
+      if (data?.audioBase64) {
         const audio = await playBase64Wav(data.audioBase64);
         if (audio) {
           audio.onended = () => setIsSpeaking(false);
@@ -180,9 +179,8 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
     setIsProcessing(true);
 
     try {
-      const res = await fetch('/api/phone/receptionist-chat', {
+      const data = await apiFetch<any>('/api/phone/receptionist-chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userSpeech: textToSend,
           callerName: activeCall.callerName,
@@ -193,7 +191,6 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
         })
       });
 
-      const data = await res.json();
       const aiTime = formatTimer(callDurationSeconds + 1);
 
       const aiTurn: CallTranscriptEntry = {

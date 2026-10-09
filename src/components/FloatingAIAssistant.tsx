@@ -14,6 +14,7 @@ import {
 import { motion } from 'motion/react';
 import { AgentMessage } from '../types';
 import { RCLogoIcon } from './RCLogo';
+import { apiFetch } from '../lib/api';
 
 interface FloatingAIAssistantProps {
   onOpenTab?: (tabName: any) => void;
@@ -62,9 +63,8 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
 
     try {
       const activeAgentObj = agents.find(a => a.id === selectedAgentId);
-      const response = await fetch('/api/agent/chat', {
+      const data = await apiFetch<any>('/api/agent/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: selectedAgentId,
           prompt: promptText,
@@ -72,8 +72,7 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
         })
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      if (data?.reply) {
         const assistantMsg: AgentMessage = {
           id: `a-${Date.now()}`,
           agentId: selectedAgentId,

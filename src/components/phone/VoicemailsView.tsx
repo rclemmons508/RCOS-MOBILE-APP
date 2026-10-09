@@ -19,6 +19,7 @@ import {
 import { playBase64Wav, speakWithBrowserSynthesis, stopAllSpeech } from '../../utils/phoneAudio';
 import { DirectEmailModal } from './DirectEmailModal';
 import { DirectQuoteModal } from './DirectQuoteModal';
+import { apiFetch } from '../../lib/api';
 
 interface VoicemailsViewProps {
   voicemails: VoicemailRecord[];
@@ -71,16 +72,14 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
     // Otherwise generate TTS voice dynamically via Gemini TTS
     setIsLoadingAudio(true);
     try {
-      const res = await fetch('/api/phone/tts', {
+      const data = await apiFetch<any>('/api/phone/tts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: `Message from ${vm.callerName}: "${vm.transcription}"`,
           voiceName: 'Kore'
         })
       });
-      const data = await res.json();
-      if (data.audioBase64) {
+      if (data?.audioBase64) {
         setIsLoadingAudio(false);
         const audio = await playBase64Wav(data.audioBase64);
         if (audio) {

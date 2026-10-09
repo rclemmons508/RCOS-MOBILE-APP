@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, ArrowRight, Loader2, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { BusinessAccount, ActionRecord } from '../types';
+import { apiFetch } from '../lib/api';
 
 interface CommandBarProps {
   business: BusinessAccount;
@@ -32,24 +33,20 @@ export const CommandBar: React.FC<CommandBarProps> = ({ business, onActionCreate
     setFeedback(null);
 
     try {
-      const res = await fetch(`/api/business/${business.id}/command`, {
+      const createdAction = await apiFetch<ActionRecord>(`/api/business/${business.id}/command`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ instruction: text })
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to execute command');
-      }
-
-      const createdAction: ActionRecord = await res.json();
       setInput('');
       setFeedback({
         type: 'success',
-        message: createdAction.stepSummary || 'Task assigned to your AI team. Working on it now...',
-        employeeName: createdAction.employeeId
+        message: createdAction?.stepSummary || 'Task assigned to your AI team. Working on it now...',
+        employeeName: createdAction?.employeeId
       });
-      onActionCreated(createdAction);
+      if (createdAction) {
+        onActionCreated(createdAction);
+      }
 
       // Dismiss feedback after 5 seconds
       setTimeout(() => {

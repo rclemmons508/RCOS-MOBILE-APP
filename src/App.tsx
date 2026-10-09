@@ -13,7 +13,8 @@ import {
   TelemetryPoint,
   BusinessAccount,
   ActionRecord,
-  CustomerRequest
+  CustomerRequest,
+  IndustryOptimizationSuggestion
 } from './types';
 import {
   INITIAL_AGENTS,
@@ -48,8 +49,12 @@ import { BiometricLockScreen } from './components/biometrics/BiometricLockScreen
 import { biometricService } from './services/biometricService';
 import { LoginView } from './components/auth/LoginView';
 import { OnboardingModal } from './components/OnboardingModal';
+import { ServiceManagerModal } from './components/ServiceManagerModal';
+import { ProactiveIndustrySuggestionModal } from './components/ProactiveIndustrySuggestionModal';
 import { authService } from './services/authService';
+import { firestoreService } from './services/firestoreService';
 import { userPreferencesService } from './services/userPreferencesService';
+import { apiFetch } from './lib/api';
 import { haptic } from './utils/haptics';
 
 export default function App() {
@@ -134,6 +139,139 @@ export default function App() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(() => {
     return localStorage.getItem('rcos_onboarding_completed') !== 'true';
   });
+
+  // Proactive AI Industry Profile Optimization Agent State
+  const [proactiveSuggestion, setProactiveSuggestion] = useState<IndustryOptimizationSuggestion | null>(null);
+  const [isSuggestionModalOpen, setIsSuggestionModalOpen] = useState(false);
+  const [isServiceManagerOpen, setIsServiceManagerOpen] = useState(false);
+  const [dismissedSuggestionPresetId, setDismissedSuggestionPresetId] = useState<string | null>(() => {
+    return localStorage.getItem('rcos_dismissed_suggestion_preset_id');
+  });
+
+  // Evaluate services against business context and query proactive optimization AI agent
+  const evaluateIndustryOptimization = async (customBiz?: BusinessAccount) => {
+    const targetBiz = customBiz || businessAccount;
+    if (!targetBiz || !targetBiz.services || targetBiz.services.length === 0) return;
+
+    try {
+      const res = await apiFetch<{ suggestion: IndustryOptimizationSuggestion | null }>(
+        `/api/business/${targetBiz.id}/suggest-optimized-industry`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            services: targetBiz.services,
+            currentIndustry: targetBiz.industry,
+            businessName: targetBiz.name
+          })
+        }
+      );
+
+      if (res?.suggestion && res.suggestion.suggestedPresetId) {
+        // Only trigger if user hasn't explicitly dismissed this exact suggestion
+        if (res.suggestion.suggestedPresetId !== dismissedSuggestionPresetId) {
+          setProactiveSuggestion(res.suggestion);
+        }
+      } else {
+        setProactiveSuggestion(null);
+      }
+    } catch {
+      // Non-blocking background agent failure
+    }
+  };
+
+  // Monitor services and trigger evaluation when services change
+  useEffect(() => {
+    const servicesStr = (businessAccount?.services || []).join('|');
+    if (!servicesStr) return;
+
+    const timer = setTimeout(() => {
+      evaluateIndustryOptimization();
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [businessAccount?.services, businessAccount?.industry]);
+
+  // Handler when user applies the optimized preset recommendation
+  const handleApplyOptimization = async (updatedBiz: BusinessAccount) => {
+    setBusinessAccount(updatedBiz);
+    setIndustryProfile(updatedBiz.industry);
+    setProactiveSuggestion(null);
+    setIsSuggestionModalOpen(false);
+
+    try {
+      localStorage.setItem('rcos_configured_business', JSON.stringify(updatedBiz));
+      await apiFetch(`/api/business/${updatedBiz.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updatedBiz)
+      }).catch(() => null);
+
+      await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+
+      sendPushNotification({
+        type: 'system_alert',
+        title: 'Industry Profile Optimized',
+        message: `Upgraded workspace to ${updatedBiz.industry} based on your service catalog.`,
+        priority: 'high',
+        module: 'AI Context Monitor'
+      });
+    } catch (e) {
+      console.warn('Industry optimization persistence note:', e);
+    }
+  };
+
+  const handleDismissSuggestion = () => {
+    if (proactiveSuggestion) {
+      setDismissedSuggestionPresetId(proactiveSuggestion.suggestedPresetId);
+      localStorage.setItem('rcos_dismissed_suggestion_preset_id', proactiveSuggestion.suggestedPresetId);
+    }
+    setProactiveSuggestion(null);
+    setIsSuggestionModalOpen(false);
+  };
+
+  // Sync business account with server database on startup
+  useEffect(() => {
+    apiFetch<BusinessAccount[]>('/api/businesses')
+      .then((businesses) => {
+        if (Array.isArray(businesses) && businesses.length > 0) {
+          const biz = businesses[0];
+          setBusinessAccount((prev) => {
+            if (!prev || prev.id === 'biz_rc_solutions') {
+              return biz;
+            }
+            return prev;
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Real-time Firestore synchronization for jobs, clients, and business profile
+  useEffect(() => {
+    if (!businessAccount?.id) return;
+    const unsubJobs = firestoreService.listenToJobs(businessAccount.id, (loadedJobs) => {
+      if (Array.isArray(loadedJobs) && loadedJobs.length > 0) {
+        setJobs(loadedJobs);
+      }
+    });
+
+    const unsubClients = firestoreService.listenToClients(businessAccount.id, (loadedClients) => {
+      if (Array.isArray(loadedClients) && loadedClients.length > 0) {
+        setClients(loadedClients);
+      }
+    });
+
+    const unsubBiz = firestoreService.listenToBusiness(businessAccount.id, (biz) => {
+      if (biz) {
+        setBusinessAccount(biz);
+      }
+    });
+
+    return () => {
+      unsubJobs();
+      unsubClients();
+      unsubBiz();
+    };
+  }, [businessAccount?.id]);
 
   // Real-Time Telemetry Pulse Simulator
   useEffect(() => {
@@ -250,6 +388,9 @@ export default function App() {
   // Handlers
   const handleAddJob = (newJob: Job) => {
     setJobs((prev) => [newJob, ...prev]);
+    firestoreService.saveJob(businessAccount.id, newJob).catch((err) => {
+      console.warn('Firestore saveJob error:', err);
+    });
     setMetrics((prev) => ({
       ...prev,
       jobsDispatched: prev.jobsDispatched + 1,
@@ -266,14 +407,23 @@ export default function App() {
 
   const handleUpdateJob = (updatedJob: Job) => {
     setJobs((prev) => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
+    firestoreService.saveJob(businessAccount.id, updatedJob).catch((err) => {
+      console.warn('Firestore updateJob error:', err);
+    });
   };
 
   const handleDeleteJob = (id: string) => {
     setJobs((prev) => prev.filter(j => j.id !== id));
+    firestoreService.deleteJob(businessAccount.id, id).catch((err) => {
+      console.warn('Firestore deleteJob error:', err);
+    });
   };
 
   const handleAddClient = (newClient: Client) => {
     setClients((prev) => [newClient, ...prev]);
+    firestoreService.saveClient(businessAccount.id, newClient).catch((err) => {
+      console.warn('Firestore saveClient error:', err);
+    });
     sendPushNotification({
       type: 'system_alert',
       title: `Client Account Added: ${newClient.company}`,
@@ -285,10 +435,16 @@ export default function App() {
 
   const handleEditClient = (updatedClient: Client) => {
     setClients((prev) => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
+    firestoreService.saveClient(businessAccount.id, updatedClient).catch((err) => {
+      console.warn('Firestore updateClient error:', err);
+    });
   };
 
   const handleDeleteClient = (id: string) => {
     setClients((prev) => prev.filter(c => c.id !== id));
+    firestoreService.deleteClient(businessAccount.id, id).catch((err) => {
+      console.warn('Firestore deleteClient error:', err);
+    });
   };
 
   const handleSimulateInboundCall = () => {
@@ -455,6 +611,10 @@ export default function App() {
               unreadNotifCount={unreadNotifCount}
               businessName={businessAccount.name}
               industryName={businessAccount.industry}
+              proactiveSuggestion={proactiveSuggestion}
+              onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
+              onDismissSuggestion={handleDismissSuggestion}
+              onOpenServiceManager={() => setIsServiceManagerOpen(true)}
               onNavigateTab={(tab) => setActiveTab(tab)}
               onSimulateCall={handleSimulateInboundCall}
               onTriggerEmergencyJob={handleEmergencyJobTrigger}
@@ -613,6 +773,8 @@ export default function App() {
               onTriggerTestPush={handleTriggerTestPush}
               onOpenNotifPrefsModal={() => setIsNotifPrefsOpen(true)}
               onReopenOnboarding={() => setIsOnboardingOpen(true)}
+              onOpenServiceManager={() => setIsServiceManagerOpen(true)}
+              businessServices={businessAccount.services}
             />
           )}
         </main>
@@ -671,12 +833,56 @@ export default function App() {
           />
         )}
 
+        {/* Business Services Catalog Manager Modal */}
+        <ServiceManagerModal
+          isOpen={isServiceManagerOpen}
+          onClose={() => setIsServiceManagerOpen(false)}
+          business={businessAccount}
+          onUpdateServices={(updatedServices) => {
+            const updatedBiz = {
+              ...businessAccount,
+              services: updatedServices,
+              updatedAt: new Date().toISOString()
+            };
+            setBusinessAccount(updatedBiz);
+            localStorage.setItem('rcos_configured_business', JSON.stringify(updatedBiz));
+            apiFetch(`/api/business/${updatedBiz.id}`, {
+              method: 'PUT',
+              body: JSON.stringify(updatedBiz)
+            }).catch(() => null);
+            firestoreService.saveBusiness(updatedBiz).catch(() => null);
+            sendPushNotification({
+              type: 'system_alert',
+              title: 'Services Catalog Updated',
+              message: `Now offering ${updatedServices.length} operational capabilities. AI Monitor evaluating profile fit...`,
+              priority: 'low',
+              module: 'Service Catalog'
+            });
+            evaluateIndustryOptimization(updatedBiz);
+          }}
+          onRequestAISuggestionCheck={() => evaluateIndustryOptimization()}
+        />
+
+        {/* Proactive AI Industry Profile Optimization Modal (User must explicitly approve) */}
+        {proactiveSuggestion && (
+          <ProactiveIndustrySuggestionModal
+            isOpen={isSuggestionModalOpen}
+            onClose={() => setIsSuggestionModalOpen(false)}
+            suggestion={proactiveSuggestion}
+            business={businessAccount}
+            onApplyOptimization={handleApplyOptimization}
+            onDismissSuggestion={handleDismissSuggestion}
+          />
+        )}
+
         {/* Industry Setup & Onboarding System */}
         {isOnboardingOpen && (
           <OnboardingModal
             initialBusiness={businessAccount}
+            onCancel={() => setIsOnboardingOpen(false)}
             onComplete={(configuredBiz) => {
               setBusinessAccount(configuredBiz);
+              firestoreService.saveBusiness(configuredBiz).catch(() => {});
               setIndustryProfile(configuredBiz.industry);
               setIsOnboardingOpen(false);
               localStorage.setItem('rcos_onboarding_completed', 'true');

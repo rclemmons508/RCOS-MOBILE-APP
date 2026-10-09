@@ -35,6 +35,9 @@ jobs:
           npm --version
           npx cap --version
 
+      - name: Lint and Typecheck
+        run: npm run lint
+
       - name: Build Web Assets
         run: npm run build
 

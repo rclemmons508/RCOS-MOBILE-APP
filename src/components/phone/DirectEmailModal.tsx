@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, X, Send, CheckCircle2, AlertCircle } from 'lucide-react';
+import { apiFetch } from '../../lib/api';
 
 interface DirectEmailModalProps {
   isOpen: boolean;
@@ -32,13 +33,11 @@ export const DirectEmailModal: React.FC<DirectEmailModalProps> = ({
     if (!recipient || !subject) return;
     setIsSending(true);
     try {
-      const res = await fetch('/api/phone/send-email', {
+      const data = await apiFetch<any>('/api/phone/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient, subject, body, callerName })
       });
-      const data = await res.json();
-      if (data.success) {
+      if (data?.success) {
         setSentSuccess(true);
         if (onEmailSent) {
           onEmailSent({ recipient, subject, body });

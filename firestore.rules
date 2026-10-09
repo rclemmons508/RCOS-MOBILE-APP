@@ -36,7 +36,7 @@ service cloud.firestore {
       allow read: if true;
     }
 
-    // Businesses Collection
+    // Businesses Collection - Full Tenant Isolation
     match /businesses/{businessId} {
       allow get: if isSignedIn() && (existing().ownerId == request.auth.uid);
       allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
@@ -44,7 +44,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && 
         isValidId(businessId) &&
         incoming().ownerId == request.auth.uid &&
-        incoming().name is string && incoming().name.size() <= 100;
+        incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100;
 
       allow update: if isSignedIn() && 
         existing().ownerId == request.auth.uid &&
@@ -55,25 +55,43 @@ service cloud.firestore {
       // Subcollection: Requests (Intake Pipeline)
       match /requests/{requestId} {
         allow get, list: if isBusinessOwner(businessId);
-        // Allow customer form intake creation, or owner creation
+        // Allow public customer form intake creation with strict input validation, or owner creation
         allow create: if isValidId(requestId) && 
           exists(/databases/$(database)/documents/businesses/$(businessId)) &&
-          incoming().customerName is string && incoming().customerName.size() <= 100;
+          incoming().customerName is string && incoming().customerName.size() > 0 && incoming().customerName.size() <= 100 &&
+          incoming().description is string && incoming().description.size() <= 2000;
         allow update, delete: if isBusinessOwner(businessId);
       }
 
-      // Subcollection: Actions
+      // Subcollection: Actions & Approvals
       match /actions/{actionId} {
         allow read, write: if isBusinessOwner(businessId) && isValidId(actionId);
+      }
+
+      // Subcollection: Jobs (Field Dispatch)
+      match /jobs/{jobId} {
+        allow read, write: if isBusinessOwner(businessId) && isValidId(jobId);
+      }
+
+      // Subcollection: Customers (CRM)
+      match /customers/{customerId} {
+        allow read, write: if isBusinessOwner(businessId) && isValidId(customerId);
       }
 
       // Subcollection: Chat Messages
       match /chatMessages/{messageId} {
         allow read, write: if isBusinessOwner(businessId) && isValidId(messageId);
       }
+
+      // Subcollection: Immutable Audit Logs (Append-Only)
+      match /auditLogs/{logId} {
+        allow read: if isBusinessOwner(businessId);
+        allow create: if isBusinessOwner(businessId) && isValidId(logId);
+        allow update, delete: if false; // Tamper-proof immutable audit trail
+      }
     }
 
-    // Job Packs global or seeded collection
+    // Job Packs global templates
     match /jobPacks/{jobPackId} {
       allow read: if true;
       allow write: if isSignedIn() && isValidId(jobPackId);

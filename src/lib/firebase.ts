@@ -40,7 +40,7 @@ export const validateFirebaseConfig = (): boolean => {
 export const isFirebaseConfigured = validateFirebaseConfig();
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
 export const GMAIL_SCOPES = [

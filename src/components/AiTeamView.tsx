@@ -40,6 +40,7 @@ import { BusinessAccount, ChatMessage } from '../types';
 import { CustomAIEmployee, employeeCustomizationService } from '../services/employeeCustomizationService';
 import { INDUSTRY_PRESETS } from '../data/presets';
 import { haptic } from '../utils/haptics';
+import { apiFetch } from '../lib/api';
 
 interface AiTeamViewProps {
   business: BusinessAccount;
@@ -130,9 +131,8 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   useEffect(() => {
     const fetchChat = async () => {
       try {
-        const res = await fetch(`/api/business/${business.id}/chat?employeeId=${selectedEmployeeId}`);
-        if (res.ok) {
-          const data = await res.json();
+        const data = await apiFetch<ChatMessage[]>(`/api/business/${business.id}/chat?employeeId=${selectedEmployeeId}`);
+        if (Array.isArray(data)) {
           setMessages(data);
         }
       } catch (err) {
@@ -172,17 +172,15 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
     setIsLoading(true);
 
     try {
-      const res = await fetch(`/api/business/${business.id}/chat`, {
+      const data = await apiFetch<{ message: ChatMessage }>(`/api/business/${business.id}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: selectedEmployeeId,
           message: userText
         })
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (data?.message) {
         setMessages(prev => [...prev.filter(m => m.id !== tempUserMsg.id), tempUserMsg, data.message]);
       }
     } catch (err) {
@@ -200,13 +198,11 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
     const updatedBiz = { ...business, activeEmployees: updatedEmployees };
 
     try {
-      const res = await fetch(`/api/business/${business.id}`, {
+      const saved = await apiFetch<BusinessAccount>(`/api/business/${business.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ activeEmployees: updatedEmployees })
       });
-      if (res.ok) {
-        const saved = await res.json();
+      if (saved) {
         onUpdateBusiness(saved);
         showToast(`${industryEmployees.find(e => e.id === empId)?.name || 'Employee'} status updated.`);
       }

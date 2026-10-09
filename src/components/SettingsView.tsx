@@ -28,6 +28,8 @@ import {
 import { BusinessAccount, AutonomyMode } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
+import { firestoreService } from '../services/firestoreService';
 
 interface SettingsViewProps {
   business: BusinessAccount;
@@ -77,19 +79,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     };
 
     try {
-      const res = await fetch(`/api/business/${business.id}`, {
+      // Persist to backend and Firestore simultaneously
+      const saved = await apiFetch<BusinessAccount>(`/api/business/${business.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-      if (res.ok) {
-        const saved = await res.json();
-        onSave(saved);
+      await firestoreService.saveBusiness(saved || updated).catch(() => {});
+      onSave(saved || updated);
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 3000);
+    } catch (err) {
+      console.warn('API save failed, attempting direct Firestore save:', err);
+      try {
+        await firestoreService.saveBusiness(updated);
+        onSave(updated);
         setIsSaved(true);
         setTimeout(() => setIsSaved(false), 3000);
+      } catch (fErr) {
+        console.error('Save failed:', fErr);
       }
-    } catch (err) {
-      console.error('Save failed:', err);
     }
   };
 
@@ -380,7 +388,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <Database className="w-4 h-4 text-lime-400" />
             <div>
               <span className="font-semibold text-white">Google Cloud Firestore: </span>
-              <span className="font-mono text-zinc-400 text-[11px]">ai-studio-rcosremoteoperat-c0c46f2b-8d0f-43b8-978d-70fb08614967</span>
+              <span className="font-mono text-zinc-400 text-[11px]">ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967</span>
             </div>
           </div>
           <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-lime-500/10 text-lime-400 border border-lime-500/30">
