@@ -58,6 +58,11 @@ import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
 import { haptic } from './utils/haptics';
 
+const toLocalStorageBusiness = (business: BusinessAccount): Omit<BusinessAccount, 'activeEmployees'> => {
+  const { activeEmployees: _activeEmployees, ...safeBusiness } = business;
+  return safeBusiness;
+};
+
 const BLANK_BUSINESS: BusinessAccount = {
   id: '',
   name: '',
@@ -215,7 +220,7 @@ export default function App() {
     setIsSuggestionModalOpen(false);
 
     try {
-      localStorage.setItem('rcos_configured_business', JSON.stringify(updatedBiz));
+      localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(updatedBiz)));
       await apiFetch(`/api/business/${updatedBiz.id}`, {
         method: 'PUT',
         body: JSON.stringify(updatedBiz)
@@ -878,7 +883,7 @@ export default function App() {
               updatedAt: new Date().toISOString()
             };
             setBusinessAccount(updatedBiz);
-            localStorage.setItem('rcos_configured_business', JSON.stringify(updatedBiz));
+            localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(updatedBiz)));
             if (updatedBiz.id) {
               apiFetch(`/api/business/${updatedBiz.id}`, {
                 method: 'PUT',

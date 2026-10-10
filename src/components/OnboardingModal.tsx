@@ -33,6 +33,11 @@ import { haptic } from '../utils/haptics';
 import { apiFetch } from '../lib/api';
 import { firestoreService } from '../services/firestoreService';
 
+const toLocalStorageBusiness = (business: BusinessAccount): Omit<BusinessAccount, 'activeEmployees'> => {
+  const { activeEmployees: _activeEmployees, ...safeBusiness } = business;
+  return safeBusiness;
+};
+
 interface OnboardingModalProps {
   initialBusiness?: BusinessAccount | null;
   onComplete: (business: BusinessAccount) => void;
@@ -581,7 +586,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
     try {
       localStorage.setItem('rcos_onboarding_completed', 'true');
-      localStorage.setItem('rcos_configured_business', JSON.stringify(businessPayload));
+      localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(businessPayload)));
 
       // Synchronize with server backend and Firestore
       await apiFetch('/api/businesses', {
