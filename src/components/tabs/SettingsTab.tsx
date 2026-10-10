@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AutomationTask, NotificationPreferences, User } from '../../types';
+import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion } from '../../types';
 import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
@@ -36,7 +36,9 @@ import {
   Layers,
   ShieldCheck,
   SmartphoneNfc,
-  Wrench
+  Wrench,
+  ArrowRight,
+  X
 } from 'lucide-react';
 
 interface SettingsTabProps {
@@ -60,6 +62,9 @@ interface SettingsTabProps {
   onReopenOnboarding?: () => void;
   onOpenServiceManager?: () => void;
   businessServices?: string[];
+  proactiveSuggestion?: IndustryOptimizationSuggestion | null;
+  onReviewSuggestion?: () => void;
+  onDismissSuggestion?: () => void;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -83,6 +88,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onReopenOnboarding,
   onOpenServiceManager,
   businessServices = [],
+  proactiveSuggestion,
+  onReviewSuggestion,
+  onDismissSuggestion,
 }) => {
   // Navigation: 3 clean client-facing sections
   const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>('user');
@@ -382,6 +390,59 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     </span>
                   ))}
                 </div>
+
+                {/* Proactive AI Industry Suggestion Inside Settings */}
+                {proactiveSuggestion && onReviewSuggestion && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-gradient-to-r from-lime-500/15 via-emerald-500/10 to-zinc-900/40 border border-lime-500/40 animate-in fade-in duration-300">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <div className="p-1.5 rounded-lg bg-lime-500/20 text-lime-400 shrink-0 mt-0.5">
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-extrabold text-white">
+                              AI Monitor Optimization Available
+                            </span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-400 font-mono font-bold">
+                              {Math.round((proactiveSuggestion.confidence || 0.95) * 100)}% Match
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-zinc-300 mt-0.5 leading-snug">
+                            Services indicate specialized <strong className="text-lime-300">{proactiveSuggestion.suggestedPresetName}</strong> workflows rather than current profile.
+                          </p>
+                        </div>
+                      </div>
+                      {onDismissSuggestion && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            haptic.light();
+                            onDismissSuggestion();
+                          }}
+                          className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg transition"
+                          title="Dismiss suggestion"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-lime-500/20 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          haptic.selection();
+                          onReviewSuggestion();
+                        }}
+                        className="px-3 py-1 rounded-lg bg-lime-500 hover:bg-lime-400 text-black text-[10px] font-extrabold flex items-center gap-1 transition cursor-pointer shadow-sm shadow-lime-500/20"
+                      >
+                        <span>Review & Upgrade Preset</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-[10px] text-zinc-500 italic">
                   AI Context Monitor automatically suggests optimized industry presets as you add or alter services.
                 </p>

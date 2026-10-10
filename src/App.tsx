@@ -14,7 +14,8 @@ import {
   BusinessAccount,
   ActionRecord,
   CustomerRequest,
-  IndustryOptimizationSuggestion
+  IndustryOptimizationSuggestion,
+  ChatMessage
 } from './types';
 import {
   INITIAL_AGENTS,
@@ -57,25 +58,55 @@ import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
 import { haptic } from './utils/haptics';
 
+const BLANK_BUSINESS: BusinessAccount = {
+  id: '',
+  name: '',
+  industry: 'Operations',
+  size: 'Solo Operator (1-5)',
+  services: [],
+  pricingApproach: 'Standard ratecard',
+  brandTone: 'Professional and responsive',
+  painPoints: [],
+  autonomyMode: 'autonomous',
+  dollarThreshold: 500,
+  activeEmployees: {
+    executive_assistant: true,
+    customer_service: true,
+    operations: true,
+    sales: true,
+    technician: true,
+    finance: true
+  },
+  onboardingCompleted: false,
+  starterDrafts: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const { isDashboardLocked, isBiometricEnabled } = useBiometrics();
 
-  // Authentication State - check for persistent active session on start, default to active operator
-  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getActiveSession() || {
-    ...INITIAL_USER,
-    authenticated: true
-  });
+  // Authentication State - starts from scratch (no preloaded user profile)
+  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getActiveSession());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Application Core Data
+  // Application Core Data - starts fresh from scratch
   const [agents] = useState<Agent[]>(INITIAL_AGENTS);
-  const [calls, setCalls] = useState<PhoneCall[]>(INITIAL_CALLS);
-  const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
-  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
-  const [metrics, setMetrics] = useState<SystemMetric>(INITIAL_METRICS);
+  const [calls, setCalls] = useState<PhoneCall[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [metrics, setMetrics] = useState<SystemMetric>({
+    agentsActive: 4,
+    latencyMs: 14,
+    callsHandled: 0,
+    jobsDispatched: 0,
+    activeClients: 0,
+    cpuUsagePct: 18,
+    memoryUsagePct: 34
+  });
   const [automationTasks, setAutomationTasks] = useState(INITIAL_AUTOMATION_TASKS);
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(true);
 
   // System Settings State (initialized from user preferences if available)
@@ -92,8 +123,8 @@ export default function App() {
   // Real-Time Telemetry Streaming State
   const [telemetrySeries, setTelemetrySeries] = useState<TelemetryPoint[]>(INITIAL_TELEMETRY_SERIES);
 
-  // Notification System State
-  const [notifications, setNotifications] = useState<RCOSNotification[]>(INITIAL_NOTIFICATIONS);
+  // Notification System State - starts empty from scratch
+  const [notifications, setNotifications] = useState<RCOSNotification[]>([]);
   const [notifPreferences, setNotifPreferences] = useState<NotificationPreferences>(
     initialPrefs?.notificationPreferences || INITIAL_NOTIFICATION_PREFERENCES
   );
@@ -101,41 +132,26 @@ export default function App() {
   const [isNotifCenterOpen, setIsNotifCenterOpen] = useState(false);
   const [isNotifPrefsOpen, setIsNotifPrefsOpen] = useState(false);
 
-  // Business context for Chat & Enterprise operations
-  const [businessAccount, setBusinessAccount] = useState<BusinessAccount>(() => {
+  // Business context for Chat & Enterprise operations - starts from scratch (no preloaded company)
+  const [businessAccount, setBusinessAccount] = useState<BusinessAccount | null>(() => {
     try {
       const stored = localStorage.getItem('rcos_configured_business');
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (parsed?.id === 'biz_rc_solutions' || parsed?.id === 'biz_1790297242341') {
+          localStorage.removeItem('rcos_configured_business');
+          localStorage.removeItem('rcos_onboarding_completed');
+          return null;
+        }
+        return parsed;
       }
     } catch {}
-    return {
-      id: 'biz_rc_solutions',
-      name: 'RC Solutions',
-      industry: 'Commercial HVAC & Automation',
-      size: 'Solo Operator (1-5)',
-      services: ['Commercial HVAC', 'Emergency Diagnostics', 'Electrical Controls', 'Preventative Tune-Up'],
-      pricingApproach: 'value_based',
-      brandTone: 'Crisp, authoritative, and responsive',
-      painPoints: ['Emergency dispatch latency', 'Off-hours voice routing'],
-      autonomyMode: 'autonomous',
-      dollarThreshold: 1250,
-      activeEmployees: {
-        executive_assistant: true,
-        customer_service: true,
-        operations: true,
-        sales: true,
-        technician: true,
-        finance: true
-      },
-      onboardingCompleted: false,
-      starterDrafts: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    return null;
   });
 
-  // Onboarding gate state - starts immediately if not completed
+  const activeBusiness = businessAccount || BLANK_BUSINESS;
+
+  // Onboarding gate state - starts immediately if not completed or company not configured
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(() => {
     return localStorage.getItem('rcos_onboarding_completed') !== 'true';
   });
@@ -234,12 +250,9 @@ export default function App() {
       .then((businesses) => {
         if (Array.isArray(businesses) && businesses.length > 0) {
           const biz = businesses[0];
-          setBusinessAccount((prev) => {
-            if (!prev || prev.id === 'biz_rc_solutions') {
-              return biz;
-            }
-            return prev;
-          });
+          if (biz.id && biz.id !== 'biz_rc_solutions' && biz.id !== 'biz_1790297242341') {
+            setBusinessAccount(biz);
+          }
         }
       })
       .catch(() => {});
@@ -388,9 +401,11 @@ export default function App() {
   // Handlers
   const handleAddJob = (newJob: Job) => {
     setJobs((prev) => [newJob, ...prev]);
-    firestoreService.saveJob(businessAccount.id, newJob).catch((err) => {
-      console.warn('Firestore saveJob error:', err);
-    });
+    if (businessAccount?.id) {
+      firestoreService.saveJob(businessAccount.id, newJob).catch((err) => {
+        console.warn('Firestore saveJob error:', err);
+      });
+    }
     setMetrics((prev) => ({
       ...prev,
       jobsDispatched: prev.jobsDispatched + 1,
@@ -407,23 +422,29 @@ export default function App() {
 
   const handleUpdateJob = (updatedJob: Job) => {
     setJobs((prev) => prev.map(j => j.id === updatedJob.id ? updatedJob : j));
-    firestoreService.saveJob(businessAccount.id, updatedJob).catch((err) => {
-      console.warn('Firestore updateJob error:', err);
-    });
+    if (businessAccount?.id) {
+      firestoreService.saveJob(businessAccount.id, updatedJob).catch((err) => {
+        console.warn('Firestore updateJob error:', err);
+      });
+    }
   };
 
   const handleDeleteJob = (id: string) => {
     setJobs((prev) => prev.filter(j => j.id !== id));
-    firestoreService.deleteJob(businessAccount.id, id).catch((err) => {
-      console.warn('Firestore deleteJob error:', err);
-    });
+    if (businessAccount?.id) {
+      firestoreService.deleteJob(businessAccount.id, id).catch((err) => {
+        console.warn('Firestore deleteJob error:', err);
+      });
+    }
   };
 
   const handleAddClient = (newClient: Client) => {
     setClients((prev) => [newClient, ...prev]);
-    firestoreService.saveClient(businessAccount.id, newClient).catch((err) => {
-      console.warn('Firestore saveClient error:', err);
-    });
+    if (businessAccount?.id) {
+      firestoreService.saveClient(businessAccount.id, newClient).catch((err) => {
+        console.warn('Firestore saveClient error:', err);
+      });
+    }
     sendPushNotification({
       type: 'system_alert',
       title: `Client Account Added: ${newClient.company}`,
@@ -435,16 +456,20 @@ export default function App() {
 
   const handleEditClient = (updatedClient: Client) => {
     setClients((prev) => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
-    firestoreService.saveClient(businessAccount.id, updatedClient).catch((err) => {
-      console.warn('Firestore updateClient error:', err);
-    });
+    if (businessAccount?.id) {
+      firestoreService.saveClient(businessAccount.id, updatedClient).catch((err) => {
+        console.warn('Firestore updateClient error:', err);
+      });
+    }
   };
 
   const handleDeleteClient = (id: string) => {
     setClients((prev) => prev.filter(c => c.id !== id));
-    firestoreService.deleteClient(businessAccount.id, id).catch((err) => {
-      console.warn('Firestore deleteClient error:', err);
-    });
+    if (businessAccount?.id) {
+      firestoreService.deleteClient(businessAccount.id, id).catch((err) => {
+        console.warn('Firestore deleteClient error:', err);
+      });
+    }
   };
 
   const handleSimulateInboundCall = () => {
@@ -609,8 +634,8 @@ export default function App() {
               metrics={metrics}
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
-              businessName={businessAccount.name}
-              industryName={businessAccount.industry}
+              businessName={activeBusiness.name || 'Setup Company'}
+              industryName={activeBusiness.industry || 'Field Operations'}
               proactiveSuggestion={proactiveSuggestion}
               onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
               onDismissSuggestion={handleDismissSuggestion}
@@ -708,8 +733,13 @@ export default function App() {
 
           {activeTab === 'team' && (
             <AiTeamView 
-              business={businessAccount}
-              onUpdateBusiness={() => {}}
+              business={activeBusiness}
+              onUpdateBusiness={(updated) => {
+                setBusinessAccount(updated);
+                if (updated.id) {
+                  firestoreService.saveBusiness(updated).catch(() => {});
+                }
+              }}
             />
           )}
 
@@ -724,7 +754,7 @@ export default function App() {
 
           {activeTab === 'chat' && (
             <GeminiChatView 
-              business={businessAccount} 
+              business={activeBusiness} 
               onClose={() => setActiveTab('dashboard')} 
             />
           )}
@@ -774,7 +804,10 @@ export default function App() {
               onOpenNotifPrefsModal={() => setIsNotifPrefsOpen(true)}
               onReopenOnboarding={() => setIsOnboardingOpen(true)}
               onOpenServiceManager={() => setIsServiceManagerOpen(true)}
-              businessServices={businessAccount.services}
+              businessServices={activeBusiness.services}
+              proactiveSuggestion={proactiveSuggestion}
+              onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
+              onDismissSuggestion={handleDismissSuggestion}
             />
           )}
         </main>
@@ -837,20 +870,22 @@ export default function App() {
         <ServiceManagerModal
           isOpen={isServiceManagerOpen}
           onClose={() => setIsServiceManagerOpen(false)}
-          business={businessAccount}
+          business={activeBusiness}
           onUpdateServices={(updatedServices) => {
             const updatedBiz = {
-              ...businessAccount,
+              ...activeBusiness,
               services: updatedServices,
               updatedAt: new Date().toISOString()
             };
             setBusinessAccount(updatedBiz);
             localStorage.setItem('rcos_configured_business', JSON.stringify(updatedBiz));
-            apiFetch(`/api/business/${updatedBiz.id}`, {
-              method: 'PUT',
-              body: JSON.stringify(updatedBiz)
-            }).catch(() => null);
-            firestoreService.saveBusiness(updatedBiz).catch(() => null);
+            if (updatedBiz.id) {
+              apiFetch(`/api/business/${updatedBiz.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(updatedBiz)
+              }).catch(() => null);
+              firestoreService.saveBusiness(updatedBiz).catch(() => null);
+            }
             sendPushNotification({
               type: 'system_alert',
               title: 'Services Catalog Updated',
@@ -869,7 +904,7 @@ export default function App() {
             isOpen={isSuggestionModalOpen}
             onClose={() => setIsSuggestionModalOpen(false)}
             suggestion={proactiveSuggestion}
-            business={businessAccount}
+            business={activeBusiness}
             onApplyOptimization={handleApplyOptimization}
             onDismissSuggestion={handleDismissSuggestion}
           />

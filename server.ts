@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import http from 'http';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -21,6 +22,8 @@ import { AI_EMPLOYEES } from './src/data/employees';
 import { telephonyRouter } from './server/telephony';
 
 dotenv.config();
+// Disable HMR to eliminate WebSocket connection errors in browser and container
+process.env.DISABLE_HMR = 'true';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1851,10 +1854,15 @@ app.all('/api/*', (req: Request, res: Response) => {
 
 // ==================== VITE SPA INTEGRATION ====================
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -1865,7 +1873,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, () => {
+  // Gracefully handle any WebSocket upgrade requests
+  httpServer.on('upgrade', (_req, socket) => {
+    socket.destroy();
+  });
+
+  httpServer.listen(PORT, () => {
     console.log(`[RCOS] Operational server running on port ${PORT}`);
   });
 }

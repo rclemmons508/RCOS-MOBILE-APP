@@ -63,8 +63,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (parsed?.email) {
-          signInWithDirectAccount(parsed.email, parsed.displayName || parsed.fullName || 'RC Solutions Owner');
+        if (parsed?.uid === 'usr-rcos-lead' || parsed?.uid === 'usr-rcos-admin' || parsed?.id === 'usr-rcos-lead') {
+          localStorage.removeItem('rcos_auth_user');
+          localStorage.removeItem('rcos_active_session');
+        } else if (parsed?.email) {
+          const derivedName = parsed.displayName || parsed.fullName || parsed.email.split('@')[0];
+          signInWithDirectAccount(parsed.email, derivedName);
         }
       } catch {}
     }
@@ -104,35 +108,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     } catch (err: any) {
       console.warn('Google Sign-in status:', err);
-      // In browser preview sandbox / iframe / unauthorized domain / blocked popup / mobile webviews:
-      // Gracefully authenticate as verified operator profile so user is never locked out
-      signInWithDirectAccount('rcsoulutions@gmail.com', 'RC Solutions Owner');
+      // In browser preview sandbox / iframe / unauthorized domain / blocked popup:
+      setAuthError({
+        code: err?.code,
+        message: err?.message || 'Google popup sign-in was blocked or closed. Please sign in with email.'
+      });
       setIsSigningIn(false);
-      return true;
+      return false;
     }
   };
 
-  // Direct authentication helper ensuring users are never locked out in iframe/preview environments
-  const signInWithDirectAccount = (email: string = 'rcsoulutions@gmail.com', name: string = 'RC Solutions Owner') => {
+  // Direct authentication helper ensuring users can sign in with any account
+  const signInWithDirectAccount = (email?: string, name?: string) => {
+    const cleanEmail = email || 'operator@company.com';
+    const cleanName = name || cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     const syntheticUser = {
-      uid: `google_${Date.now()}`,
-      email,
-      displayName: name,
+      uid: `usr_${Date.now()}`,
+      email: cleanEmail,
+      displayName: cleanName,
       emailVerified: true,
-      photoURL: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`,
+      photoURL: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(cleanEmail)}`,
       isAnonymous: false,
       metadata: {},
       providerData: [{
         providerId: 'google.com',
-        uid: email,
-        displayName: name,
-        email
+        uid: cleanEmail,
+        displayName: cleanName,
+        email: cleanEmail
       }]
     } as unknown as User;
 
     setUser(syntheticUser);
     setAuthError(null);
-    localStorage.setItem('rcos_auth_user', JSON.stringify({ email, displayName: name, uid: syntheticUser.uid }));
+    localStorage.setItem('rcos_auth_user', JSON.stringify({ email: cleanEmail, displayName: cleanName, uid: syntheticUser.uid }));
   };
 
   const logout = async () => {

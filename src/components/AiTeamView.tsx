@@ -129,17 +129,24 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
 
   // Fetch chat history for selected employee
   useEffect(() => {
+    let isMounted = true;
     const fetchChat = async () => {
       try {
         const data = await apiFetch<ChatMessage[]>(`/api/business/${business.id}/chat?employeeId=${selectedEmployeeId}`);
-        if (Array.isArray(data)) {
+        if (isMounted && Array.isArray(data)) {
           setMessages(data);
         }
-      } catch (err) {
-        console.error('Failed to load chat:', err);
+      } catch {
+        // Graceful fallback for offline / starting server without console crashing
+        if (isMounted) {
+          setMessages([]);
+        }
       }
     };
     fetchChat();
+    return () => {
+      isMounted = false;
+    };
   }, [business.id, selectedEmployeeId]);
 
   // Scroll to bottom when messages update

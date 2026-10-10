@@ -77,6 +77,40 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
     'On-Call After-Hours Rapid Dispatch'
   ].filter(p => !services.includes(p));
 
+  // Live evaluation of services matching against presets
+  const detectedPreset = React.useMemo(() => {
+    if (services.length === 0) return null;
+    const allServicesText = services.join(' ').toLowerCase();
+    
+    let bestMatch: IndustryPreset | null = null;
+    let maxScore = 0;
+
+    for (const preset of INDUSTRY_PRESETS) {
+      let score = 0;
+      // Check preset name keywords
+      const nameWords = preset.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      for (const w of nameWords) {
+        if (allServicesText.includes(w)) score += 3;
+      }
+      // Check default services overlap
+      for (const ds of preset.defaultServices) {
+        const dsWords = ds.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        for (const w of dsWords) {
+          if (allServicesText.includes(w)) score += 1.5;
+        }
+      }
+      if (score > maxScore) {
+        maxScore = score;
+        bestMatch = preset;
+      }
+    }
+
+    if (bestMatch && maxScore >= 3 && bestMatch.id !== business.industry) {
+      return bestMatch;
+    }
+    return null;
+  }, [services, business.industry]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div 
@@ -110,13 +144,34 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto no-scrollbar space-y-4 py-3 text-xs">
-          {/* Proactive AI Note */}
-          <div className="p-3 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 flex items-start gap-2">
-            <Sparkles className="w-4 h-4 text-lime-400 shrink-0 mt-0.5" />
-            <p className="text-[11px] text-zinc-300 leading-relaxed">
-              <strong>Autonomous Context Monitor:</strong> When you add or adjust services, RCOS proactively evaluates whether a more specialized Industry Profile matches your operations and suggests an upgrade.
-            </p>
-          </div>
+          {/* Proactive AI Note / Live Detection Banner */}
+          {detectedPreset ? (
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-lime-500/20 via-emerald-500/15 to-zinc-900 border border-lime-500/40 animate-in fade-in duration-200">
+              <div className="flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-lime-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-extrabold text-white">
+                      AI Match Detected: {detectedPreset.name}
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-400 font-mono font-bold">
+                      Optimized Fit
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300 mt-1 leading-snug">
+                    Your services match the specialized workflows of <strong className="text-lime-300">{detectedPreset.name}</strong>. Saving will prompt you with the proactive upgrade!
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 flex items-start gap-2">
+              <Sparkles className="w-4 h-4 text-lime-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                <strong>Autonomous Context Monitor:</strong> When you add or adjust services, RCOS proactively evaluates whether a more specialized Industry Profile matches your operations and suggests an upgrade.
+              </p>
+            </div>
+          )}
 
           {/* Add New Service Input */}
           <form 

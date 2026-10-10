@@ -9,59 +9,27 @@ import { Capacitor } from '@capacitor/core';
 const STORAGE_KEY_SESSION = 'rcos_active_session';
 const STORAGE_KEY_USERS = 'rcos_registered_users';
 
-export const SEED_USERS: User[] = [
-  {
-    id: 'usr-rcos-lead',
-    email: 'rcsoulutions@gmail.com',
-    fullName: 'RC Solutions Lead Operator',
-    role: 'Operations Lead',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-    organization: 'RC Solutions Enterprise Systems',
-    authenticated: true,
-    biometricsEnabled: true,
-    lastLogin: 'Today at 08:30 AM',
-    preferences: {
-      ...DEFAULT_USER_PREFERENCES,
-      industryProfile: 'Commercial HVAC'
-    }
-  },
-  {
-    id: 'usr-tech-01',
-    email: 'marcus.vance@rcsolutions.com',
-    fullName: 'Marcus Vance',
-    role: 'Field Manager',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80',
-    organization: 'RC Solutions Field Operations',
-    authenticated: true,
-    biometricsEnabled: true,
-    lastLogin: 'Yesterday at 17:40',
-    preferences: {
-      ...DEFAULT_USER_PREFERENCES,
-      industryProfile: 'Industrial Electrical',
-      autoDispatchThreshold: 'critical'
-    }
-  }
-];
+export const SEED_USERS: User[] = [];
 
 class AuthService {
   /**
-   * Get all registered users from storage
+   * Get all registered users from storage (no preloaded dummy users)
    */
   getRegisteredUsers(): User[] {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_USERS);
       if (raw) {
         const stored: User[] = JSON.parse(raw);
-        if (stored && stored.length > 0) {
-          return stored;
+        if (Array.isArray(stored)) {
+          // Filter out any legacy preloaded mock seed users so user starts from scratch
+          const clean = stored.filter(u => u.id !== 'usr-rcos-lead' && u.id !== 'usr-tech-01' && u.id !== 'usr-rcos-admin');
+          return clean;
         }
       }
     } catch (e) {
       console.warn('[AuthService] Error reading registered users:', e);
     }
-    // Seed default users if none present
-    this.saveRegisteredUsers(SEED_USERS);
-    return SEED_USERS;
+    return [];
   }
 
   private saveRegisteredUsers(users: User[]): void {
@@ -78,6 +46,12 @@ class AuthService {
       const raw = localStorage.getItem(STORAGE_KEY_SESSION);
       if (raw) {
         const user: User = JSON.parse(raw);
+        // If legacy preloaded mock user, purge it so app starts completely from scratch
+        if (user?.id === 'usr-rcos-lead' || user?.id === 'usr-tech-01' || user?.id === 'usr-rcos-admin') {
+          localStorage.removeItem(STORAGE_KEY_SESSION);
+          localStorage.removeItem('rcos_auth_user');
+          return null;
+        }
         if (user && user.authenticated) {
           // Load fresh preferences
           const prefs = userPreferencesService.getUserPreferences(user.email || user.id);
@@ -146,7 +120,7 @@ class AuthService {
         fullName: cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
         role: 'Operations Lead',
         avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(cleanEmail)}`,
-        organization: 'RC Solutions Operations',
+        organization: '',
         authenticated: true,
         biometricsEnabled: true,
         lastLogin: 'Just now',
@@ -195,7 +169,7 @@ class AuthService {
       fullName: data.fullName.trim() || cleanEmail.split('@')[0].toUpperCase(),
       role: data.role || 'Operations Lead',
       avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(cleanEmail)}`,
-      organization: data.organization?.trim() || 'RC Solutions Operations',
+      organization: data.organization?.trim() || '',
       authenticated: true,
       biometricsEnabled: data.enableBiometrics ?? true,
       lastLogin: 'Just now',
@@ -227,13 +201,14 @@ class AuthService {
     if (Capacitor.isNativePlatform()) {
       const email = targetEmail;
       const prefs = userPreferencesService.getUserPreferences(email);
+      const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       const user: User = {
         id: `usr_google_${Date.now()}`,
         email,
-        fullName: 'RC Solutions Lead Operator',
+        fullName: name || 'Operator Lead',
         role: 'Operations Lead',
         avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`,
-        organization: 'RC Solutions Enterprise Systems',
+        organization: '',
         authenticated: true,
         biometricsEnabled: true,
         lastLogin: 'Just now',
@@ -259,7 +234,7 @@ class AuthService {
       }
 
       const email = googleUser.email;
-      const fullName = googleUser.displayName || email.split('@')[0];
+      const fullName = googleUser.displayName || email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       const avatar = googleUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`;
       const prefs = userPreferencesService.getUserPreferences(email);
 
@@ -269,7 +244,7 @@ class AuthService {
         fullName,
         role: 'Operations Lead',
         avatar,
-        organization: 'RC Solutions Enterprise Systems',
+        organization: '',
         authenticated: true,
         biometricsEnabled: true,
         lastLogin: 'Just now',
@@ -283,16 +258,17 @@ class AuthService {
       console.warn('[AuthService] Google Sign-In notice:', err?.code, err?.message);
 
       // In browser preview sandbox, iframe, unauthorized domain, blocked/closed popup, or mobile environments:
-      // Gracefully authenticate with verified operator profile (rcsoulutions@gmail.com) so the user is never locked out
+      // Gracefully authenticate so the user is never locked out
       const fallbackEmail = targetEmail;
       const prefs = userPreferencesService.getUserPreferences(fallbackEmail);
+      const name = fallbackEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       const fallbackUser: User = {
         id: `usr_google_${Date.now()}`,
         email: fallbackEmail,
-        fullName: 'RC Solutions Lead Operator',
+        fullName: name || 'Operator Lead',
         role: 'Operations Lead',
         avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(fallbackEmail)}`,
-        organization: 'RC Solutions Enterprise Systems',
+        organization: '',
         authenticated: true,
         biometricsEnabled: true,
         lastLogin: 'Just now',
@@ -325,25 +301,26 @@ class AuthService {
 
     // Identify user to log into
     let targetEmail = enrolledInfo.userEmail;
+    const users = this.getRegisteredUsers();
     if (!targetEmail) {
-      // If not specifically enrolled yet, log into the primary registered user or lead operator
-      const users = this.getRegisteredUsers();
-      targetEmail = users[0]?.email || 'rcsoulutions@gmail.com';
+      if (users.length === 0) {
+        throw new Error('No user registered yet. Please create an account or sign in with Google first.');
+      }
+      targetEmail = users[0].email;
       // Enroll this user so subsequent logins are instant
       await biometricService.enrollBiometrics(targetEmail, users[0]?.fullName || 'Lead Operator');
     }
 
-    const users = this.getRegisteredUsers();
     let matchedUser = users.find(u => u.email.toLowerCase() === targetEmail.toLowerCase());
 
     if (!matchedUser) {
       matchedUser = {
         id: `usr_bio_${Date.now()}`,
         email: targetEmail,
-        fullName: enrolledInfo.userName || 'Biometric Operator',
+        fullName: enrolledInfo.userName || targetEmail.split('@')[0].toUpperCase(),
         role: 'Operations Lead',
         avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(targetEmail)}`,
-        organization: 'RC Solutions Operations',
+        organization: '',
         authenticated: true,
         biometricsEnabled: true,
         lastLogin: 'Just now',

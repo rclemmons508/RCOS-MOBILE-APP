@@ -50,7 +50,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regRole, setRegRole] = useState<User['role']>('Operations Lead');
-  const [regOrganization, setRegOrganization] = useState('RC Solutions Enterprise');
+  const [regOrganization, setRegOrganization] = useState('');
   const [regIndustry, setRegIndustry] = useState('Commercial HVAC');
   const [regAutoDispatch, setRegAutoDispatch] = useState<'all' | 'critical' | 'manual'>('all');
   const [regRingerMode, setRegRingerMode] = useState<'sound' | 'vibrate' | 'silent'>('sound');
@@ -236,33 +236,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             </svg>
             <span>Continue with Google</span>
           </button>
-
-          {/* Dedicated Fast Mobile 1-Tap Login for Phone Users */}
-          <button
-            type="button"
-            onClick={() => handleGoogleLogin('rcsoulutions@gmail.com')}
-            disabled={isLoading}
-            className="w-full py-2.5 px-3 rounded-2xl bg-zinc-950/80 hover:bg-zinc-900 border border-emerald-500/40 hover:border-emerald-400 text-white font-medium text-xs flex items-center justify-between shadow-sm transition cursor-pointer active:scale-98"
-          >
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <div className="text-left">
-                <span className="text-[10px] text-zinc-400 block leading-tight">Mobile 1-Tap Google Access:</span>
-                <span className="text-[11px] font-mono text-emerald-400 font-semibold truncate max-w-[210px] block">rcsoulutions@gmail.com</span>
-              </div>
-            </div>
-            <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 shrink-0">
-              Sign In
-            </span>
-          </button>
         </div>
-
-        {/* Demo Mode Security Banner if enabled */}
-        {isDemoAuthEnabled && (
-          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono text-center font-bold">
-            DEMO MODE - This is development data only
-          </div>
-        )}
 
         {/* PRIMARY AUTH OPTION 2: BIOMETRIC LOGIN */}
         <div className="relative">
@@ -363,7 +337,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     required
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="operator@rcsolutions.com"
+                    placeholder="you@yourcompany.com"
                     className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
                   />
                 </div>
@@ -403,7 +377,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 </label>
                 <button
                   type="button"
-                  onClick={() => setErrorMsg('Enter your email and click Sign In to access your account.')}
+                  onClick={() => setErrorMsg('Enter your email and password to sign in, or click Register Account to create one.')}
                   className="text-zinc-400 hover:text-white cursor-pointer text-[10px]"
                 >
                   Forgot password?
@@ -427,28 +401,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   </>
                 )}
               </button>
-
-              {/* Quick Preset Accounts (Only in Demo Mode) */}
-              {isDemoAuthEnabled && (
-                <div className="pt-2 border-t border-zinc-900">
-                  <span className="text-[10px] text-amber-400 font-mono block mb-1.5 font-bold">
-                    Quick Demo Accounts (Dev Only):
-                  </span>
-                  <div className="flex gap-2">
-                    {SEED_USERS.map((u) => (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => handleQuickSeedLogin(u)}
-                        className="flex-1 p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-left transition cursor-pointer"
-                      >
-                        <div className="text-[11px] font-bold text-white truncate">{u.fullName}</div>
-                        <div className="text-[9px] text-lime-400 font-mono truncate">{u.role}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </form>
           )}
 
@@ -464,7 +416,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     required
                     value={regFullName}
                     onChange={(e) => setRegFullName(e.target.value)}
-                    placeholder="Marcus Vance"
+                    placeholder="e.g. Alex Morgan"
                     className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none"
                   />
                 </div>
@@ -479,7 +431,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     required
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
-                    placeholder="marcus@rcsolutions.com"
+                    placeholder="you@yourcompany.com"
                     className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
                   />
                 </div>
@@ -542,7 +494,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     type="text"
                     value={regOrganization}
                     onChange={(e) => setRegOrganization(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
+                    placeholder="Your Company Name"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none"
                   />
                 </div>
               </div>
