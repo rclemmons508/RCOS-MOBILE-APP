@@ -36,18 +36,20 @@ app.use((req: Request, res: Response, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '1; mode=block');
 
-  const origin = req.headers.origin as string;
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'https://localhost',
-    'capacitor://localhost',
-    process.env.APP_URL,
-    'https://ais-dev-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app',
-    'https://ais-pre-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app'
-  ].filter(Boolean);
+  const origin = req.headers.origin as string | undefined;
+  const allowedOrigins = new Set(
+    [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://localhost',
+      'capacitor://localhost',
+      process.env.APP_URL,
+      'https://ais-dev-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app',
+      'https://ais-pre-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app'
+    ].filter((value): value is string => Boolean(value))
+  );
 
-  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.run.app') || origin.includes('google'))) {
+  if (origin && origin !== 'null' && allowedOrigins.has(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
