@@ -41,6 +41,7 @@ import { SettingsTab } from './components/tabs/SettingsTab';
 import { GmailTab } from './components/tabs/GmailTab';
 import { GeminiChatView } from './components/GeminiChatView';
 import { AiTeamView } from './components/AiTeamView';
+import { ApprovalQueueView } from './components/ApprovalQueueView';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
 import { NotificationPreferencesModal } from './components/notifications/NotificationPreferencesModal';
@@ -101,6 +102,7 @@ export default function App() {
   const [calls, setCalls] = useState<PhoneCall[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [actions, setActions] = useState<ActionRecord[]>([]);
   const [metrics, setMetrics] = useState<SystemMetric>({
     agentsActive: 4,
     latencyMs: 14,
@@ -477,6 +479,33 @@ export default function App() {
     }
   };
 
+  const handleApprovalDecision = async (
+    actionId: string,
+    decision: 'approved' | 'rejected' | 'edited',
+    editedContent?: string,
+    note?: string
+  ) => {
+    setActions((prev) =>
+      prev.map((act) =>
+        act.id === actionId
+          ? {
+              ...act,
+              status: decision === 'rejected' ? 'rejected' : 'approved',
+              reviewedAt: new Date().toISOString(),
+              reviewerNote: note,
+              approvalDecision: {
+                decision,
+                decidedAt: new Date().toISOString(),
+                reviewerNote: note,
+                ...(editedContent ? { editedContent } : {}),
+              },
+              ...(editedContent ? { currentDraftContent: editedContent } : {}),
+            }
+          : act
+      )
+    );
+  };
+
   const handleSimulateInboundCall = () => {
     const newCall: PhoneCall = {
       id: 'call-' + Date.now(),
@@ -754,6 +783,14 @@ export default function App() {
               onAddClient={handleAddClient}
               onEditClient={handleEditClient}
               onDeleteClient={handleDeleteClient}
+            />
+          )}
+
+          {activeTab === 'approvals' && (
+            <ApprovalQueueView
+              business={activeBusiness}
+              actions={actions}
+              onDecision={handleApprovalDecision}
             />
           )}
 
