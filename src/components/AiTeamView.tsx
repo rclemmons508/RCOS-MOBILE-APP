@@ -107,6 +107,9 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   const [editApprovalAmount, setEditApprovalAmount] = useState<number>(
     selectedEmployee.maxApprovalAmount || 1500
   );
+  const [editTone, setEditTone] = useState<'professional' | 'friendly' | 'direct' | 'technical'>(
+    selectedEmployee.tone || 'professional'
+  );
   const [editEscalatesTo, setEditEscalatesTo] = useState(selectedEmployee.escalatesTo || 'Business Owner');
   const [editRules, setEditRules] = useState<string[]>(
     selectedEmployee.customRules || ['Always verify client identity and safety protocol.']
@@ -122,6 +125,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       setEditCoreJob(selectedEmployee.customJobScope || selectedEmployee.coreJob);
       setEditAutonomy(selectedEmployee.autonomyLevel || 'autonomous');
       setEditApprovalAmount(selectedEmployee.maxApprovalAmount || 1500);
+      setEditTone(selectedEmployee.tone || 'professional');
       setEditEscalatesTo(selectedEmployee.escalatesTo || 'Business Owner');
       setEditRules(selectedEmployee.customRules || ['Always verify client identity and safety protocol.']);
     }
@@ -229,6 +233,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       coreJob: editCoreJob,
       autonomyLevel: editAutonomy,
       maxApprovalAmount: Number(editApprovalAmount),
+      tone: editTone,
       escalatesTo: editEscalatesTo,
       customRules: editRules
     });
@@ -647,6 +652,38 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                     </div>
                     <div className="text-[10px] text-zinc-500">Operator Only</div>
                   </button>
+                </div>
+              </div>
+
+              {/* Tone of Voice — RCOS brand configuration per assistant */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+                  Tone of Voice
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {([
+                    { id: 'professional', label: 'Professional', hint: 'Polished & precise' },
+                    { id: 'friendly', label: 'Friendly', hint: 'Warm & reassuring' },
+                    { id: 'direct', label: 'Direct', hint: 'Short & persuasive' },
+                    { id: 'technical', label: 'Technical', hint: 'Step-by-step' },
+                  ] as const).map((toneOpt) => (
+                    <button
+                      key={toneOpt.id}
+                      type="button"
+                      onClick={() => {
+                        haptic.light();
+                        setEditTone(toneOpt.id);
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        editTone === toneOpt.id
+                          ? 'bg-lime-500/10 border-lime-500 text-white'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="font-bold text-xs">{toneOpt.label}</div>
+                      <div className="text-[10px] text-zinc-500">{toneOpt.hint}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
