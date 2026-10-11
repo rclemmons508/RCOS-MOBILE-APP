@@ -3,6 +3,7 @@ import twilio from 'twilio';
 import { db } from './db';
 import { executeGeminiWithFallback, PRIMARY_MODEL } from './gemini';
 import { ActionRecord, PhoneCall, VoicemailRecord } from '../src/types';
+import { requireAuth } from './auth';
 
 export const telephonyRouter = Router();
 
@@ -24,7 +25,7 @@ function getTwilioClient() {
  * GET /api/twilio/config
  * Returns active telephony status, forwarding numbers, and webhook setup
  */
-telephonyRouter.get('/config', (req: Request, res: Response) => {
+telephonyRouter.get('/config', requireAuth, (req: Request, res: Response) => {
   const config = db.getTelephonyConfig();
   res.json({
     ...config,
@@ -37,7 +38,7 @@ telephonyRouter.get('/config', (req: Request, res: Response) => {
  * POST /api/twilio/config
  * Updates telephony routing rules and real department forwarding phone numbers
  */
-telephonyRouter.post('/config', (req: Request, res: Response) => {
+telephonyRouter.post('/config', requireAuth, (req: Request, res: Response) => {
   const updated = db.saveTelephonyConfig(req.body);
   res.json({
     success: true,
@@ -50,7 +51,7 @@ telephonyRouter.post('/config', (req: Request, res: Response) => {
  * POST /api/twilio/test-carrier
  * Tests Twilio credentials against the live Twilio API
  */
-telephonyRouter.post('/test-carrier', async (req: Request, res: Response) => {
+telephonyRouter.post('/test-carrier', requireAuth, async (req: Request, res: Response) => {
   const client = getTwilioClient();
   const config = db.getTelephonyConfig();
 
@@ -635,7 +636,7 @@ telephonyRouter.post('/voice/voicemail-transcription', (req: Request, res: Respo
  * POST /api/twilio/voice/outbound-call
  * Place a real outbound telephone call to any real cell phone or landline
  */
-telephonyRouter.post('/voice/outbound-call', async (req: Request, res: Response) => {
+telephonyRouter.post('/voice/outbound-call', requireAuth, async (req: Request, res: Response) => {
   const { toPhone, callerTopic = 'Customer Service Follow-up', simulateFallback = false } = req.body;
   if (!toPhone) {
     return res.status(400).json({ error: 'Target phone number is required (e.g. +14155552671)' });

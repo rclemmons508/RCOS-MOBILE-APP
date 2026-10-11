@@ -20,8 +20,11 @@ import { INDUSTRY_PRESETS } from './src/data/presets';
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
+import { initAuth, requireAuth } from './server/auth';
 
 dotenv.config();
+// Verify Firebase login tokens on API routes (gate activates once FIREBASE_SERVICE_ACCOUNT is set)
+initAuth();
 // Disable HMR to eliminate WebSocket connection errors in browser and container
 process.env.DISABLE_HMR = 'true';
 
@@ -93,8 +96,17 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
 const aiRateLimiter = createRateLimiter(60, 60000); // 60 req / min
 const publicIntakeRateLimiter = createRateLimiter(30, 60000); // 30 req / min
 
-// Mount Twilio PSTN Telephony Router
-app.use('/api/twilio', telephonyRouter);
+// Telephony provider: 'twilio' mounts the Twilio PSTN router. Anything else parks it —
+// testing/review builds use the in-app WebRTC voice call instead (see /api/voice/token).
+// Set TELEPHONY_PROVIDER=twilio in the environment to re-enable the carrier.
+const telephonyProvider = (process.env.TELEPHONY_PROVIDER || 'webrtc').toLowerCase();
+if (telephonyProvider === 'twilio') {
+  app.use('/api/twilio', telephonyRouter);
+} else {
+  app.use('/api/twilio', (_req: Request, res: Response) =>
+    res.status(503).json({ error: 'Phone carrier is parked (TELEPHONY_PROVIDER is not "twilio"). Use the in-app voice call instead.' })
+  );
+}
 
 // ==================== API ROUTES ====================
 
@@ -114,6 +126,72 @@ app.get('/api/firebase-config', (_req: Request, res: Response) => {
     firestoreDatabaseId: dbId,
     storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'rcos-mobile.firebasestorage.app'
   });
+});
+
+// ---- Login gate ----
+// Every /api route below this line requires a valid Firebase login token,
+// which the phone app already attaches (see src/lib/api.ts).
+// Public exceptions (registered above or skipped here):
+//   /api/health, /api/firebase-config, and the public intake form
+//   POST /api/business/:id/requests (customers must be able to reach you without an account).
+app.use('/api', (req: Request, res: Response, next) => {
+  if (req.path === '/api/health' || req.path === '/api/firebase-config') return next();
+  if (req.method === 'POST' && /^\/api\/business\/[^/]+\/requests$/.test(req.path)) return next();
+  // The voice-agent worker authenticates with VOICE_AGENT_SECRET, not a user token.
+  if (req.path === '/api/voice/routing-log') return next();
+  return requireAuth(req, res, next);
+});
+
+// WebRTC voice: mint a LiveKit access token for an AI receptionist call.
+// The voice-agent worker ('rcos-receptionist') is dispatched into the new room automatically.
+app.post('/api/voice/token', async (req: Request, res: Response) => {
+  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+    return res.status(503).json({ error: 'Voice calling is not configured yet (LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET).' });
+  }
+  try {
+    const { AccessToken, RoomServiceClient } = await import('livekit-server-sdk');
+    const user = (req as any).user || {};
+    const businessId = typeof req.body?.businessId === 'string' ? req.body.businessId : 'default';
+    const roomName = `receptionist-${businessId}-${Date.now()}`;
+    const roomClient = new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+    await roomClient.createRoom({
+      name: roomName,
+      emptyTimeout: 60,
+      departureTimeout: 20,
+      maxParticipants: 2,
+      metadata: JSON.stringify({ businessId }),
+      agents: [{ agentName: 'rcos-receptionist' }],
+    });
+    const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+      identity: `caller-${user.uid || 'guest'}-${Date.now()}`,
+      name: user.email || 'Customer call',
+    });
+    token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+    res.json({ token: await token.toJwt(), url: LIVEKIT_URL, room: roomName });
+  } catch (err: any) {
+    console.error('[voice] token mint failed:', err?.message || err);
+    res.status(500).json({ error: 'Could not start the voice call. Please try again.' });
+  }
+});
+
+// WebRTC voice: routing decisions logged by the voice-agent worker.
+// The worker proves it's allowed to write here with a shared secret
+// (VOICE_AGENT_SECRET), since it has no Firebase user token.
+const voiceRoutingLog: any[] = [];
+app.post('/api/voice/routing-log', (req: Request, res: Response) => {
+  const secret = process.env.VOICE_AGENT_SECRET;
+  if (!secret || req.headers['x-voice-secret'] !== secret) {
+    return res.status(401).json({ error: 'Not allowed.' });
+  }
+  const entry = { ...req.body, at: new Date().toISOString() };
+  voiceRoutingLog.unshift(entry);
+  if (voiceRoutingLog.length > 200) voiceRoutingLog.pop();
+  console.log('[voice] routing:', entry.department, '-', entry.summary);
+  res.json({ ok: true });
+});
+app.get('/api/voice/routing-log', (_req: Request, res: Response) => {
+  res.json(voiceRoutingLog);
 });
 
 // Businesses
