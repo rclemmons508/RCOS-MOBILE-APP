@@ -107,6 +107,10 @@ export default defineAgent({
 });
 
 // Receives the routed call's business id via the room metadata set in /api/voice/token.
+export function startWorker() {
+  cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url), agentName: AGENT_NAME }));
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  cli.runApp(new WorkerOptions({ agent: import.meta.filename, agentName: AGENT_NAME }));
+  startWorker();
 }

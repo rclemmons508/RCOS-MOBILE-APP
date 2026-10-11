@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "start": "tsx server.ts",
+    "start": "tsx start.ts",
     "voice-agent": "tsx server/voice-agent.ts"
   },
   "dependencies": {
