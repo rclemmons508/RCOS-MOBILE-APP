@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 
-// Production API URL fallback (deployed Cloud Run endpoint)
-const DEFAULT_PRODUCTION_API_URL = 'https://ais-pre-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app';
+// Production API URL fallback (Railway-hosted RCOS server)
+const DEFAULT_PRODUCTION_API_URL = 'https://rcos-mobile-app-production.up.railway.app';
 
 /**
  * Resolves the appropriate API base URL depending on platform:

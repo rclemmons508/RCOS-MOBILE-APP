@@ -73,7 +73,7 @@ The project maintains strict separation between **Client-Safe** configuration an
    In the Firebase Console (`Authentication > Settings > Authorized Domains`), verify that the following are listed:
    - `localhost`
    - `rcos-mobile.firebaseapp.com`
-   - Your production domain (e.g. `ais-pre-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app`)
+   - Your production domain (e.g. `rcos-mobile-app-production.up.railway.app`)
 
 ---
 

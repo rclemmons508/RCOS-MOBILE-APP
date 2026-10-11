@@ -48,6 +48,7 @@ app.use((req: Request, res: Response, next) => {
       'capacitor://localhost',
       process.env.APP_URL,
       'https://ais-dev-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app',
+      'https://rcos-mobile-app-production.up.railway.app',
       'https://ais-pre-fft6xjt5rur3koiv4vsfjv-548256682184.us-west2.run.app'
     ].filter((value): value is string => Boolean(value))
   );
