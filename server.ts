@@ -178,7 +178,9 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
       departureTimeout: 20,
       maxParticipants: 2,
       metadata: JSON.stringify({ businessId }),
-      agents: [{ agentName: 'rcos-receptionist' }],
+      // The LiveKit API only needs agentName to dispatch the receptionist worker;
+      // the installed SDK types mark the rest of RoomAgentDispatch required.
+      agents: [{ agentName: 'rcos-receptionist' }] as any,
     });
     const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
       identity: `caller-${user.uid || 'guest'}-${Date.now()}`,
