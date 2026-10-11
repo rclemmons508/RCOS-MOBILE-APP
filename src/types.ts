@@ -249,22 +249,16 @@ export interface IndustryOptimizationSuggestion {
  * MOBILE RCOS APPLICATION ARCHITECTURE TYPES
  * ------------------------------------------------------------- */
 
-export type TabType = 
-  | 'dashboard' 
-  | 'phone' 
-  | 'jobs' 
-  | 'clients' 
+export type TabType =
+  | 'dashboard'
+  | 'phone'
+  | 'jobs'
+  | 'clients'
   | 'chat'
   | 'gmail'
-  | 'more' 
   | 'settings'
-  | 'activity'
   | 'approvals'
-  | 'team'
-  | 'jobpacks'
-  | 'portal'
-  | 'automation'
-  | 'docs';
+  | 'team';
 
 export interface ChatMessage {
   id: string;

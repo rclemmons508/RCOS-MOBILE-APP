@@ -53,8 +53,6 @@ interface SettingsTabProps {
   onToggleAiAssistant: () => void;
   industryProfile: string;
   onUpdateIndustry: (industry: string) => void;
-  telemetryIntervalMs: number;
-  onUpdateTelemetryInterval: (interval: number) => void;
   autoDispatchThreshold: 'all' | 'critical' | 'high' | 'manual';
   onUpdateAutoDispatchThreshold: (threshold: 'all' | 'critical' | 'high' | 'manual') => void;
   notifPreferences: NotificationPreferences;
@@ -79,8 +77,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onToggleAiAssistant,
   industryProfile,
   onUpdateIndustry,
-  telemetryIntervalMs,
-  onUpdateTelemetryInterval,
   autoDispatchThreshold,
   onUpdateAutoDispatchThreshold,
   notifPreferences,

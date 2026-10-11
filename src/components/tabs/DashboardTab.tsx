@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Agent, PhoneCall, Job, SystemMetric, TabType, TelemetryPoint, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
+import { PhoneCall, Job, SystemMetric, TabType, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
 import { 
   PhoneCall as PhoneIcon, 
   Briefcase, 
@@ -28,7 +28,6 @@ import { haptic } from '../../utils/haptics';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
 
 interface DashboardTabProps {
-  agents: Agent[];
   calls: PhoneCall[];
   jobs: Job[];
   metrics: SystemMetric;
@@ -56,7 +55,6 @@ interface DashboardTabProps {
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
-  agents,
   calls,
   jobs,
   metrics,
