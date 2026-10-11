@@ -31,7 +31,6 @@ interface DashboardTabProps {
   calls: PhoneCall[];
   jobs: Job[];
   metrics: SystemMetric;
-  telemetrySeries?: TelemetryPoint[];
   currentUser: User | null;
   unreadNotifCount: number;
   businessName?: string;
@@ -547,7 +546,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             )}
           </div>
         ) : (
-          <div className="space-y-2">
           <div className="space-y-2">
             {customerRequests.slice(0, 5).map((req) => {
               const sla = slaFor(req);

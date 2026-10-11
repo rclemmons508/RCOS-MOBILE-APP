@@ -39,7 +39,7 @@ import {
   SmartphoneNfc,
   Wrench,
   ArrowRight,
-  X
+  X,
   History,
 } from 'lucide-react';
 
