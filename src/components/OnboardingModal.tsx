@@ -204,26 +204,27 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [detectingStageIndex, setDetectingStageIndex] = useState(0);
 
   // AI Detected & Deciphered Specifications
-  const [detectedIndustryId, setDetectedIndustryId] = useState<string>('plumbing');
-  const [detectedIndustryName, setDetectedIndustryName] = useState<string>('Plumbing & Pipe Restoration');
+  const [detectedIndustryId, setDetectedIndustryId] = useState<string>('hvac');
+  const [detectedIndustryName, setDetectedIndustryName] = useState<string>('HVAC Services');
   const [confidenceScore, setConfidenceScore] = useState<number>(0.96);
   const [agentReasoning, setAgentReasoning] = useState<string>(
-    'AI detected extensive plumbing, pipe restoration, and emergency drain terminology from your company profile.'
+    'AI detected extensive heating, cooling, and ventilation terminology from your company profile.'
   );
   const [keyInsights, setKeyInsights] = useState<string[]>([
-    'Identified 24/7 emergency dispatch service requirement',
+    'Identified seasonal tune-up and emergency repair demand',
     'Detected field technician workflow with safety pressure limits',
-    'Optimized for rapid quote generation and instant voice answering'
+    'Optimized for rapid diagnostics and instant voice answering'
   ]);
   const [detectedServices, setDetectedServices] = useState<string[]>([
-    'Emergency Leak Repair',
-    'Water Heater Replacement',
-    'Drain Hydro-Jetting',
-    'Sewer Camera Inspection'
+    'AC Diagnostic & Repair',
+    'Furnace Seasonal Tune-up',
+    'Heat Pump System Install',
+    'Duct Inspection & Air Quality',
+    'Thermostat Smart Setup'
   ]);
-  const [brandTone, setBrandTone] = useState<string>('Urgent, certified, dependable, and transparent');
+  const [brandTone, setBrandTone] = useState<string>('Technical, reassuring, precise, and safety-rigorous');
   const [dollarThreshold, setDollarThreshold] = useState<number>(1250);
-  const [technicianRoleName, setTechnicianRoleName] = useState<string>('Journeyman Plumber');
+  const [technicianRoleName, setTechnicianRoleName] = useState<string>('HVAC Certified Technician');
 
   // New service tag input for review step
   const [newServiceTag, setNewServiceTag] = useState('');
@@ -233,14 +234,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [presetSearch, setPresetSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  // Active AI Employees configured for this trade
-  const [activeEmployees, setActiveEmployees] = useState<Record<string, boolean>>({
-    executive_assistant: true,   // Operations & Safety Chief
-    customer_service: true,      // 24/7 Voice AI Phone Receptionist
-    operations: true,            // Smart Job Dispatcher & Routing
-    sales: true,                 // Estimator & Proposal Drafter
-    technician: true,            // Trade Specialist with safety checklists
-    finance: true                // Invoicing & Ledger Auditor
+  // Active AI Employees configured for this trade — defaults follow the industry preset
+  const [activeEmployees, setActiveEmployees] = useState<Record<string, boolean>>(() => {
+    const fallback = INDUSTRY_PRESETS.find((p) => p.id === 'hvac');
+    const map: Record<string, boolean> = {};
+    (fallback?.suggestedActiveEmployees || [
+      'executive_assistant', 'customer_service', 'operations', 'sales', 'technician', 'finance',
+    ]).forEach((id) => { map[id] = true; });
+    return map;
   });
 
   // Dynamic detecting animation steps
@@ -469,12 +470,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
       if (result && result.industryId) {
         const matched = INDUSTRY_PRESETS.find(p => p.id === result.industryId) || matchPresetLocally(rawContent);
-        
-        setDetectedIndustryId(matched.id);
-        setDetectedIndustryName(matched.name);
+
+        // Load the full industry preset first (services, tone, assistants), then apply AI refinements.
+        applyPreset(matched);
         setConfidenceScore(result.confidence || 0.96);
         setAgentReasoning(result.reasoning || `Deciphered from business profile: ${matched.description}`);
-        
+
         if (result.businessName && !businessName.trim()) {
           setBusinessName(result.businessName);
         } else if (!businessName.trim()) {
@@ -483,38 +484,28 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
         if (Array.isArray(result.extractedServices) && result.extractedServices.length > 0) {
           setDetectedServices(result.extractedServices);
-        } else {
-          setDetectedServices(matched.defaultServices);
         }
 
         if (Array.isArray(result.keyInsights) && result.keyInsights.length > 0) {
           setKeyInsights(result.keyInsights);
         }
 
-        setBrandTone(result.recommendedTone || matched.recommendedTone);
-        setTechnicianRoleName(result.technicianRoleName || matched.technicianRoleName || 'Field Specialist');
+        if (result.recommendedTone) setBrandTone(result.recommendedTone);
+        if (result.technicianRoleName) setTechnicianRoleName(result.technicianRoleName);
         setDollarThreshold(typeof result.dollarThreshold === 'number' ? result.dollarThreshold : 1250);
       } else {
         // Local fallback
         const local = matchPresetLocally(rawContent);
-        setDetectedIndustryId(local.id);
-        setDetectedIndustryName(local.name);
+        applyPreset(local);
         setConfidenceScore(0.92);
         setAgentReasoning(`Matched from operational text: ${local.description}`);
-        setDetectedServices(local.defaultServices);
-        setBrandTone(local.recommendedTone);
-        setTechnicianRoleName(local.technicianRoleName || 'Field Specialist');
       }
     } catch (err) {
       console.warn('AI Onboarding Agent fallback:', err);
       const local = matchPresetLocally(rawContent);
-      setDetectedIndustryId(local.id);
-      setDetectedIndustryName(local.name);
+      applyPreset(local);
       setConfidenceScore(0.90);
       setAgentReasoning(`Matched core operational traits: ${local.description}`);
-      setDetectedServices(local.defaultServices);
-      setBrandTone(local.recommendedTone);
-      setTechnicianRoleName(local.technicianRoleName || 'Field Specialist');
     } finally {
       // Simulate smooth step progression completion
       setTimeout(async () => {
@@ -525,14 +516,22 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     }
   };
 
-  // User manually switches preset if desired
-  const handleSelectDifferentPreset = (preset: typeof INDUSTRY_PRESETS[0]) => {
-    haptic.selection();
+  // Apply a full industry preset: services, brand tone, technician title, and which AI assistants are on.
+  const applyPreset = (preset: typeof INDUSTRY_PRESETS[0]) => {
     setDetectedIndustryId(preset.id);
     setDetectedIndustryName(preset.name);
     setDetectedServices(preset.defaultServices);
     setBrandTone(preset.recommendedTone);
     setTechnicianRoleName(preset.technicianRoleName || 'Field Specialist');
+    const empMap: Record<string, boolean> = {};
+    preset.suggestedActiveEmployees.forEach((id) => { empMap[id] = true; });
+    setActiveEmployees(empMap);
+  };
+
+  // User manually switches preset if desired
+  const handleSelectDifferentPreset = (preset: typeof INDUSTRY_PRESETS[0]) => {
+    haptic.selection();
+    applyPreset(preset);
     setAgentReasoning(`Manually verified & selected by user: Configured for ${preset.name}.`);
     setConfidenceScore(1.0);
     setIsChangingPreset(false);
