@@ -78,7 +78,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
     } else if (notif.module === 'CRM') {
       onNavigateTab('clients');
     } else {
-      onNavigateTab('more');
+      onNavigateTab('dashboard');
     }
     onClose();
   };
