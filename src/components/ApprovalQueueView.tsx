@@ -16,12 +16,14 @@ import {
   ClipboardList
 } from 'lucide-react';
 import { ActionRecord, BusinessAccount } from '../types';
+import { apiFetch } from '../lib/api';
 import { AI_EMPLOYEES } from '../data/employees';
 
 interface ApprovalQueueViewProps {
   business: BusinessAccount;
   actions: ActionRecord[];
   onDecision: (actionId: string, decision: 'approved' | 'rejected' | 'edited', editedContent?: string, note?: string) => Promise<void>;
+  onRefresh: () => void;
 }
 
 const SectionHeader: React.FC<{ icon: React.ReactNode; title: string; subtitle: string; count: number }> = ({
@@ -46,11 +48,201 @@ const SectionHeader: React.FC<{ icon: React.ReactNode; title: string; subtitle: 
   </div>
 );
 
+const QuoteInvoiceModal: React.FC<{
+  mode: 'quote' | 'invoice';
+  business: BusinessAccount;
+  onClose: () => void;
+  onCreated: () => void;
+}> = ({ mode, business, onClose, onCreated }) => {
+  const [clientName, setClientName] = useState('');
+  const [serviceName, setServiceName] = useState(business.services?.[0] || '');
+  const [amount, setAmount] = useState('');
+  const [details, setDetails] = useState('');
+  const [dueDays, setDueDays] = useState('15');
+  const [hours, setHours] = useState('3');
+  const [materials, setMaterials] = useState('250');
+  const [isEmergency, setIsEmergency] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isQuote = mode === 'quote';
+  const inputCls =
+    'w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500';
+
+  const handleCalculate = async () => {
+    setCalculating(true);
+    setError(null);
+    try {
+      const est = await apiFetch<any>('/api/billing/estimate', {
+        method: 'POST',
+        body: JSON.stringify({
+          category: business.industry || 'General',
+          hours: Number(hours) || 0,
+          materials: Number(materials) || 0,
+          isEmergency,
+        }),
+      });
+      if (est && typeof est.total === 'number') setAmount(String(est.total));
+    } catch (e: any) {
+      setError(e?.message || 'Estimate failed. Enter the amount manually.');
+    } finally {
+      setCalculating(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    const amt = Number(amount);
+    if (!clientName.trim() || !amt || amt <= 0) {
+      setError('Add a client name and an amount over $0.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const endpoint = isQuote ? '/api/phone/request-quote' : '/api/phone/request-invoice';
+      const body = isQuote
+        ? {
+            clientName: clientName.trim(),
+            serviceName: serviceName.trim() || 'Service',
+            estimatedAmount: amt,
+            details: details.trim(),
+            businessId: business.id,
+          }
+        : {
+            clientName: clientName.trim(),
+            serviceName: serviceName.trim() || 'Service',
+            invoiceAmount: amt,
+            dueDays: Number(dueDays) || 15,
+            details: details.trim(),
+            businessId: business.id,
+          };
+      await apiFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
+      onCreated();
+      onClose();
+    } catch (e: any) {
+      setError(e?.message || 'Could not save. Check your connection and try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl bg-zinc-950 border border-zinc-800 p-5 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            {isQuote ? <FileText className="w-4 h-4 text-lime-400" /> : <DollarSign className="w-4 h-4 text-emerald-400" />}
+            <span>{isQuote ? 'New Quote' : 'New Invoice'}</span>
+          </h3>
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-white p-1 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-[11px] text-zinc-400">
+          {isQuote
+            ? 'Creates a quote held for your approval in the queue below.'
+            : 'Creates an invoice held for your approval in the queue below.'}
+        </p>
+
+        <div className="space-y-3">
+          <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name *" className={inputCls} />
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Service</label>
+            {business.services && business.services.length > 0 ? (
+              <select value={serviceName} onChange={(e) => setServiceName(e.target.value)} className={inputCls}>
+                {business.services.map((sv) => (
+                  <option key={sv} value={sv}>{sv}</option>
+                ))}
+              </select>
+            ) : (
+              <input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder="Service" className={inputCls} />
+            )}
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
+              Amount (USD) *
+            </label>
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              inputMode="decimal"
+              className={`${inputCls} font-mono text-sm`}
+            />
+          </div>
+
+          {isQuote && (
+            <div className="p-3 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-2">
+              <div className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">Estimate helper</div>
+              <div className="grid grid-cols-2 gap-2">
+                <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="Hours" inputMode="decimal" className={inputCls} />
+                <input value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="Materials $" inputMode="decimal" className={inputCls} />
+              </div>
+              <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                <input type="checkbox" checked={isEmergency} onChange={(e) => setIsEmergency(e.target.checked)} className="accent-lime-500 w-4 h-4" />
+                <span>Emergency rate</span>
+              </label>
+              <button
+                type="button"
+                onClick={handleCalculate}
+                disabled={calculating}
+                className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-xs font-bold text-white transition cursor-pointer"
+              >
+                {calculating ? 'Calculating…' : 'Calculate amount'}
+              </button>
+            </div>
+          )}
+
+          {!isQuote && (
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Payment due in (days)</label>
+              <input value={dueDays} onChange={(e) => setDueDays(e.target.value)} inputMode="numeric" className={inputCls} />
+            </div>
+          )}
+
+          <textarea
+            value={details}
+            onChange={(e) => setDetails(e.target.value)}
+            placeholder="Notes (scope, terms…)"
+            rows={3}
+            className={`${inputCls} font-sans`}
+          />
+        </div>
+
+        {error && (
+          <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2">{error}</p>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-xs font-bold text-zinc-300 hover:text-white transition cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-black text-xs font-extrabold transition cursor-pointer"
+          >
+            {submitting ? 'Saving…' : isQuote ? 'Create Quote' : 'Create Invoice'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
   business,
   actions,
-  onDecision
+  onDecision,
+  onRefresh
 }) => {
+  const [modalMode, setModalMode] = useState<'quote' | 'invoice' | null>(null);
   const pendingActions = actions.filter(a => a.status === 'awaiting_approval');
 
   // Vision-aligned grouping: quotes & proposals need sign-off; escalations need the owner's call.
@@ -342,7 +534,33 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
             Quotes waiting for your sign-off, and escalations that need your call.
           </p>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setModalMode('quote')}
+            className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>New Quote</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalMode('invoice')}
+            className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-bold text-white flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>New Invoice</span>
+          </button>
+        </div>
       </div>
+      {modalMode && (
+        <QuoteInvoiceModal
+          mode={modalMode}
+          business={business}
+          onClose={() => setModalMode(null)}
+          onCreated={onRefresh}
+        />
+      )}
 
       {pendingActions.length === 0 ? (
         <div className="p-12 text-center rounded-2xl bg-[#0e1118] border border-[#1f2638] space-y-3">

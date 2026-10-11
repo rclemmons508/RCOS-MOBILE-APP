@@ -318,29 +318,27 @@ export default function App() {
 
   // Approvals: load the server's action queue (quotes, escalations) for this business.
   // Local emergency escalations (id starts with local-emg-) are merged in and kept.
-  useEffect(() => {
+  const refetchActions = async () => {
     const bizId = businessAccount?.id;
     if (!bizId) return;
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const serverActions = await apiFetch<ActionRecord[]>(`/api/business/${bizId}/actions`);
-        if (cancelled || !Array.isArray(serverActions)) return;
-        setActions((prev) => {
-          const localOnly = prev.filter((x) => x.id.startsWith('local-emg-'));
-          const serverIds = new Set(serverActions.map((x) => x.id));
-          return [...serverActions, ...localOnly.filter((x) => !serverIds.has(x.id))];
-        });
-      } catch {
-        /* offline: keep whatever we have */
-      }
-    };
-    load();
-    const id = setInterval(load, 30000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
+    try {
+      const serverActions = await apiFetch<ActionRecord[]>(`/api/business/${bizId}/actions`);
+      if (!Array.isArray(serverActions)) return;
+      setActions((prev) => {
+        const localOnly = prev.filter((x) => x.id.startsWith('local-emg-'));
+        const serverIds = new Set(serverActions.map((x) => x.id));
+        return [...serverActions, ...localOnly.filter((x) => !serverIds.has(x.id))];
+      });
+    } catch {
+      /* offline: keep whatever we have */
+    }
+  };
+  useEffect(() => {
+    if (!businessAccount?.id) return;
+    refetchActions();
+    const id = setInterval(refetchActions, 30000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessAccount?.id]);
 
   // Customer requests inbox (drives SLA badges on the dashboard)
@@ -809,6 +807,7 @@ export default function App() {
               metrics={metrics}
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
+              businessId={activeBusiness.id}
               businessName={activeBusiness.name || 'Setup Company'}
               industryName={activeBusiness.industry || 'Field Operations'}
               serverOnline={serverOnline}
@@ -938,6 +937,7 @@ export default function App() {
               business={activeBusiness}
               actions={actions}
               onDecision={handleApprovalDecision}
+              onRefresh={refetchActions}
             />
           )}
 
