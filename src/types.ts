@@ -211,6 +211,8 @@ export interface AIEmployee {
   roleTitle: string;
   department: string;
   avatarIcon: string;
+  /** Voice of the assistant: professional, friendly, direct, or technical (RCOS brand config). */
+  tone?: 'professional' | 'friendly' | 'direct' | 'technical';
   coreJob: string;
   escalatesTo: string;
   tagline: string;
@@ -247,22 +249,16 @@ export interface IndustryOptimizationSuggestion {
  * MOBILE RCOS APPLICATION ARCHITECTURE TYPES
  * ------------------------------------------------------------- */
 
-export type TabType = 
-  | 'dashboard' 
-  | 'phone' 
-  | 'jobs' 
-  | 'clients' 
+export type TabType =
+  | 'dashboard'
+  | 'phone'
+  | 'jobs'
+  | 'clients'
   | 'chat'
   | 'gmail'
-  | 'more' 
   | 'settings'
-  | 'activity'
   | 'approvals'
-  | 'team'
-  | 'jobpacks'
-  | 'portal'
-  | 'automation'
-  | 'docs';
+  | 'team';
 
 export interface ChatMessage {
   id: string;

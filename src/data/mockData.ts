@@ -330,27 +330,33 @@ export const INITIAL_METRICS: SystemMetric = {
 
 export const INITIAL_AUTOMATION_TASKS: AutomationTask[] = [
   {
-    id: 'task-1',
-    name: 'Urgent Matters Routing',
-    description: 'Automatically route urgent matters to the appropriate specialist based on SLA priority.',
+    id: 'rule-welcome',
+    name: 'Welcome new requests',
+    description: 'When a new customer request arrives, the AI sends a friendly welcome reply right away.',
     isAutomated: true,
   },
   {
-    id: 'task-2',
-    name: 'Customer Issue Resolution',
-    description: 'Allow AI to automatically provide troubleshooting steps or generate tickets for client issues.',
-    isAutomated: false,
+    id: 'rule-missed-call',
+    name: 'Missed call follow-up',
+    description: 'When a call is missed, save the voicemail and text the caller back.',
+    isAutomated: true,
   },
   {
-    id: 'task-3',
-    name: 'Billing & Payments',
-    description: 'Auto-process payments upon task completion and send receipts.',
-    isAutomated: false,
+    id: 'rule-review',
+    name: 'Ask for reviews',
+    description: 'After a job is marked done, ask the customer for a review.',
+    isAutomated: true,
   },
   {
-    id: 'task-4',
-    name: 'Sending Invoices',
-    description: 'Automatically generate and email invoices once a task is closed out.',
+    id: 'rule-emergency',
+    name: 'Emergency escalation',
+    description: 'When the receptionist routes an emergency call, create an escalation for the owner immediately.',
+    isAutomated: true,
+  },
+  {
+    id: 'rule-quote-gate',
+    name: 'Quote approval gate',
+    description: 'Hold any quote over the approval limit for the owner\u2019s sign-off before it goes out.',
     isAutomated: true,
   },
 ];

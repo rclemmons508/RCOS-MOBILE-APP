@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   TabType, 
-  Agent, 
   PhoneCall, 
   Job, 
   Client, 
@@ -10,7 +9,6 @@ import {
   RCOSNotification, 
   NotificationPreferences, 
   User, 
-  TelemetryPoint,
   BusinessAccount,
   ActionRecord,
   CustomerRequest,
@@ -18,15 +16,12 @@ import {
   ChatMessage
 } from './types';
 import {
-  INITIAL_AGENTS,
   INITIAL_CALLS,
   INITIAL_JOBS,
   INITIAL_CLIENTS,
   INITIAL_METRICS,
   INITIAL_NOTIFICATIONS,
   INITIAL_NOTIFICATION_PREFERENCES,
-  INITIAL_USER,
-  INITIAL_TELEMETRY_SERIES,
   INITIAL_AUTOMATION_TASKS,
   INITIAL_MESSAGES,
 } from './data/mockData';
@@ -41,6 +36,7 @@ import { SettingsTab } from './components/tabs/SettingsTab';
 import { GmailTab } from './components/tabs/GmailTab';
 import { GeminiChatView } from './components/GeminiChatView';
 import { AiTeamView } from './components/AiTeamView';
+import { ApprovalQueueView } from './components/ApprovalQueueView';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
 import { NotificationPreferencesModal } from './components/notifications/NotificationPreferencesModal';
@@ -56,6 +52,8 @@ import { authService } from './services/authService';
 import { firestoreService } from './services/firestoreService';
 import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
+import { useSyncEngine } from './hooks/useSyncEngine';
+import { logAutomationFired } from './utils/automationLog';
 import { haptic } from './utils/haptics';
 
 const toLocalStorageBusiness = (business: BusinessAccount): Omit<BusinessAccount, 'activeEmployees'> => {
@@ -97,10 +95,13 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Application Core Data - starts fresh from scratch
-  const [agents] = useState<Agent[]>(INITIAL_AGENTS);
   const [calls, setCalls] = useState<PhoneCall[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [actions, setActions] = useState<ActionRecord[]>([]);
+  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+  const [customerRequests, setCustomerRequests] = useState<CustomerRequest[]>([]);
+  const seenRoutingRef = useRef<string[]>([]);
   const [metrics, setMetrics] = useState<SystemMetric>({
     agentsActive: 4,
     latencyMs: 14,
@@ -120,13 +121,9 @@ export default function App() {
     : null;
 
   const [industryProfile, setIndustryProfile] = useState(initialPrefs?.industryProfile || 'Commercial HVAC');
-  const [telemetryIntervalMs, setTelemetryIntervalMs] = useState(initialPrefs?.telemetryIntervalMs || 3500);
   const [autoDispatchThreshold, setAutoDispatchThreshold] = useState<'all' | 'critical' | 'high' | 'manual'>(
     initialPrefs?.autoDispatchThreshold || 'all'
   );
-
-  // Real-Time Telemetry Streaming State
-  const [telemetrySeries, setTelemetrySeries] = useState<TelemetryPoint[]>(INITIAL_TELEMETRY_SERIES);
 
   // Notification System State - starts empty from scratch
   const [notifications, setNotifications] = useState<RCOSNotification[]>([]);
@@ -291,39 +288,103 @@ export default function App() {
     };
   }, [businessAccount?.id]);
 
-  // Real-Time Telemetry Pulse Simulator
-  useEffect(() => {
-    if (telemetryIntervalMs <= 0) return;
-    const interval = setInterval(() => {
-      const now = new Date();
-      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      
-      const newLatency = Math.floor(10 + Math.random() * 8); // 10ms - 18ms
-      const newCpu = Math.floor(14 + Math.random() * 16);    // 14% - 30%
-      const newMemory = Math.floor(28 + Math.random() * 8);
+  // ---- Smart sync engine: one battery-friendly loop for all background data ----
+  // Single 30s timer (not one per data source). Pauses when the tab is hidden,
+  // skips while offline, and syncs immediately when the app comes back.
+  const pingHealth = useCallback(async () => {
+    try {
+      await apiFetch('/api/health');
+      setServerOnline(true);
+    } catch {
+      setServerOnline(false);
+    }
+  }, []);
 
-      setMetrics((prev) => ({
-        ...prev,
-        latencyMs: newLatency,
-        cpuUsagePct: newCpu,
-        memoryUsagePct: newMemory,
-      }));
-
-      setTelemetrySeries((prev) => {
-        const updatedPoint: TelemetryPoint = {
-          time: timeStr,
-          cpu: newCpu,
-          memory: newMemory,
-          latency: newLatency,
-          calls: metrics.callsHandled,
-          jobs: metrics.jobsDispatched,
-        };
-        return [...prev.slice(1), updatedPoint];
+  // Approvals: load the server's action queue (quotes, escalations) for this business.
+  // Local emergency escalations (id starts with local-emg-) are merged in and kept.
+  const refetchActions = useCallback(async () => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    try {
+      const serverActions = await apiFetch<ActionRecord[]>(`/api/business/${bizId}/actions`);
+      if (!Array.isArray(serverActions)) return;
+      setActions((prev) => {
+        const localOnly = prev.filter((x) => x.id.startsWith('local-emg-'));
+        const serverIds = new Set(serverActions.map((x) => x.id));
+        return [...serverActions, ...localOnly.filter((x) => !serverIds.has(x.id))];
       });
-    }, telemetryIntervalMs);
+    } catch {
+      /* offline: keep whatever we have */
+    }
+  }, [businessAccount?.id]);
 
-    return () => clearInterval(interval);
-  }, [telemetryIntervalMs, metrics.callsHandled, metrics.jobsDispatched]);
+  // Customer requests inbox (drives SLA badges on the dashboard)
+  const refetchRequests = useCallback(async () => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    try {
+      const reqs = await apiFetch<CustomerRequest[]>(`/api/business/${bizId}/requests`);
+      if (Array.isArray(reqs)) setCustomerRequests(reqs);
+    } catch {
+      /* offline */
+    }
+  }, [businessAccount?.id]);
+
+  // Emergency voice routing -> escalation approval (the "emergency escalation" automation rule)
+  const pollVoiceRouting = useCallback(async () => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    let entries: any[] = [];
+    try {
+      entries = await apiFetch<any[]>('/api/voice/routing-log');
+    } catch {
+      return;
+    }
+    if (!Array.isArray(entries)) return;
+    const ruleOn = automationTasks.some((t) => t.id === 'rule-emergency' && t.isAutomated);
+    for (const entry of entries) {
+      const key = `${entry.at || ''}|${entry.summary || ''}`;
+      if (seenRoutingRef.current.includes(key)) continue;
+      seenRoutingRef.current.push(key);
+      const urgency = String(entry.urgency || 'routine');
+      if ((urgency === 'emergency' || urgency === 'urgent') && ruleOn) {
+        const action: ActionRecord = {
+          id: `local-emg-${Date.now()}`,
+          businessId: bizId,
+          title: `Emergency call routed to ${entry.department || 'support'}`,
+          description: entry.summary || 'An urgent caller needs the owner now.',
+          employeeId: 'ai_receptionist',
+          actionType: 'safety_review',
+          status: 'awaiting_approval',
+          riskCategory: 'system_settings',
+          stepSummary: `AI receptionist flagged this call as ${urgency}. Call back immediately.`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        setActions((prev) => [action, ...prev]);
+        logAutomationFired('rule-emergency', 'Emergency escalation', action.title);
+        sendPushNotification({
+          type: 'emergency_dispatch',
+          title: 'Emergency call escalation',
+          message: action.title,
+          priority: 'high',
+          module: 'Phone System',
+          actionTaken: 'Queued for review',
+        });
+      }
+    }
+    if (seenRoutingRef.current.length > 200) {
+      seenRoutingRef.current = seenRoutingRef.current.slice(-200);
+    }
+  }, [businessAccount?.id, automationTasks]);
+
+  useSyncEngine(
+    useCallback(async () => {
+      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting()]);
+    }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting]),
+    30000
+  );
+
 
   // Helper to trigger live push notification
   const sendPushNotification = (newNotif: Omit<RCOSNotification, 'id' | 'timestamp' | 'read'>) => {
@@ -477,6 +538,50 @@ export default function App() {
     }
   };
 
+  const handleApprovalDecision = async (
+    actionId: string,
+    decision: 'approved' | 'rejected' | 'edited',
+    editedContent?: string,
+    note?: string
+  ) => {
+    const target = actions.find((x) => x.id === actionId);
+    // Server-owned actions go through the API; local emergency escalations are handled on-device.
+    if (target && !target.id.startsWith('local-emg-') && businessAccount?.id) {
+      try {
+        const updated = await apiFetch<ActionRecord>(
+          `/api/business/${businessAccount.id}/actions/${actionId}/decide`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ decision, editedContent, reviewerNote: note }),
+          }
+        );
+        setActions((prev) => prev.map((x) => (x.id === actionId ? updated : x)));
+        return;
+      } catch {
+        /* fall through to local update */
+      }
+    }
+    setActions((prev) =>
+      prev.map((act) =>
+        act.id === actionId
+          ? {
+              ...act,
+              status: decision === 'rejected' ? 'rejected' : 'approved',
+              reviewedAt: new Date().toISOString(),
+              reviewerNote: note,
+              approvalDecision: {
+                decision,
+                decidedAt: new Date().toISOString(),
+                reviewerNote: note,
+                ...(editedContent ? { editedContent } : {}),
+              },
+              ...(editedContent ? { currentDraftContent: editedContent } : {}),
+            }
+          : act
+      )
+    );
+  };
+
   const handleSimulateInboundCall = () => {
     const newCall: PhoneCall = {
       id: 'call-' + Date.now(),
@@ -567,7 +672,6 @@ export default function App() {
     // Load and apply that specific operator's personal preferences
     const prefs = userPreferencesService.getUserPreferences(user.email || user.id);
     setIndustryProfile(prefs.industryProfile || 'Commercial HVAC');
-    setTelemetryIntervalMs(prefs.telemetryIntervalMs || 3500);
     setAutoDispatchThreshold(prefs.autoDispatchThreshold || 'all');
     if (prefs.notificationPreferences) {
       setNotifPreferences(prefs.notificationPreferences);
@@ -633,14 +737,20 @@ export default function App() {
         <main className="flex-1 w-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pl-[max(0.25rem,env(safe-area-inset-left))] pr-[max(0.25rem,env(safe-area-inset-right))]">
           {activeTab === 'dashboard' && (
             <DashboardTab
-              agents={agents}
               calls={calls}
               jobs={jobs}
               metrics={metrics}
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
+              businessId={activeBusiness.id}
               businessName={activeBusiness.name || 'Setup Company'}
               industryName={activeBusiness.industry || 'Field Operations'}
+              serverOnline={serverOnline}
+              pendingApprovals={actions.filter((x) => x.status === 'awaiting_approval').length}
+              activeEmployees={activeBusiness.activeEmployees}
+              customerRequests={customerRequests}
+              automationsOn={automationTasks.filter((t) => t.isAutomated).length}
+              automationsTotal={automationTasks.length}
               proactiveSuggestion={proactiveSuggestion}
               onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
               onDismissSuggestion={handleDismissSuggestion}
@@ -757,6 +867,15 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'approvals' && (
+            <ApprovalQueueView
+              business={activeBusiness}
+              actions={actions}
+              onDecision={handleApprovalDecision}
+              onRefresh={refetchActions}
+            />
+          )}
+
           {activeTab === 'chat' && (
             <GeminiChatView 
               business={activeBusiness} 
@@ -782,13 +901,6 @@ export default function App() {
                 setIndustryProfile(ind);
                 if (currentUser?.email) {
                   userPreferencesService.saveUserPreferences(currentUser.email, { industryProfile: ind });
-                }
-              }}
-              telemetryIntervalMs={telemetryIntervalMs}
-              onUpdateTelemetryInterval={(val) => {
-                setTelemetryIntervalMs(val);
-                if (currentUser?.email) {
-                  userPreferencesService.saveUserPreferences(currentUser.email, { telemetryIntervalMs: val });
                 }
               }}
               autoDispatchThreshold={autoDispatchThreshold}

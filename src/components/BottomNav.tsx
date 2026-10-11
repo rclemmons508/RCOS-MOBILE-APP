@@ -6,7 +6,8 @@ import {
   Users, 
   Settings2,
   Bot,
-  Mail
+  Mail,
+  ShieldCheck
 } from 'lucide-react';
 import { TabType, User } from '../types';
 import { haptic } from '../utils/haptics';
@@ -24,9 +25,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 }) => {
   const tabs: { id: TabType; label: string; icon: any }[] = [
     { id: 'dashboard', label: 'Dash', icon: Gauge },
-    { id: 'jobs', label: 'Tasks', icon: Briefcase },
+    { id: 'jobs', label: 'Jobs', icon: Briefcase },
+    { id: 'phone', label: 'Phone', icon: Phone },
+    { id: 'approvals', label: 'Review', icon: ShieldCheck },
     { id: 'team', label: 'AI Team', icon: Bot },
-    { id: 'phone', label: 'Voice AI', icon: Phone },
     { id: 'gmail', label: 'Gmail', icon: Mail },
     { id: 'clients', label: 'Clients', icon: Users },
     { id: 'settings', label: 'Settings', icon: Settings2 },
@@ -60,7 +62,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                     <span className="absolute -bottom-1 w-1 h-1 rounded-full bg-lime-400 animate-pulse" />
                   )}
                 </div>
-                <span className={`text-[9.5px] sm:text-[10px] tracking-tight mt-0.5 truncate max-w-full font-medium ${isActive ? 'text-lime-300 font-bold' : 'text-zinc-400'}`}>
+                <span className={`text-[9px] sm:text-[10px] tracking-tight mt-0.5 truncate max-w-full font-medium ${isActive ? 'text-lime-300 font-bold' : 'text-zinc-400'}`}>
                   {tab.label}
                 </span>
               </button>

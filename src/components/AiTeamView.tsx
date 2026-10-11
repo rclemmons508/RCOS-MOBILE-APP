@@ -1,9 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
-  MessageSquare, 
-  Send, 
-  Loader2, 
   ShieldAlert, 
   Cpu, 
   Kanban, 
@@ -24,7 +21,6 @@ import {
   User,
   ToggleLeft,
   ToggleRight,
-  Sliders,
   Save,
   RotateCcw,
   Plus,
@@ -36,7 +32,7 @@ import {
   Settings2,
   DollarSign
 } from 'lucide-react';
-import { BusinessAccount, ChatMessage } from '../types';
+import { BusinessAccount } from '../types';
 import { CustomAIEmployee, employeeCustomizationService } from '../services/employeeCustomizationService';
 import { INDUSTRY_PRESETS } from '../data/presets';
 import { haptic } from '../utils/haptics';
@@ -55,12 +51,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
     employeeCustomizationService.getEmployees()
   );
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('executive_assistant');
-  const [rightViewMode, setRightViewMode] = useState<'chat' | 'customize'>('chat');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Identify the business's detected industry preset
   const activePreset = INDUSTRY_PRESETS.find(p => 
@@ -107,6 +98,9 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   const [editApprovalAmount, setEditApprovalAmount] = useState<number>(
     selectedEmployee.maxApprovalAmount || 1500
   );
+  const [editTone, setEditTone] = useState<'professional' | 'friendly' | 'direct' | 'technical'>(
+    selectedEmployee.tone || 'professional'
+  );
   const [editEscalatesTo, setEditEscalatesTo] = useState(selectedEmployee.escalatesTo || 'Business Owner');
   const [editRules, setEditRules] = useState<string[]>(
     selectedEmployee.customRules || ['Always verify client identity and safety protocol.']
@@ -122,79 +116,15 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       setEditCoreJob(selectedEmployee.customJobScope || selectedEmployee.coreJob);
       setEditAutonomy(selectedEmployee.autonomyLevel || 'autonomous');
       setEditApprovalAmount(selectedEmployee.maxApprovalAmount || 1500);
+      setEditTone(selectedEmployee.tone || 'professional');
       setEditEscalatesTo(selectedEmployee.escalatesTo || 'Business Owner');
       setEditRules(selectedEmployee.customRules || ['Always verify client identity and safety protocol.']);
     }
   }, [selectedEmployeeId]);
 
-  // Fetch chat history for selected employee
-  useEffect(() => {
-    let isMounted = true;
-    const fetchChat = async () => {
-      try {
-        const data = await apiFetch<ChatMessage[]>(`/api/business/${business.id}/chat?employeeId=${selectedEmployeeId}`);
-        if (isMounted && Array.isArray(data)) {
-          setMessages(data);
-        }
-      } catch {
-        // Graceful fallback for offline / starting server without console crashing
-        if (isMounted) {
-          setMessages([]);
-        }
-      }
-    };
-    fetchChat();
-    return () => {
-      isMounted = false;
-    };
-  }, [business.id, selectedEmployeeId]);
-
-  // Scroll to bottom when messages update
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  // Send chat message
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
-
-    const userText = inputMessage.trim();
-    setInputMessage('');
-
-    // Optimistic user message
-    const tempUserMsg: ChatMessage = {
-      id: `temp_${Date.now()}`,
-      businessId: business.id,
-      employeeId: selectedEmployeeId,
-      role: 'user',
-      content: userText,
-      timestamp: new Date().toISOString()
-    };
-    setMessages(prev => [...prev, tempUserMsg]);
-    setIsLoading(true);
-
-    try {
-      const data = await apiFetch<{ message: ChatMessage }>(`/api/business/${business.id}/chat`, {
-        method: 'POST',
-        body: JSON.stringify({
-          employeeId: selectedEmployeeId,
-          message: userText
-        })
-      });
-
-      if (data?.message) {
-        setMessages(prev => [...prev.filter(m => m.id !== tempUserMsg.id), tempUserMsg, data.message]);
-      }
-    } catch (err) {
-      console.error('Chat error:', err);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   // Toggle active employee
@@ -229,6 +159,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       coreJob: editCoreJob,
       autonomyLevel: editAutonomy,
       maxApprovalAmount: Number(editApprovalAmount),
+      tone: editTone,
       escalatesTo: editEscalatesTo,
       customRules: editRules
     });
@@ -281,7 +212,6 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
 
     setEmployees(prev => [...prev, newSpec]);
     setSelectedEmployeeId(newSpec.id);
-    setRightViewMode('customize');
     showToast('New Custom AI Specialist created! Tune their job scope below.');
   };
 
@@ -433,126 +363,10 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               </div>
             </div>
 
-            {/* View Mode Toggle */}
-            <div className="flex items-center bg-black/60 p-0.5 rounded-xl border border-zinc-800 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  haptic.light();
-                  setRightViewMode('chat');
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                  rightViewMode === 'chat'
-                    ? 'bg-zinc-800 text-lime-400 border border-lime-500/30'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Direct Chat</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  haptic.light();
-                  setRightViewMode('customize');
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                  rightViewMode === 'customize'
-                    ? 'bg-zinc-800 text-lime-400 border border-lime-500/30'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>Customize Job</span>
-              </button>
-            </div>
           </div>
 
-          {/* MODE 1: CHAT */}
-          {rightViewMode === 'chat' && (
-            <div className="flex-1 flex flex-col min-h-0">
-              {/* Mission Ribbon */}
-              <div className="px-4 py-2 bg-zinc-900/30 border-b border-zinc-900 text-xs text-zinc-300 flex items-center justify-between shrink-0">
-                <span className="truncate">Core Job: <em>{selectedEmployee.customJobScope || selectedEmployee.coreJob}</em></span>
-                <span className="text-[10px] text-lime-400 font-mono shrink-0 ml-2">Autonomy: {selectedEmployee.autonomyLevel || 'autonomous'}</span>
-              </div>
-
-              {/* Scrollable Conversation */}
-              <div className="flex-1 p-4 overflow-y-auto space-y-3">
-                {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-500 space-y-2">
-                    <MessageSquare className="w-8 h-8 text-zinc-600" />
-                    <div className="text-xs font-medium text-zinc-300">
-                      Direct line to {selectedEmployee.name}
-                    </div>
-                    <p className="text-[11px] max-w-xs text-zinc-500">
-                      Ask for strategic insights, draft quotes, or assign custom operational tasks.
-                    </p>
-                  </div>
-                ) : (
-                  messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      {msg.role === 'model' && (
-                        <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 mt-0.5">
-                          {getEmployeeIcon(selectedEmployee.avatarIcon)}
-                        </div>
-                      )}
-
-                      <div className={`max-w-[80%] rounded-2xl p-3 text-xs md:text-sm leading-relaxed ${
-                        msg.role === 'user'
-                          ? 'bg-lime-500 text-black font-semibold'
-                          : 'bg-zinc-900 text-zinc-200 border border-zinc-800'
-                      }`}>
-                        {msg.content}
-                        <div className={`text-[9px] mt-1 text-right font-mono ${
-                          msg.role === 'user' ? 'text-black/60' : 'text-zinc-500'
-                        }`}>
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </div>
-
-                      {msg.role === 'user' && (
-                        <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0 mt-0.5 text-white text-[10px] font-bold">
-                          YOU
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Chat Input */}
-              <div className="p-3 border-t border-zinc-800 bg-zinc-900/50 shrink-0">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSendMessage())}
-                    placeholder={`Instruct ${selectedEmployee.name}...`}
-                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSendMessage}
-                    disabled={isLoading || !inputMessage.trim()}
-                    className="p-2 sm:px-4 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0"
-                  >
-                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    <span className="hidden sm:inline">Send</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* MODE 2: CUSTOMIZE JOB & RULES */}
-          {rightViewMode === 'customize' && (
-            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
+          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
               {/* Identity & Role Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -650,6 +464,38 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                 </div>
               </div>
 
+              {/* Tone of Voice — RCOS brand configuration per assistant */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+                  Tone of Voice
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {([
+                    { id: 'professional', label: 'Professional', hint: 'Polished & precise' },
+                    { id: 'friendly', label: 'Friendly', hint: 'Warm & reassuring' },
+                    { id: 'direct', label: 'Direct', hint: 'Short & persuasive' },
+                    { id: 'technical', label: 'Technical', hint: 'Step-by-step' },
+                  ] as const).map((toneOpt) => (
+                    <button
+                      key={toneOpt.id}
+                      type="button"
+                      onClick={() => {
+                        haptic.light();
+                        setEditTone(toneOpt.id);
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        editTone === toneOpt.id
+                          ? 'bg-lime-500/10 border-lime-500 text-white'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="font-bold text-xs">{toneOpt.label}</div>
+                      <div className="text-[10px] text-zinc-500">{toneOpt.hint}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Approval Threshold Slider */}
               <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -734,7 +580,6 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                 </button>
               </div>
             </div>
-          )}
         </div>
       </div>
     </div>

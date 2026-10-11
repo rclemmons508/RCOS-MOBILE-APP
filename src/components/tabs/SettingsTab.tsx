@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion } from '../../types';
 import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
+import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
 import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
 import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
 import { haptic } from '../../utils/haptics';
@@ -39,6 +40,7 @@ import {
   Wrench,
   ArrowRight,
   X
+  History,
 } from 'lucide-react';
 
 interface SettingsTabProps {
@@ -51,8 +53,6 @@ interface SettingsTabProps {
   onToggleAiAssistant: () => void;
   industryProfile: string;
   onUpdateIndustry: (industry: string) => void;
-  telemetryIntervalMs: number;
-  onUpdateTelemetryInterval: (interval: number) => void;
   autoDispatchThreshold: 'all' | 'critical' | 'high' | 'manual';
   onUpdateAutoDispatchThreshold: (threshold: 'all' | 'critical' | 'high' | 'manual') => void;
   notifPreferences: NotificationPreferences;
@@ -77,8 +77,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onToggleAiAssistant,
   industryProfile,
   onUpdateIndustry,
-  telemetryIntervalMs,
-  onUpdateTelemetryInterval,
   autoDispatchThreshold,
   onUpdateAutoDispatchThreshold,
   notifPreferences,
@@ -94,6 +92,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   // Navigation: 3 clean client-facing sections
   const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>('user');
+  const [fireLog] = useState<AutomationLogEntry[]>(() => getAutomationLog());
 
   // User & Company Profile State (multi-company support)
   const [companyName, setCompanyName] = useState(currentUser?.organization || 'Apex Commercial Systems');
@@ -793,6 +792,38 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
       )}
+
+          {/* Recently Fired — automation activity log */}
+          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-lime-400" />
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                Recently Fired
+              </h3>
+            </div>
+            {fireLog.length === 0 ? (
+              <p className="text-[11px] text-zinc-500">
+                No automations have fired yet. When a rule runs, it will show up here.
+              </p>
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {fireLog.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-start justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold text-white truncate">{entry.ruleName}</div>
+                      <div className="text-[10px] text-zinc-400 truncate">{entry.detail}</div>
+                    </div>
+                    <span className="text-[9px] text-zinc-500 font-mono shrink-0">
+                      {new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
       {/* ============================================================== */}
       {/* SECTION 3: TYPICAL DEVICE SETTINGS */}
