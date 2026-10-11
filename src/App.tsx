@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   TabType, 
   Agent, 
@@ -57,6 +57,7 @@ import { authService } from './services/authService';
 import { firestoreService } from './services/firestoreService';
 import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
+import { logAutomationFired } from './utils/automationLog';
 import { haptic } from './utils/haptics';
 
 const toLocalStorageBusiness = (business: BusinessAccount): Omit<BusinessAccount, 'activeEmployees'> => {
@@ -103,6 +104,9 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [actions, setActions] = useState<ActionRecord[]>([]);
+  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+  const [customerRequests, setCustomerRequests] = useState<CustomerRequest[]>([]);
+  const seenRoutingRef = useRef<string[]>([]);
   const [metrics, setMetrics] = useState<SystemMetric>({
     agentsActive: 4,
     latencyMs: 14,
@@ -292,6 +296,126 @@ export default function App() {
       unsubBiz();
     };
   }, [businessAccount?.id]);
+
+  // Server health ping (drives the dashboard status strip)
+  useEffect(() => {
+    let cancelled = false;
+    const ping = async () => {
+      try {
+        await apiFetch('/api/health');
+        if (!cancelled) setServerOnline(true);
+      } catch {
+        if (!cancelled) setServerOnline(false);
+      }
+    };
+    ping();
+    const id = setInterval(ping, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  // Approvals: load the server's action queue (quotes, escalations) for this business.
+  // Local emergency escalations (id starts with local-emg-) are merged in and kept.
+  useEffect(() => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const serverActions = await apiFetch<ActionRecord[]>(`/api/business/${bizId}/actions`);
+        if (cancelled || !Array.isArray(serverActions)) return;
+        setActions((prev) => {
+          const localOnly = prev.filter((x) => x.id.startsWith('local-emg-'));
+          const serverIds = new Set(serverActions.map((x) => x.id));
+          return [...serverActions, ...localOnly.filter((x) => !serverIds.has(x.id))];
+        });
+      } catch {
+        /* offline: keep whatever we have */
+      }
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [businessAccount?.id]);
+
+  // Customer requests inbox (drives SLA badges on the dashboard)
+  useEffect(() => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const reqs = await apiFetch<CustomerRequest[]>(`/api/business/${bizId}/requests`);
+        if (!cancelled && Array.isArray(reqs)) setCustomerRequests(reqs);
+      } catch {
+        /* offline */
+      }
+    };
+    load();
+    const id = setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [businessAccount?.id]);
+
+  // Emergency voice routing -> escalation approval (the "emergency escalation" automation rule)
+  useEffect(() => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    const poll = async () => {
+      let entries: any[] = [];
+      try {
+        entries = await apiFetch<any[]>('/api/voice/routing-log');
+      } catch {
+        return;
+      }
+      if (!Array.isArray(entries)) return;
+      const ruleOn = automationTasks.some((t) => t.id === 'rule-emergency' && t.isAutomated);
+      for (const entry of entries) {
+        const key = `${entry.at || ''}|${entry.summary || ''}`;
+        if (seenRoutingRef.current.includes(key)) continue;
+        seenRoutingRef.current.push(key);
+        const urgency = String(entry.urgency || 'routine');
+        if ((urgency === 'emergency' || urgency === 'urgent') && ruleOn) {
+          const action: ActionRecord = {
+            id: `local-emg-${Date.now()}`,
+            businessId: bizId,
+            title: `Emergency call routed to ${entry.department || 'support'}`,
+            description: entry.summary || 'An urgent caller needs the owner now.',
+            employeeId: 'ai_receptionist',
+            actionType: 'safety_review',
+            status: 'awaiting_approval',
+            riskCategory: 'system_settings',
+            stepSummary: `AI receptionist flagged this call as ${urgency}. Call back immediately.`,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setActions((prev) => [action, ...prev]);
+          logAutomationFired('rule-emergency', 'Emergency escalation', action.title);
+          sendPushNotification({
+            type: 'emergency_dispatch',
+            title: 'Emergency call escalation',
+            message: action.title,
+            priority: 'high',
+            module: 'Phone System',
+            actionTaken: 'Queued for review',
+          });
+        }
+      }
+      if (seenRoutingRef.current.length > 200) {
+        seenRoutingRef.current = seenRoutingRef.current.slice(-200);
+      }
+    };
+    poll();
+    const id = setInterval(poll, 30000);
+    return () => clearInterval(id);
+  }, [businessAccount?.id, automationTasks]);
 
   // Real-Time Telemetry Pulse Simulator
   useEffect(() => {
@@ -485,6 +609,23 @@ export default function App() {
     editedContent?: string,
     note?: string
   ) => {
+    const target = actions.find((x) => x.id === actionId);
+    // Server-owned actions go through the API; local emergency escalations are handled on-device.
+    if (target && !target.id.startsWith('local-emg-') && businessAccount?.id) {
+      try {
+        const updated = await apiFetch<ActionRecord>(
+          `/api/business/${businessAccount.id}/actions/${actionId}/decide`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ decision, editedContent, reviewerNote: note }),
+          }
+        );
+        setActions((prev) => prev.map((x) => (x.id === actionId ? updated : x)));
+        return;
+      } catch {
+        /* fall through to local update */
+      }
+    }
     setActions((prev) =>
       prev.map((act) =>
         act.id === actionId
@@ -670,6 +811,12 @@ export default function App() {
               unreadNotifCount={unreadNotifCount}
               businessName={activeBusiness.name || 'Setup Company'}
               industryName={activeBusiness.industry || 'Field Operations'}
+              serverOnline={serverOnline}
+              pendingApprovals={actions.filter((x) => x.status === 'awaiting_approval').length}
+              activeEmployees={activeBusiness.activeEmployees}
+              customerRequests={customerRequests}
+              automationsOn={automationTasks.filter((t) => t.isAutomated).length}
+              automationsTotal={automationTasks.length}
               proactiveSuggestion={proactiveSuggestion}
               onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
               onDismissSuggestion={handleDismissSuggestion}
