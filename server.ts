@@ -137,9 +137,26 @@ app.get('/api/firebase-config', (_req: Request, res: Response) => {
 app.use('/api', (req: Request, res: Response, next) => {
   if (req.path === '/api/health' || req.path === '/api/firebase-config') return next();
   if (req.method === 'POST' && /^\/api\/business\/[^/]+\/requests$/.test(req.path)) return next();
+  if (req.method === 'GET' && /^\/api\/public\/business\/[^/]+$/.test(req.path)) return next();
   // The voice-agent worker authenticates with VOICE_AGENT_SECRET, not a user token.
   if (req.path === '/api/voice/routing-log') return next();
   return requireAuth(req, res, next);
+});
+
+// Public business profile for the customer booking page (#/book/:businessId).
+// Only safe-to-share fields — never the full business record.
+app.get('/api/public/business/:id', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) {
+    return res.status(404).json({ error: 'Business not found' });
+  }
+  res.json({
+    id: business.id,
+    name: business.name,
+    industry: business.industry,
+    services: business.services || [],
+    brandTone: business.brandTone || '',
+  });
 });
 
 // WebRTC voice: mint a LiveKit access token for an AI receptionist call.
@@ -1325,6 +1342,70 @@ app.post('/api/phone/request-quote', (req: Request, res: Response) => {
     success: true,
     action: saved,
     message: `Quote approval request of $${amt} for ${clientName} logged into RCOS Approvals Queue`
+  });
+});
+
+// Owner-created invoice -> lands in the Approvals queue (money_movement gate).
+app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
+  const {
+    clientName = 'Client',
+    serviceName = 'Service',
+    invoiceAmount = 0,
+    details = '',
+    dueDays = 15,
+    businessId
+  } = req.body;
+
+  const defaultBiz = (businessId && db.getBusiness(businessId)) || db.getAllBusinesses()[0] || {
+    id: 'biz_rc_solutions',
+    name: 'RC Solutions',
+    dollarThreshold: 250
+  };
+
+  const amt = Number(invoiceAmount) || 0;
+  if (amt <= 0) {
+    return res.status(400).json({ error: 'A valid invoice amount is required.' });
+  }
+
+  const newAction: ActionRecord = {
+    id: `act_${Date.now()}`,
+    businessId: defaultBiz.id,
+    employeeId: 'finance',
+    actionType: 'send_invoice',
+    riskCategory: 'money_movement',
+    title: `Invoice Approval: ${serviceName} for ${clientName}`,
+    description: details || `Invoice for ${clientName}. Amount: $${amt}.`,
+    status: 'awaiting_approval',
+    dollarAmount: amt,
+    financialAmount: amt,
+    requiresApproval: true,
+    requiresReview: true,
+    result: {
+      summary: `Invoice prepared for ${clientName}`,
+      quoteDetails: {
+        clientName,
+        items: [
+          {
+            description: serviceName,
+            quantity: 1,
+            unitPrice: amt,
+            total: amt
+          }
+        ],
+        totalAmount: amt,
+        validDays: Number(dueDays) || 15,
+        terms: `Net-${Number(dueDays) || 15} days`
+      }
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  const saved = db.saveAction(newAction);
+  res.status(201).json({
+    success: true,
+    action: saved,
+    message: `Invoice of $${amt} for ${clientName} queued for approval`
   });
 });
 
