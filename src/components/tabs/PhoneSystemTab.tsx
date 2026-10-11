@@ -30,6 +30,7 @@ import { LiveCallConsole } from '../phone/LiveCallConsole';
 import { IncomingCallModal } from '../phone/IncomingCallModal';
 import { VoicemailsView } from '../phone/VoicemailsView';
 import { RealPhoneSetupModal } from '../phone/RealPhoneSetupModal';
+import { VoiceCallButton } from '../phone/VoiceCallButton';
 import { apiFetch } from '../../lib/api';
 
 interface PhoneSystemTabProps {
@@ -445,6 +446,9 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Free in-app voice call (WebRTC) — used while the Twilio carrier is parked */}
+              <VoiceCallButton />
 
               {/* Header Status & Telemetry Banner */}
               <div className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
