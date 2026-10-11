@@ -211,6 +211,8 @@ export interface AIEmployee {
   roleTitle: string;
   department: string;
   avatarIcon: string;
+  /** Voice of the assistant: professional, friendly, direct, or technical (RCOS brand config). */
+  tone?: 'professional' | 'friendly' | 'direct' | 'technical';
   coreJob: string;
   escalatesTo: string;
   tagline: string;
