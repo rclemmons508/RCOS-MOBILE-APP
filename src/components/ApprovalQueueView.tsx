@@ -12,7 +12,8 @@ import {
   CheckCircle,
   AlertTriangle,
   Send,
-  Loader2
+  Loader2,
+  ClipboardList
 } from 'lucide-react';
 import { ActionRecord, BusinessAccount } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
@@ -23,12 +24,43 @@ interface ApprovalQueueViewProps {
   onDecision: (actionId: string, decision: 'approved' | 'rejected' | 'edited', editedContent?: string, note?: string) => Promise<void>;
 }
 
+const SectionHeader: React.FC<{ icon: React.ReactNode; title: string; subtitle: string; count: number }> = ({
+  icon,
+  title,
+  subtitle,
+  count,
+}) => (
+  <div className="flex items-center gap-2.5 px-1">
+    <div className="w-8 h-8 rounded-xl bg-[#141822] border border-[#263044] flex items-center justify-center shrink-0">
+      {icon}
+    </div>
+    <div className="flex-1 min-w-0">
+      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+        {title}
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+          {count}
+        </span>
+      </h3>
+      <p className="text-[11px] text-slate-400">{subtitle}</p>
+    </div>
+  </div>
+);
+
 export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
   business,
   actions,
   onDecision
 }) => {
   const pendingActions = actions.filter(a => a.status === 'awaiting_approval');
+
+  // Vision-aligned grouping: quotes & proposals need sign-off; escalations need the owner's call.
+  const isQuoteAction = (act: ActionRecord) =>
+    ['generate_quote', 'draft_document', 'send_invoice'].includes(act.actionType || '');
+  const isEscalationAction = (act: ActionRecord) =>
+    act.actionType === 'safety_review' || ['money_movement', 'system_settings'].includes(act.riskCategory);
+  const quoteActions = pendingActions.filter(isQuoteAction);
+  const escalationActions = pendingActions.filter((act) => !isQuoteAction(act) && isEscalationAction(act));
+  const otherActions = pendingActions.filter((act) => !isQuoteAction(act) && !isEscalationAction(act));
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
   const [rejectionNote, setRejectionNote] = useState<string>('');
@@ -65,39 +97,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[#1f2637] pb-4">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <span>Approval Queue</span>
-            {pendingActions.length > 0 && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                {pendingActions.length} Pending Review
-              </span>
-            )}
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Your safety net. Review commitment drafts, client quotes, and financial transactions before they go out.
-          </p>
-        </div>
-      </div>
-
-      {pendingActions.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-[#0e1118] border border-[#1f2638] space-y-3">
-          <div className="w-12 h-12 rounded-full bg-[#00ff66]/10 border border-[#00ff66]/30 flex items-center justify-center text-[#00ff66] mx-auto glow-rc-sm">
-            <CheckCircle className="w-6 h-6" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold text-white">All caught up!</h3>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              There are no actions awaiting your approval. Your AI team will queue items here when money or customer commitments require your sign-off.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {pendingActions.map((action) => {
+  const renderActionCard = (action: ActionRecord) => {
             const employee = AI_EMPLOYEES.find(e => e.id === action.employeeId) || AI_EMPLOYEES[0];
             const isEditing = editingActionId === action.id;
             const isRejecting = rejectingActionId === action.id;
@@ -324,7 +324,73 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                 )}
               </div>
             );
-          })}
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[#1f2637] pb-4">
+        <div>
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <span>Approval Queue</span>
+            {pendingActions.length > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                {pendingActions.length} Pending Review
+              </span>
+            )}
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Quotes waiting for your sign-off, and escalations that need your call.
+          </p>
+        </div>
+      </div>
+
+      {pendingActions.length === 0 ? (
+        <div className="p-12 text-center rounded-2xl bg-[#0e1118] border border-[#1f2638] space-y-3">
+          <div className="w-12 h-12 rounded-full bg-[#00ff66]/10 border border-[#00ff66]/30 flex items-center justify-center text-[#00ff66] mx-auto glow-rc-sm">
+            <CheckCircle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-base font-semibold text-white">All caught up!</h3>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              There are no actions awaiting your approval. Your AI team will queue items here when money or customer commitments require your sign-off.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {quoteActions.length > 0 && (
+            <section className="space-y-3">
+              <SectionHeader
+                icon={<FileText className="w-4 h-4 text-lime-400" />}
+                title="Quotes & Proposals"
+                subtitle="Review pricing and terms before they go to the customer."
+                count={quoteActions.length}
+              />
+              <div className="space-y-4">{quoteActions.map(renderActionCard)}</div>
+            </section>
+          )}
+          {escalationActions.length > 0 && (
+            <section className="space-y-3">
+              <SectionHeader
+                icon={<ShieldAlert className="w-4 h-4 text-amber-400" />}
+                title="Escalations"
+                subtitle="Safety issues, money movement, and items that need your call."
+                count={escalationActions.length}
+              />
+              <div className="space-y-4">{escalationActions.map(renderActionCard)}</div>
+            </section>
+          )}
+          {otherActions.length > 0 && (
+            <section className="space-y-3">
+              <SectionHeader
+                icon={<ClipboardList className="w-4 h-4 text-slate-400" />}
+                title="Other Actions"
+                subtitle="Everything else waiting for review."
+                count={otherActions.length}
+              />
+              <div className="space-y-4">{otherActions.map(renderActionCard)}</div>
+            </section>
+          )}
         </div>
       )}
     </div>
