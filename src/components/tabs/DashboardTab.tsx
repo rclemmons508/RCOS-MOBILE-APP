@@ -1,5 +1,5 @@
 import React from 'react';
-import { Agent, PhoneCall, Job, SystemMetric, TabType, TelemetryPoint, User, IndustryOptimizationSuggestion } from '../../types';
+import { Agent, PhoneCall, Job, SystemMetric, TabType, TelemetryPoint, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
 import { 
   PhoneCall as PhoneIcon, 
   Briefcase, 
@@ -18,7 +18,9 @@ import {
   Clock,
   Mail,
   ArrowRight,
-  Wrench
+  Wrench,
+  Inbox,
+  Activity
 } from 'lucide-react';
 import { haptic } from '../../utils/haptics';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
@@ -37,6 +39,12 @@ interface DashboardTabProps {
   onReviewSuggestion?: () => void;
   onDismissSuggestion?: () => void;
   onOpenServiceManager?: () => void;
+  serverOnline?: boolean | null;
+  pendingApprovals?: number;
+  activeEmployees?: Record<string, boolean>;
+  customerRequests?: CustomerRequest[];
+  automationsOn?: number;
+  automationsTotal?: number;
   onNavigateTab: (tab: TabType) => void;
   onSimulateCall: () => void;
   onTriggerEmergencyJob: () => void;
@@ -57,6 +65,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onReviewSuggestion,
   onDismissSuggestion,
   onOpenServiceManager,
+  serverOnline = null,
+  pendingApprovals = 0,
+  activeEmployees = {},
+  customerRequests = [],
+  automationsOn = 0,
+  automationsTotal = 0,
   onNavigateTab,
   onSimulateCall,
   onTriggerEmergencyJob,
@@ -66,6 +80,39 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const urgentJobs = jobs.filter(j => j.priority === 'critical' || j.status === 'urgent');
   const upcomingJobs = jobs.filter(j => j.status !== 'completed').slice(0, 3);
   const recentCalls = calls.slice(0, 3);
+
+  // Master Dashboard helpers
+  const empOn = (id: string) => activeEmployees[id] !== false;
+  const empBadge = (id: string) =>
+    empOn(id) ? (
+      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20 shrink-0">
+        Active
+      </span>
+    ) : (
+      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500 border border-zinc-700 shrink-0">
+        Paused
+      </span>
+    );
+  const slaFor = (req: CustomerRequest) => {
+    const urgent = req.urgency === 'urgent' || req.urgency === 'emergency';
+    const limitMs = urgent ? 8 * 3600 * 1000 : 24 * 3600 * 1000; // same-day vs 24h
+    const elapsed = Date.now() - new Date(req.createdAt).getTime();
+    return { urgent, breached: elapsed > limitMs, leftMs: Math.max(0, limitMs - elapsed) };
+  };
+  const timeLeft = (ms: number) => {
+    const h = Math.floor(ms / 3600000);
+    if (h < 1) return `${Math.max(1, Math.floor(ms / 60000))}m left`;
+    if (h < 24) return `${h}h left`;
+    return `${Math.floor(h / 24)}d left`;
+  };
+  const timeAgo = (iso: string) => {
+    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const h = Math.floor(mins / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  };
 
   const handleQuickAction = async (action: () => void, type: 'light' | 'warning' = 'light') => {
     if (type === 'warning') {
@@ -123,6 +170,42 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
             <div className="text-[9px] text-zinc-400 font-mono">
               {currentUser?.authenticated ? 'Online' : 'Guest'}
+            </div>
+          </div>
+        </button>
+      </div>
+
+      {/* System Status Strip — Master Dashboard command view */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center gap-2 min-w-0">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${serverOnline === true ? 'bg-lime-400 animate-pulse' : serverOnline === false ? 'bg-rose-500' : 'bg-amber-400 animate-pulse'}`} />
+          <div className="min-w-0">
+            <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">System</div>
+            <div className="text-xs font-bold text-white truncate">
+              {serverOnline === true ? 'Online' : serverOnline === false ? 'Offline' : 'Checking…'}
+            </div>
+          </div>
+        </div>
+        <div className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center gap-2 min-w-0">
+          <Activity className="w-3.5 h-3.5 text-lime-400 shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Automations</div>
+            <div className="text-xs font-bold text-white truncate">{automationsOn}/{automationsTotal} on</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light();
+            onNavigateTab('approvals');
+          }}
+          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-amber-500/40 flex items-center gap-2 min-w-0 text-left transition cursor-pointer"
+        >
+          <ShieldCheck className={`w-3.5 h-3.5 shrink-0 ${pendingApprovals > 0 ? 'text-amber-400' : 'text-zinc-500'}`} />
+          <div className="min-w-0">
+            <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Approvals</div>
+            <div className={`text-xs font-bold truncate ${pendingApprovals > 0 ? 'text-amber-300' : 'text-white'}`}>
+              {pendingApprovals > 0 ? `${pendingApprovals} waiting` : 'All clear'}
             </div>
           </div>
         </button>
@@ -358,13 +441,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <PhoneIcon className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">Voice Receptionist</div>
+                <div className="text-xs font-bold text-white truncate">AI Receptionist</div>
                 <div className="text-[10px] text-zinc-400 truncate">Answers calls 24/7</div>
               </div>
             </div>
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20 shrink-0">
-              Active
-            </span>
+            {empBadge('ai_receptionist')}
           </div>
 
           <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3">
@@ -373,13 +454,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <Briefcase className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">Dispatch Specialist</div>
+                <div className="text-xs font-bold text-white truncate">Operations Assistant</div>
                 <div className="text-[10px] text-zinc-400 truncate">Routes technicians</div>
               </div>
             </div>
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20 shrink-0">
-              Active
-            </span>
+            {empBadge('operations')}
           </div>
 
           <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3">
@@ -388,13 +467,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <Sparkles className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">Estimator & Quotes</div>
+                <div className="text-xs font-bold text-white truncate">Sales Assistant</div>
                 <div className="text-[10px] text-zinc-400 truncate">Drafts trade proposals</div>
               </div>
             </div>
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20 shrink-0">
-              Active
-            </span>
+            {empBadge('sales')}
           </div>
 
           <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3">
@@ -403,16 +480,57 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <Users className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">Client Follow-up</div>
+                <div className="text-xs font-bold text-white truncate">Support Assistant</div>
                 <div className="text-[10px] text-zinc-400 truncate">SMS updates & reviews</div>
               </div>
             </div>
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20 shrink-0">
-              Active
-            </span>
+            {empBadge('customer_service')}
           </div>
         </div>
       </div>
+
+      {/* Customer Requests with SLA badges */}
+      {customerRequests.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+              <Inbox className="w-3.5 h-3.5 text-lime-400" />
+              <span>Customer Requests</span>
+            </h3>
+            <span className="text-[11px] text-zinc-500 font-mono">{customerRequests.length} open</span>
+          </div>
+          <div className="space-y-2">
+            {customerRequests.slice(0, 5).map((req) => {
+              const sla = slaFor(req);
+              return (
+                <div
+                  key={req.id}
+                  className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-1.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-white truncate">{req.customerName}</span>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider border ${
+                      sla.breached
+                        ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                        : sla.urgent
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                    }`}>
+                      {sla.breached ? 'Overdue' : sla.urgent ? `Same-day · ${timeLeft(sla.leftMs)}` : `24h · ${timeLeft(sla.leftMs)}`}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 truncate">
+                    {req.serviceType || 'General Service'} — {req.description}
+                  </p>
+                  <div className="text-[10px] text-zinc-500 font-mono">
+                    {timeAgo(req.createdAt)} · {req.stage || 'Intake'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Recent Inbound Inquiries */}
       <div className="space-y-2">
