@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Agent, PhoneCall, Job, SystemMetric, TabType, TelemetryPoint, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
 import { 
   PhoneCall as PhoneIcon, 
@@ -20,7 +20,9 @@ import {
   ArrowRight,
   Wrench,
   Inbox,
-  Activity
+  Activity,
+  Share2,
+  Link2
 } from 'lucide-react';
 import { haptic } from '../../utils/haptics';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
@@ -39,6 +41,7 @@ interface DashboardTabProps {
   onReviewSuggestion?: () => void;
   onDismissSuggestion?: () => void;
   onOpenServiceManager?: () => void;
+  businessId?: string;
   serverOnline?: boolean | null;
   pendingApprovals?: number;
   activeEmployees?: Record<string, boolean>;
@@ -65,6 +68,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onReviewSuggestion,
   onDismissSuggestion,
   onOpenServiceManager,
+  businessId = '',
   serverOnline = null,
   pendingApprovals = 0,
   activeEmployees = {},
@@ -112,6 +116,27 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     const h = Math.floor(mins / 60);
     if (h < 24) return `${h}h ago`;
     return `${Math.floor(h / 24)}d ago`;
+  };
+  const [linkCopied, setLinkCopied] = useState(false);
+  const bookingLink = businessId ? `${window.location.origin}/#/book/${businessId}` : '';
+  const shareBookingLink = async () => {
+    if (!bookingLink) return;
+    haptic.light();
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${businessName} — Request Service`,
+          text: 'Request service online:',
+          url: bookingLink,
+        });
+      } else {
+        await navigator.clipboard.writeText(bookingLink);
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
+      }
+    } catch {
+      /* user dismissed the share sheet */
+    }
   };
 
   const handleQuickAction = async (action: () => void, type: 'light' | 'warning' = 'light') => {
@@ -490,15 +515,41 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       </div>
 
       {/* Customer Requests with SLA badges */}
-      {customerRequests.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
-              <Inbox className="w-3.5 h-3.5 text-lime-400" />
-              <span>Customer Requests</span>
-            </h3>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+            <Inbox className="w-3.5 h-3.5 text-lime-400" />
+            <span>Customer Requests</span>
+          </h3>
+          <div className="flex items-center gap-2">
             <span className="text-[11px] text-zinc-500 font-mono">{customerRequests.length} open</span>
+            {bookingLink && (
+              <button
+                type="button"
+                onClick={shareBookingLink}
+                className="text-[11px] font-bold text-lime-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                {linkCopied ? <Link2 className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                <span>{linkCopied ? 'Copied!' : 'Share booking link'}</span>
+              </button>
+            )}
           </div>
+        </div>
+        {customerRequests.length === 0 ? (
+          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 text-center space-y-2">
+            <p className="text-xs text-zinc-400">No requests yet.</p>
+            {bookingLink && (
+              <button
+                type="button"
+                onClick={shareBookingLink}
+                className="px-3.5 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black text-xs font-extrabold transition cursor-pointer"
+              >
+                {linkCopied ? 'Link copied!' : 'Share your booking link'}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
           <div className="space-y-2">
             {customerRequests.slice(0, 5).map((req) => {
               const sla = slaFor(req);
@@ -529,8 +580,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Recent Inbound Inquiries */}
       <div className="space-y-2">
