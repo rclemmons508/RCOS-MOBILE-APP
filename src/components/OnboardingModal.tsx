@@ -311,26 +311,71 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     return () => clearInterval(interval);
   }, [step]);
 
-  // Handle file drop & reading
+  // Handle file drop & reading.
+  //
+  // Two hard-won lessons on Android:
+  // 1. Starting the read while the app is still backgrounded (the system file
+  //    picker closing) gets the read killed — so we wait until we're visible.
+  // 2. The picker handoff can fail transiently — so we retry once before
+  //    giving up, and report the real error name when we do.
   const processUploadedFile = (file: File) => {
-    const isText = file.type.startsWith('text/') || 
-                   file.name.endsWith('.txt') || 
-                   file.name.endsWith('.md') || 
-                   file.name.endsWith('.json') || 
+    const isText = file.type.startsWith('text/') ||
+                   file.name.endsWith('.txt') ||
+                   file.name.endsWith('.md') ||
+                   file.name.endsWith('.json') ||
                    file.name.endsWith('.csv');
     const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
     const isImage = file.type.startsWith('image/');
 
+    const beginRead = () => readFileWithRetry(file, isText, isPdf, isImage, 0);
+
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      let started = false;
+      const tryStart = () => {
+        if (started) return;
+        if (document.visibilityState === 'visible') {
+          started = true;
+          document.removeEventListener('visibilitychange', tryStart);
+          beginRead();
+        }
+      };
+      document.addEventListener('visibilitychange', tryStart);
+      // Safety net: never wait more than 2.5s for the visible event.
+      setTimeout(() => {
+        if (!started) {
+          started = true;
+          document.removeEventListener('visibilitychange', tryStart);
+          beginRead();
+        }
+      }, 2500);
+    } else {
+      beginRead();
+    }
+  };
+
+  const readFileWithRetry = (
+    file: File,
+    isText: boolean,
+    isPdf: boolean,
+    isImage: boolean,
+    attempt: number
+  ) => {
     const reader = new FileReader();
 
-    // If the read is interrupted (e.g. the app was backgrounded), say so
-    // plainly instead of silently dropping the file.
-    reader.onerror = () => {
-      setError('The file read was interrupted before it finished. Please tap the upload area and choose the file again.');
+    const fail = () => {
+      if (attempt < 1) {
+        // One automatic retry — transient picker handoff failures are common.
+        setTimeout(() => readFileWithRetry(file, isText, isPdf, isImage, attempt + 1), 600);
+        return;
+      }
+      const reason = reader.error?.name ? ` (${reader.error.name})` : '';
+      setError(
+        `Couldn't read "${file.name}"${reason}. Please try again, or try a smaller PDF or text file.`
+      );
     };
-    reader.onabort = () => {
-      setError('The file read was interrupted before it finished. Please tap the upload area and choose the file again.');
-    };
+
+    reader.onerror = fail;
+    reader.onabort = fail;
 
     if (isText) {
       reader.onload = (e) => {
