@@ -94,7 +94,33 @@ jobs:
         if: ${{ env.HAS_RELEASE_KEYSTORE != '' }}
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/release.p12
 
+      - name: Verify signing secrets present
+        run: |
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            val="${!name}"
+            if [ -z "$val" ]; then echo "::error::Secret $name is missing or empty"; missing=1; else echo "OK: $name is set"; fi
+          done
+          exit $missing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
       - name: Build Android Release APK (signed)
         if: ${{ env.HAS_RELEASE_KEYSTORE != '' }}
         run: ./gradlew assembleRelease --stacktrace --no-daemon
         working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload Release APK Artifact
+        if: ${{ env.HAS_RELEASE_KEYSTORE != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: RCOS-Mobile-App-Release-APK
+          path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 30
