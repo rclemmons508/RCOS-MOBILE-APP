@@ -218,7 +218,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     } catch {}
   };
 
-  const clearUploadedFile = () => persistUploadedFile(null);
+  const clearUploadedFile = () => {
+    persistUploadedFile(null);
+    resetFileInput();
+  };
 
   // Opening the native picker backgrounds the WebView — tell the biometric
   // guard not to auto-lock while the picker is on screen.
@@ -369,6 +372,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         return;
       }
       const reason = reader.error?.name ? ` (${reader.error.name})` : '';
+      resetFileInput();
       setError(
         `Couldn't read "${file.name}"${reason}. Please try again, or try a smaller PDF or text file.`
       );
@@ -386,6 +390,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           type: file.type || 'text/plain',
           text: textContent
         });
+        resetFileInput();
         setError(null);
       };
       reader.readAsText(file);
@@ -401,6 +406,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           text: `[Binary document payload: ${file.name}]`,
           base64: base64Data
         });
+        resetFileInput();
         setError(null);
       };
       reader.readAsDataURL(file);
@@ -414,6 +420,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           type: file.type || 'application/octet-stream',
           text: textContent
         });
+        resetFileInput();
         setError(null);
       };
       reader.readAsText(file);
@@ -426,8 +433,18 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       haptic.light();
       processUploadedFile(e.target.files[0]);
     }
-    // Reset the input so choosing the same file again still fires onChange.
-    e.target.value = '';
+    // NOTE: the input is intentionally NOT cleared here. On Android, clearing
+    // the file input releases the picked file immediately, which kills the
+    // FileReader with NotFoundError. It is cleared after the read finishes
+    // (see resetFileInput), which still allows re-picking the same file.
+  };
+
+  // Clears the file input so choosing the same file again still fires onChange.
+  // Only call after the read has fully completed.
+  const resetFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
