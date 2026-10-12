@@ -15,6 +15,10 @@ jobs:
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
+    env:
+      # secrets.* cannot be used in step `if:` conditions (GitHub rejects the
+      # whole file). Mirror it to env here, then gate steps on env instead.
+      HAS_RELEASE_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
     steps:
       - name: Checkout Repository
@@ -87,22 +91,10 @@ jobs:
           retention-days: 14
 
       - name: Decode release keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_RELEASE_KEYSTORE != '' }}
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/release.p12
 
       - name: Build Android Release APK (signed)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_RELEASE_KEYSTORE != '' }}
         run: ./gradlew assembleRelease --stacktrace --no-daemon
         working-directory: android
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
-      - name: Upload Release APK Artifact
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: RCOS-Mobile-App-Release-APK
-          path: android/app/build/outputs/apk/release/*.apk
-          retention-days: 30
