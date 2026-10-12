@@ -19,6 +19,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { BiometricSetupModal } from './BiometricSetupModal';
+import { biometricService } from '../../services/biometricService';
 
 interface BiometricLockScreenProps {
   currentUser?: User | null;
@@ -44,8 +45,17 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
   const [usePinMode, setUsePinMode] = useState(false);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
+  const [hasPin, setHasPin] = useState(false);
   const [isPromptingDevice, setIsPromptingDevice] = useState(false);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
+
+  const enterPinMode = () => {
+    setHasPin(biometricService.hasBackupPin());
+    setUsePinMode(true);
+    setPin('');
+    setPinError(null);
+    clearAuthError();
+  };
 
   // Trigger real device hardware sensor prompt
   const handleDeviceBiometricPrompt = async () => {
@@ -99,7 +109,7 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
       await haptic.success();
     } else {
       await haptic.error();
-      setPinError('Invalid Operator PIN. Try 6073 (R-C-O-S).');
+      setPinError('Incorrect backup PIN. Try again.');
       setPin('');
     }
   };
@@ -215,9 +225,17 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
           <div className="flex flex-col items-center space-y-4 w-full">
             <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
               <KeyRound className="w-3.5 h-3.5 text-lime-400" />
-              <span>Enter 4-Digit Operator PIN</span>
+              <span>Enter 4-Digit Backup PIN</span>
             </div>
 
+            {!hasPin ? (
+              <div className="text-center space-y-2 max-w-[260px]">
+                <p className="text-[11px] text-zinc-400">
+                  No backup PIN was set for this device. Use biometrics to unlock, then set a backup PIN in Settings.
+                </p>
+              </div>
+            ) : (
+            <>
             {/* PIN Dots Display */}
             <div className="flex gap-4 my-1">
               {[0, 1, 2, 3].map((idx) => (
@@ -269,13 +287,15 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
 
               <button
                 type="button"
-                onClick={() => verifyPin('7267')}
+                onClick={() => pin && verifyPin(pin)}
                 className="h-12 rounded-xl bg-lime-500/10 hover:bg-lime-500/20 border border-lime-500/30 text-lime-400 text-[10px] font-bold font-mono transition cursor-pointer flex items-center justify-center"
-                title="RCOS Emergency Master PIN"
+                title="Submit PIN"
               >
-                6073
+                GO
               </button>
             </div>
+            </>
+            )}
           </div>
         )}
       </div>
@@ -294,14 +314,16 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
         <button
           type="button"
           onClick={() => {
-            setUsePinMode(!usePinMode);
-            clearAuthError();
-            setPinError(null);
+            if (usePinMode) {
+              setUsePinMode(false);
+            } else {
+              enterPinMode();
+            }
           }}
           className="flex items-center gap-1.5 text-xs text-lime-400 hover:text-lime-300 font-mono font-bold px-3 py-2 rounded-xl hover:bg-lime-500/10 transition cursor-pointer"
         >
           <KeyRound className="w-3.5 h-3.5" />
-          <span>{usePinMode ? 'Use Biometrics' : 'Use PIN (6073)'}</span>
+          <span>{usePinMode ? 'Use Biometrics' : 'Use PIN'}</span>
         </button>
       </div>
 
