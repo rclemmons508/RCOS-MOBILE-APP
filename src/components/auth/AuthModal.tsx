@@ -3,6 +3,7 @@ import { User } from '../../types';
 import { authService } from '../../services/authService';
 import { biometricService } from '../../services/biometricService';
 import { INDUSTRY_PRESETS, getStaffRolesForIndustry } from '../../data/presets';
+import { Capacitor } from '@capacitor/core';
 import { 
   Shield, 
   Lock, 
@@ -393,6 +394,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <span>Authenticate Operator</span>
                 </button>
 
+                {!Capacitor.isNativePlatform() && (
                 <button
                   type="button"
                   onClick={() => handleGoogleSignIn()}
@@ -406,6 +408,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </svg>
                   <span>Continue with Google</span>
                 </button>
+                )}
 
                 {isDemoAuthEnabled && (
                   <button
