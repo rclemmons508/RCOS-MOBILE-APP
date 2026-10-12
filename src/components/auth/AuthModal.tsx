@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../../types';
 import { authService } from '../../services/authService';
+import { biometricService } from '../../services/biometricService';
 import { INDUSTRY_PRESETS, getStaffRolesForIndustry } from '../../data/presets';
 import { 
   Shield, 
@@ -45,6 +46,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
+  const [backupPin, setBackupPin] = useState('');
   const [industryId, setIndustryId] = useState('general_small_business');
   const roleOptions = getStaffRolesForIndustry(industryId);
   const [role, setRole] = useState<string>(roleOptions[0]);
@@ -145,6 +147,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMsg('Please complete all registration fields.');
       return;
     }
+    if (!/^\d{4}$/.test(backupPin)) {
+      setErrorMsg('Please set a 4-digit backup PIN in case biometrics fail.');
+      return;
+    }
     const newUser: User = {
       id: 'usr-' + Date.now(),
       email,
@@ -158,6 +164,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     };
     setErrorMsg('');
     setSuccessMsg('Account registered successfully!');
+    // Save the user's own backup PIN — the only PIN that can unlock the app.
+    biometricService.setOperatorPin(backupPin);
     setTimeout(() => {
       onLoginSuccess(newUser);
       setSuccessMsg('');
@@ -533,6 +541,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </span>
                   </div>
                 )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-300 block">Backup PIN <span className="text-zinc-500 font-normal">(4 digits)</span></label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    autoComplete="new-password"
+                    value={backupPin}
+                    onChange={(e) => setBackupPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="••••"
+                    className="w-full bg-black border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:border-lime-500 focus:outline-none font-mono text-center tracking-[0.3em]"
+                    required
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-500">
+                  Unlocks the app if biometrics ever fail. Only you know it.
+                </p>
               </div>
 
               <button
