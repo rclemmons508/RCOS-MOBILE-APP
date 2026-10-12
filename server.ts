@@ -62,6 +62,14 @@ app.use((req: Request, res: Response, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
 
+  // Public intake endpoints (demo form, booking page) must be callable from any
+  // website origin. They are unauthenticated by design, so a wildcard origin is safe.
+  if (req.path.startsWith('/api/public/')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
+  }
+
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -187,12 +195,16 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
 // Public exceptions (registered above or skipped here):
 //   /api/health, /api/firebase-config, and the public intake form
 //   POST /api/business/:id/requests (customers must be able to reach you without an account).
+// NOTE: inside app.use('/api', ...), Express strips the '/api' mount prefix, so
+// req.path here is the path WITHOUT '/api' (verified on Express 4.22). The old
+// checks matched '/api/...' and never fired, which wrongly gated the public
+// booking page and the voice routing log with a 401.
 app.use('/api', (req: Request, res: Response, next) => {
-  if (req.path === '/api/health' || req.path === '/api/firebase-config') return next();
-  if (req.method === 'POST' && /^\/api\/business\/[^/]+\/requests$/.test(req.path)) return next();
-  if (req.method === 'GET' && /^\/api\/public\/business\/[^/]+$/.test(req.path)) return next();
+  if (req.method === 'POST' && /^\/business\/[^/]+\/requests$/.test(req.path)) return next();
+  if (req.method === 'GET' && /^\/public\/business\/[^/]+$/.test(req.path)) return next();
+  if (req.method === 'POST' && req.path === '/public/demo-request') return next();
   // The voice-agent worker authenticates with VOICE_AGENT_SECRET, not a user token.
-  if (req.path === '/api/voice/routing-log') return next();
+  if (req.path === '/voice/routing-log') return next();
   return requireAuth(req, res, next);
 });
 
@@ -210,6 +222,60 @@ app.get('/api/public/business/:id', (req: Request, res: Response) => {
     services: business.services || [],
     brandTone: business.brandTone || '',
   });
+});
+
+// Public demo-request intake for the RC Solutions website.
+// Gate-exempt + CORS-open by design (no account needed to ask for a demo).
+// Saved as a CustomerRequest on the operator's first business, so it shows up in
+// the app's Customer Requests with an SLA badge. No engine auto-trigger — the
+// operator follows up personally.
+app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res: Response) => {
+  const b = req.body || {};
+  // Honeypot: bots fill it, humans never see it.
+  if (typeof b.website === 'string' && b.website.trim().length > 0) {
+    return res.status(201).json({ ok: true });
+  }
+  const name = (b.name || '').toString().trim();
+  if (!name) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+
+  const businesses = db.getAllBusinesses();
+  if (businesses.length === 0) {
+    return res.status(503).json({ error: 'Service not ready yet — please call 470-783-2596.' });
+  }
+  const business = businesses[0];
+
+  const company = (b.businessName || '').toString().trim().slice(0, 120);
+  const industry = (b.industry || '').toString().trim().slice(0, 80);
+  const message = (b.message || '').toString().trim().slice(0, 2000);
+  const lines = ['Demo request from the RC Solutions website.'];
+  if (company) lines.push('Company: ' + company);
+  if (industry) lines.push('Industry: ' + industry);
+  if (message) lines.push('What they want to automate: ' + message);
+
+  const newRequest: CustomerRequest = {
+    id: `req_${Date.now()}`,
+    businessId: business.id,
+    customerName: name.slice(0, 100),
+    customerPhone: (b.phone || '').toString().slice(0, 30),
+    customerEmail: (b.email || '').toString().slice(0, 100),
+    preferredContact: 'phone',
+    serviceLocation: 'Website demo request',
+    serviceType: 'Demo Request',
+    description: lines.join('\n').slice(0, 2000),
+    urgency: 'routine',
+    preferredDateTime: 'Flexible / Next Available',
+    flexibility: 'Standard business hours',
+    specialInstructions: '',
+    stage: 'Intake',
+    status: 'in_progress',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  const saved = db.saveRequest(newRequest);
+  res.status(201).json({ ok: true, id: saved.id });
 });
 
 // WebRTC voice: mint a LiveKit access token for an AI receptionist call.
