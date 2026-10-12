@@ -128,6 +128,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
 
   // PBX & Real Phone System state
   const [telephonyConfig, setTelephonyConfig] = useState<TelephonyConfig | null>(null);
+  const [carrierLive, setCarrierLive] = useState(false);
   const [isPbxModalOpen, setIsPbxModalOpen] = useState(false);
 
   // Active Live Call state
@@ -149,6 +150,9 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
 
   // Fetch telephony configuration on mount
   useEffect(() => {
+    apiFetch<{ telephonyProvider?: string }>('/api/firebase-config')
+      .then(cfg => { if (cfg?.telephonyProvider === 'twilio') setCarrierLive(true); })
+      .catch(() => {});
     apiFetch<TelephonyConfig>('/api/twilio/config')
       .then(data => {
         if (data) {
@@ -427,6 +431,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                   </div>
                 </div>
 
+                {carrierLive && (
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
@@ -445,6 +450,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                     <span>Call Real Phone</span>
                   </button>
                 </div>
+                )}
               </div>
 
               {/* Free in-app voice call (WebRTC) — used while the Twilio carrier is parked */}
