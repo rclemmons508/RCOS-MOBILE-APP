@@ -227,6 +227,8 @@ export interface IndustryPreset {
   defaultServices: string[];
   recommendedTone: string;
   technicianRoleName: string;
+  /** Job positions shown on the registration screen for this industry. */
+  staffRoles: string[];
   sampleJobPacks: JobPack[];
 }
 
@@ -330,7 +332,8 @@ export interface User {
   id: string;
   email: string;
   fullName: string;
-  role: 'System Administrator' | 'Operations Lead' | 'Field Manager' | 'AI Specialist' | 'Field Technician' | 'Dispatcher';
+  /** Free-form role title — the registration screen offers per-industry options. */
+  role: string;
   avatar: string;
   organization: string;
   authenticated: boolean;
