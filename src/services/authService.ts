@@ -150,6 +150,7 @@ class AuthService {
     password?: string;
     role?: User['role'];
     organization?: string;
+    backupPin?: string;
     preferences?: Partial<UserPreferences>;
     enableBiometrics?: boolean;
   }): Promise<User> {
@@ -181,8 +182,12 @@ class AuthService {
       await biometricService.enrollBiometrics(
         newUser.email,
         newUser.fullName,
-        'fingerprint'
+        'fingerprint',
+        data.backupPin
       ).catch(() => {});
+    } else if (data.backupPin && /^\d{4}$/.test(data.backupPin)) {
+      // PIN-only fallback even when biometrics are skipped
+      biometricService.setOperatorPin(data.backupPin);
     }
 
     this.upsertUser(newUser);
