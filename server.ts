@@ -130,6 +130,57 @@ app.get('/api/firebase-config', (_req: Request, res: Response) => {
   });
 });
 
+// ---- Diagnostics (per RCOS Master Dashboard spec) ----
+// Returns system health checks with PASS/WARN/FAIL status.
+app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
+  const checks: { id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }[] = [];
+
+  // Server core
+  checks.push({ id: 'server', label: 'Server Core', status: 'pass', detail: 'API responding normally' });
+
+  // Firebase login gate
+  const gateOn = !!process.env.FIREBASE_SERVICE_ACCOUNT;
+  checks.push({
+    id: 'auth', label: 'Login Gate', status: gateOn ? 'pass' : 'warn',
+    detail: gateOn ? 'Firebase Admin active — API requires login' : 'FIREBASE_SERVICE_ACCOUNT not set — API open'
+  });
+
+  // LiveKit voice
+  const lk = process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET;
+  checks.push({
+    id: 'livekit', label: 'Voice Calling (LiveKit)', status: lk ? 'pass' : 'fail',
+    detail: lk ? 'LiveKit credentials configured' : 'LIVEKIT_URL / KEY / SECRET missing'
+  });
+
+  // Voice worker secret
+  const vs = !!process.env.VOICE_AGENT_SECRET;
+  checks.push({
+    id: 'worker', label: 'Voice Worker Secret', status: vs ? 'pass' : 'warn',
+    detail: vs ? 'VOICE_AGENT_SECRET set' : 'VOICE_AGENT_SECRET not set'
+  });
+
+  // Gemini AI
+  const gm = !!process.env.GEMINI_API_KEY;
+  checks.push({
+    id: 'gemini', label: 'AI Engine (Gemini)', status: gm ? 'pass' : 'warn',
+    detail: gm ? 'GEMINI_API_KEY configured' : 'GEMINI_API_KEY not set — AI features limited'
+  });
+
+  // Database persistence
+  const dataDir = process.env.DATA_DIR;
+  checks.push({
+    id: 'database', label: 'Data Persistence', status: dataDir ? 'pass' : 'warn',
+    detail: dataDir ? `Using persistent volume at ${dataDir}` : 'No DATA_DIR volume — data lost on redeploy'
+  });
+
+  const fails = checks.filter(c => c.status === 'fail').length;
+  const warns = checks.filter(c => c.status === 'warn').length;
+  const overall = fails > 0 ? 'fail' : warns > 0 ? 'warn' : 'pass';
+  const score = Math.round((checks.filter(c => c.status === 'pass').length / checks.length) * 100);
+
+  res.json({ overall, score, checks, scannedAt: new Date().toISOString() });
+});
+
 // ---- Login gate ----
 // Every /api route below this line requires a valid Firebase login token,
 // which the phone app already attaches (see src/lib/api.ts).
