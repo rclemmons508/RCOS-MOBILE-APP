@@ -452,6 +452,33 @@ class BiometricService {
     } catch {}
   }
 
+  /**
+   * File-picker grace window.
+   *
+   * Opening the native file picker backgrounds the WebView, which would
+   * otherwise trip the auto-lock-on-background guard and strand the user on
+   * the lock screen mid-upload (losing the selected file). Call
+   * notifyFilePickerOpened() right before opening the picker; the guard then
+   * skips locking while the picker is expected to be on screen.
+   */
+  private filePickerOpenedAt = 0;
+  private static readonly FILE_PICKER_GRACE_MS = 3 * 60 * 1000;
+
+  notifyFilePickerOpened(): void {
+    this.filePickerOpenedAt = Date.now();
+  }
+
+  clearFilePickerFlag(): void {
+    this.filePickerOpenedAt = 0;
+  }
+
+  isFilePickerActive(): boolean {
+    return (
+      this.filePickerOpenedAt > 0 &&
+      Date.now() - this.filePickerOpenedAt < BiometricService.FILE_PICKER_GRACE_MS
+    );
+  }
+
   private getLastActiveTimestamp(): number {
     try {
       const val = localStorage.getItem(STORAGE_KEY_LAST_ACTIVE);
