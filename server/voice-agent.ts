@@ -108,6 +108,14 @@ export default defineAgent({
 
 // Receives the routed call's business id via the room metadata set in /api/voice/token.
 export function startWorker() {
+  // cli.runApp() parses process.argv for a subcommand (start/dev/connect).
+  // When launched via start.ts (`tsx start.ts`) there is no subcommand, so the
+  // CLI only prints its help text and exits — the worker never runs. Default
+  // to 'start' so Railway actually launches the production worker.
+  if (process.argv.length < 3) {
+    process.argv.push('start');
+  }
+  console.log('[voice-agent] starting LiveKit worker (agent: rcos-receptionist)...');
   cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url), agentName: AGENT_NAME }));
 }
 
