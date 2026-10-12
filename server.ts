@@ -37,7 +37,6 @@ const PORT = process.env.PORT || 3000;
 // Security Headers & Production CORS
 app.use((req: Request, res: Response, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
 
   const origin = req.headers.origin as string | undefined;
   const allowedOrigins = new Set(
@@ -921,18 +920,18 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
   const fallbackChatReply = () => {
     switch (roleId) {
       case 'finance':
-        return `Jordan Cross (Finance Officer): Invoicing and account reconciliation reviewed for ${bizName}. All ledger entries and margin targets remain aligned with corporate thresholds.`;
+        return `Finance assistant is temporarily unavailable. Your request for ${bizName} was saved \u2014 nothing has been filed or sent. Please try again shortly.`;
       case 'sales':
-        return `Taylor Hayes (Sales & Estimations): Client request scoped. I have prepared follow-up pricing recommendations for ${bizName} based on standard service rate cards.`;
+        return `Sales assistant is temporarily unavailable. Your request for ${bizName} was saved \u2014 no pricing or follow-ups were prepared. Please try again shortly.`;
       case 'automation_specialist':
-        return `Blake Mercer (Automation Specialist): Workflow triggers verified. Webhook handlers and automated CRM synchronizations are active.`;
+        return `Automation assistant is temporarily unavailable. No workflows or triggers were changed. Please try again shortly.`;
       case 'customer_service':
-        return `Casey Morgan (Customer Support): Inquiries prioritized and queued. Satisfaction follow-ups are ready to be dispatched according to client SLA preferences.`;
+        return `Support assistant is temporarily unavailable. Your inquiry was saved \u2014 nothing has been queued or dispatched. Please try again shortly.`;
       case 'project_manager':
-        return `Quinn Davies (Project Manager): Crew schedules and milestones verified for ${bizName}. All pipeline tasks are tracking on time.`;
+        return `Operations assistant is temporarily unavailable. No schedules were changed. Please try again shortly.`;
       case 'executive_assistant':
       default:
-        return `Morgan Vance (Executive Assistant): Operational directive received for ${bizName}. Team subroutines are synchronized and compliance boundaries are enforced.`;
+        return `Assistant is temporarily unavailable. Your request for ${bizName} was saved \u2014 nothing has been actioned. Please try again shortly.`;
     }
   };
 
@@ -978,16 +977,16 @@ const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 function generateAgentChatFallback(agentId: string, prompt: string): string {
   switch (agentId) {
     case 'agent-phone':
-      return `RCOS Voice AI Agent: Inbound call inquiry processed for "${prompt}". Caller preferences registered, automated SMS confirmation dispatched, and ticket routed to field operations.`;
+      return `The voice AI agent is temporarily unavailable. This inquiry was saved \u2014 no SMS was sent and nothing was dispatched. Please try again shortly.`;
     case 'agent-jobs':
-      return `RCOS Smart Job Dispatcher: Request evaluated. Nearest certified technician assigned with an optimized 45-minute response arrival window.`;
+      return `The dispatch assistant is temporarily unavailable. No technician was assigned. Please try again shortly.`;
     case 'agent-crm':
-      return `RCOS Client CRM Nurture: Account interaction analyzed. Follow-up drafted and client health score updated with real-time retention telemetry.`;
+      return `The CRM assistant is temporarily unavailable. No follow-ups were drafted or sent. Please try again shortly.`;
     case 'agent-system':
-      return `RCOS Architecture Engine: Multi-agent subroutines synchronized across Phone, Dispatch, CRM, and Guardrail microservices.`;
+      return `The system assistant is temporarily unavailable. Please try again shortly.`;
     case 'agent-orchestrator':
     default:
-      return `RCOS System Orchestrator: Command verified and coordinated across all sub-agents. Task routing confirmed for "${prompt}". System health remains 100% operational.`;
+      return `The AI service is temporarily unavailable. Your command was saved \u2014 nothing was routed or confirmed. Please try again shortly.`;
   }
 }
 
@@ -1395,14 +1394,14 @@ app.post('/api/phone/send-email', (req: Request, res: Response) => {
     subject,
     body,
     callerName,
-    status: 'sent',
+    status: 'logged',
     sentAt: new Date().toISOString(),
     sender: 'receptionist@rcsolutions.com'
   };
 
   return res.json({
     success: true,
-    message: `Confirmation email dispatched to ${recipient}`,
+    message: `Email logged for ${recipient} \u2014 not sent yet (email service is not connected)`,
     email: emailRecord
   });
 });
