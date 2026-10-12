@@ -12,8 +12,11 @@ import {
 } from '../src/types';
 import { INDUSTRY_PRESETS } from '../src/data/presets';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+// DATA_DIR can point to a Railway persistent volume (e.g. /data) so the
+// database survives redeploys. Railway's default filesystem is ephemeral.
+const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'rcos_db.json');
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* exists */ }
 
 interface DatabaseSchema {
   businesses: BusinessAccount[];

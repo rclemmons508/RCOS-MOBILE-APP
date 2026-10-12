@@ -7,6 +7,9 @@ service cloud.firestore {
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128;
     }
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
     // Default deny all
     match /{document=**} {
@@ -20,47 +23,48 @@ service cloud.firestore {
 
     // Businesses Collection - Tenant Data & Subcollections
     match /businesses/{businessId} {
-      allow read, write: if isValidId(businessId);
+      allow read, write: if isSignedIn() && isValidId(businessId);
 
       // Subcollection: Requests (Intake Pipeline)
       match /requests/{requestId} {
-        allow read, write: if isValidId(businessId);
+        allow read, write: if isSignedIn() && isValidId(businessId);
       }
 
       // Subcollection: Actions & Approvals
       match /actions/{actionId} {
-        allow read, write: if isValidId(businessId);
+        allow read, write: if isSignedIn() && isValidId(businessId);
       }
 
       // Subcollection: Jobs (Field Dispatch)
       match /jobs/{jobId} {
-        allow read, write: if isValidId(businessId);
+        allow read, write: if isSignedIn() && isValidId(businessId);
       }
 
       // Subcollection: Customers / Clients (CRM)
       match /customers/{customerId} {
-        allow read, write: if isValidId(businessId);
+        allow read, write: if isSignedIn() && isValidId(businessId);
       }
 
       // Subcollection: Chat Messages
       match /chatMessages/{messageId} {
-        allow read, write: if isValidId(businessId);
+        allow read, write: if isSignedIn() && isValidId(businessId);
       }
 
       // Subcollection: Audit Logs
       match /auditLogs/{logId} {
-        allow read, write: if isValidId(businessId);
+        allow read, write: if isSignedIn() && isValidId(businessId);
       }
 
       // Any nested subcollections under business
       match /{allSubcollections=**} {
-        allow read, write: if isValidId(businessId);
+        allow read, write: if isSignedIn() && isValidId(businessId);
       }
     }
 
     // Job Packs global templates
     match /jobPacks/{jobPackId} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
   }
 }
