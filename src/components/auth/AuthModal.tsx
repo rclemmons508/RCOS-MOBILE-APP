@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../../types';
 import { authService } from '../../services/authService';
+import { INDUSTRY_PRESETS, getStaffRolesForIndustry } from '../../data/presets';
 import { 
   Shield, 
   Lock, 
@@ -44,9 +45,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<User['role']>('Operations Lead');
+  const [industryId, setIndustryId] = useState('general_small_business');
+  const roleOptions = getStaffRolesForIndustry(industryId);
+  const [role, setRole] = useState<string>(roleOptions[0]);
   const [organization, setOrganization] = useState('RC Solutions Enterprise');
   const [rememberMe, setRememberMe] = useState(true);
+
+  const handleIndustryChange = (presetId: string) => {
+    setIndustryId(presetId);
+    setRole(getStaffRolesForIndustry(presetId)[0]);
+  };
 
   const [recoveryStep, setRecoveryStep] = useState<1 | 2 | 3>(1);
   const [otpCode, setOtpCode] = useState('');
@@ -312,6 +320,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
                   <input
                     type="email"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="name@rcsolutions.com"
@@ -414,7 +426,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           {/* VIEW: REGISTER FORM */}
           {mode === 'register' && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-3">
+            <form onSubmit={handleRegisterSubmit} autoComplete="off" className="space-y-3">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-300 block">Full Name</label>
                 <div className="relative">
@@ -424,10 +436,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Alex Mercer"
+                    autoComplete="off"
+                    autoCapitalize="words"
+                    autoCorrect="off"
+                    spellCheck={false}
                     className="w-full bg-black border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:border-lime-500 focus:outline-none"
                     required
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-300 block">Industry</label>
+                <select
+                  value={industryId}
+                  onChange={(e) => handleIndustryChange(e.target.value)}
+                  className="w-full bg-black border border-zinc-800 rounded-xl p-2 text-xs text-white focus:border-lime-500 focus:outline-none"
+                >
+                  {INDUSTRY_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>{preset.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1">
@@ -436,6 +465,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
                   <input
                     type="email"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="alex@rcsolutions.com"
@@ -450,13 +483,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <label className="text-xs font-bold text-zinc-300 block">Operator Role</label>
                   <select
                     value={role}
-                    onChange={(e) => setRole(e.target.value as User['role'])}
+                    onChange={(e) => setRole(e.target.value)}
                     className="w-full bg-black border border-zinc-800 rounded-xl p-2 text-xs text-white focus:border-lime-500 focus:outline-none"
                   >
-                    <option value="System Administrator">System Administrator</option>
-                    <option value="Operations Lead">Operations Lead</option>
-                    <option value="Field Manager">Field Manager</option>
-                    <option value="AI Specialist">AI Specialist</option>
+                    {roleOptions.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -480,6 +512,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
                   <input
                     type="password"
+                    autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"
@@ -606,6 +639,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <label className="text-xs font-bold text-zinc-300">New Password</label>
                     <input
                       type="password"
+                      autoComplete="new-password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="••••••••••••"
