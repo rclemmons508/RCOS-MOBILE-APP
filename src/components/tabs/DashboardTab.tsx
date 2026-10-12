@@ -24,6 +24,7 @@ import {
   Share2,
   Link2
 } from 'lucide-react';
+import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { haptic } from '../../utils/haptics';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
 
@@ -510,6 +511,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Quick Launch Bar — RCOS Master Dashboard spec */}
+      <QuickLaunchBar onNavigate={onNavigateTab} />
 
       {/* Customer Requests with SLA badges */}
       <div className="space-y-2">
