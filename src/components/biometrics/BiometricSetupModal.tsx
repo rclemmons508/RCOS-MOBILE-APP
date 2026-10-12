@@ -33,7 +33,7 @@ export const BiometricSetupModal: React.FC<BiometricSetupModalProps> = ({
   const [selectedType, setSelectedType] = useState<'fingerprint' | 'face'>(initialType);
   const [step, setStep] = useState<'choose' | 'scanning' | 'success'>('choose');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [backupPin, setBackupPin] = useState('6073');
+  const [backupPin, setBackupPin] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   if (!isOpen) return null;
@@ -42,13 +42,18 @@ export const BiometricSetupModal: React.FC<BiometricSetupModalProps> = ({
   const targetName = currentUser?.fullName || 'RC Solutions';
 
   const startEnrollment = async () => {
+    const cleanPin = backupPin.replace(/[^0-9]/g, '');
+    if (cleanPin.length !== 4) {
+      setErrorMsg('Please set a 4-digit backup PIN first — it unlocks the app if biometrics ever fail.');
+      return;
+    }
     setErrorMsg(null);
     setStep('scanning');
     setIsProcessing(true);
 
     try {
       // Direct call to phone hardware sensor prompt (WebAuthn / Android BiometricPrompt)
-      const result = await enrollBiometrics(targetEmail, targetName, selectedType, backupPin);
+      const result = await enrollBiometrics(targetEmail, targetName, selectedType, cleanPin);
 
       if (result.success) {
         setStep('success');
@@ -158,14 +163,16 @@ export const BiometricSetupModal: React.FC<BiometricSetupModalProps> = ({
                   </span>
                   <input
                     type="text"
-                    maxLength={6}
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="••••"
                     value={backupPin}
                     onChange={(e) => setBackupPin(e.target.value.replace(/[^0-9]/g, ''))}
                     className="w-20 bg-black border border-zinc-700 focus:border-lime-500 rounded-lg px-2.5 py-1 text-center font-mono text-xs text-white"
                   />
                 </div>
                 <p className="text-[10px] text-zinc-500">
-                  Used if hands are dirty or sensor is wet.
+                  4 digits. Used if hands are dirty or the sensor fails.
                 </p>
               </div>
 
