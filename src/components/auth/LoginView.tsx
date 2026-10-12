@@ -5,6 +5,7 @@ import { useBiometrics } from '../../context/BiometricContext';
 import { RCLogo } from '../RCLogo';
 import { BiometricSetupModal } from '../biometrics/BiometricSetupModal';
 import { haptic } from '../../utils/haptics';
+import { INDUSTRY_PRESETS, getStaffRolesForIndustry } from '../../data/presets';
 import { 
   Mail, 
   Lock, 
@@ -49,12 +50,22 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [regFullName, setRegFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regRole, setRegRole] = useState<User['role']>('Operations Lead');
+  const [regIndustryId, setRegIndustryId] = useState('general_small_business');
+  // Role options follow the selected industry; default to its first role.
+  const regRoleOptions = getStaffRolesForIndustry(regIndustryId);
+  const [regRole, setRegRole] = useState<string>(regRoleOptions[0]);
   const [regOrganization, setRegOrganization] = useState('');
-  const [regIndustry, setRegIndustry] = useState('Commercial HVAC');
   const [regAutoDispatch, setRegAutoDispatch] = useState<'all' | 'critical' | 'manual'>('all');
   const [regRingerMode, setRegRingerMode] = useState<'sound' | 'vibrate' | 'silent'>('sound');
   const [regEnableBiometrics, setRegEnableBiometrics] = useState(true);
+
+  const handleIndustryChange = (presetId: string) => {
+    setRegIndustryId(presetId);
+    // Reset the role to the new industry's first option so a stale role
+    // from another industry can never be submitted.
+    const roles = getStaffRolesForIndustry(presetId);
+    setRegRole(roles[0]);
+  };
 
   const getPasswordStrength = (pass: string) => {
     if (!pass) return { score: 0, label: '', color: 'bg-zinc-800' };
@@ -133,6 +144,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
+      const industryPreset = INDUSTRY_PRESETS.find((p) => p.id === regIndustryId);
       const user = await authService.registerUser({
         fullName: regFullName,
         email: regEmail,
@@ -141,7 +153,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         organization: regOrganization,
         enableBiometrics: regEnableBiometrics,
         preferences: {
-          industryProfile: regIndustry,
+          industryProfile: industryPreset ? industryPreset.name : regIndustryId,
           autoDispatchThreshold: regAutoDispatch as any,
           ringerMode: regRingerMode,
           biometricsEnabled: regEnableBiometrics
@@ -327,7 +339,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
           {/* TAB 1: SIGN IN */}
           {tab === 'signin' && (
-            <form onSubmit={handleEmailSignIn} className="space-y-3.5">
+            <form onSubmit={handleEmailSignIn} autoComplete="off" className="space-y-3.5">
               <div className="space-y-1">
                 <label className="text-[11px] font-mono text-zinc-400">Operator Email:</label>
                 <div className="relative">
@@ -335,6 +347,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <input
                     type="email"
                     required
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     placeholder="you@yourcompany.com"
@@ -350,6 +366,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoComplete="new-password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••••••"
@@ -406,7 +423,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
           {/* TAB 2: REGISTER ACCOUNT */}
           {tab === 'register' && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+            <form onSubmit={handleRegisterSubmit} autoComplete="off" className="space-y-3.5">
               <div className="space-y-1">
                 <label className="text-[11px] font-mono text-zinc-400">Full Name:</label>
                 <div className="relative">
@@ -414,6 +431,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <input
                     type="text"
                     required
+                    autoComplete="off"
+                    autoCapitalize="words"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={regFullName}
                     onChange={(e) => setRegFullName(e.target.value)}
                     placeholder="e.g. Alex Morgan"
@@ -429,6 +450,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <input
                     type="email"
                     required
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
                     placeholder="you@yourcompany.com"
@@ -444,6 +469,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoComplete="new-password"
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
                     placeholder="••••••••••••"
@@ -477,14 +503,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <label className="text-[10px] font-mono text-zinc-400">Operator Role:</label>
                   <select
                     value={regRole}
-                    onChange={(e) => setRegRole(e.target.value as any)}
+                    onChange={(e) => setRegRole(e.target.value)}
                     className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
                   >
-                    <option value="Operations Lead">Operations Lead</option>
-                    <option value="Field Manager">Field Manager</option>
-                    <option value="Field Technician">Field Technician</option>
-                    <option value="Dispatcher">Dispatcher</option>
-                    <option value="AI Specialist">AI Specialist</option>
+                    {regRoleOptions.map((role) => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -492,6 +516,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <label className="text-[10px] font-mono text-zinc-400">Organization:</label>
                   <input
                     type="text"
+                    autoComplete="off"
+                    autoCapitalize="words"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={regOrganization}
                     onChange={(e) => setRegOrganization(e.target.value)}
                     placeholder="Your Company Name"
@@ -511,14 +539,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   <div>
                     <label className="text-[10px] text-zinc-400 block mb-1">Industry Focus:</label>
                     <select
-                      value={regIndustry}
-                      onChange={(e) => setRegIndustry(e.target.value)}
+                      value={regIndustryId}
+                      onChange={(e) => handleIndustryChange(e.target.value)}
                       className="w-full bg-black border border-zinc-800 rounded-lg px-2 py-1.5 text-[11px] text-white focus:outline-none"
                     >
-                      <option value="Commercial HVAC">Commercial HVAC</option>
-                      <option value="Industrial Electrical">Industrial Electrical</option>
-                      <option value="Smart Automation">Smart Automation</option>
-                      <option value="Facilities & Energy">Facilities & Energy</option>
+                      {INDUSTRY_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>{preset.name}</option>
+                      ))}
                     </select>
                   </div>
 
