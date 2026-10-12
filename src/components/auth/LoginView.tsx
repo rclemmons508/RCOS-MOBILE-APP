@@ -50,6 +50,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [regFullName, setRegFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [regBackupPin, setRegBackupPin] = useState('');
   const [regIndustryId, setRegIndustryId] = useState('general_small_business');
   // Role options follow the selected industry; default to its first role.
   const regRoleOptions = getStaffRolesForIndustry(regIndustryId);
@@ -140,6 +141,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       setErrorMsg('Please enter your full name.');
       return;
     }
+    // A backup PIN is required when biometric login is on — it is the only
+    // way back in if the sensor ever fails.
+    if (regEnableBiometrics && !/^\d{4}$/.test(regBackupPin)) {
+      setErrorMsg('Please set a 4-digit backup PIN in case biometrics fail.');
+      return;
+    }
+    if (regBackupPin && !/^\d{4}$/.test(regBackupPin)) {
+      setErrorMsg('Backup PIN must be exactly 4 digits.');
+      return;
+    }
 
     setIsLoading(true);
     setErrorMsg(null);
@@ -151,6 +162,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         password: regPassword,
         role: regRole,
         organization: regOrganization,
+        backupPin: regBackupPin || undefined,
         enableBiometrics: regEnableBiometrics,
         preferences: {
           industryProfile: industryPreset ? industryPreset.name : regIndustryId,
@@ -500,18 +512,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-mono text-zinc-400">Operator Role:</label>
-                  <select
-                    value={regRole}
-                    onChange={(e) => setRegRole(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
-                  >
-                    {regRoleOptions.map((role) => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                  </select>
+                  <label className="text-[10px] font-mono text-zinc-400">Backup PIN:</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    autoComplete="new-password"
+                    value={regBackupPin}
+                    onChange={(e) => setRegBackupPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="4 digits"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono text-center tracking-[0.3em]"
+                  />
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-[10px] font-mono text-zinc-400">Organization:</label>
                   <input
@@ -525,6 +537,24 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     placeholder="Your Company Name"
                     className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none"
                   />
+                </div>
+              </div>
+              <p className="-mt-1 text-[10px] text-zinc-500">
+                Your backup PIN unlocks the app if your fingerprint or face ever fails. Only you know it.
+              </p>
+
+              <div className="grid grid-cols-1 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-zinc-400">Operator Role:</label>
+                  <select
+                    value={regRole}
+                    onChange={(e) => setRegRole(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
+                  >
+                    {regRoleOptions.map((role) => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
