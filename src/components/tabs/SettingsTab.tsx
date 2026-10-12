@@ -3,6 +3,8 @@ import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSugg
 import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
+import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
+import { TrainingChecklist } from '../training/TrainingChecklist';
 import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
 import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
 import { haptic } from '../../utils/haptics';
@@ -824,6 +826,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
             )}
           </div>
+
+          {/* Diagnostics — RCOS Master Dashboard spec */}
+          <DiagnosticsPanel />
+
+          {/* Training — RCOS onboarding funnel spec */}
+          <TrainingChecklist />
 
       {/* ============================================================== */}
       {/* SECTION 3: TYPICAL DEVICE SETTINGS */}
