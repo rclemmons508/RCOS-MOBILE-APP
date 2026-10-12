@@ -82,7 +82,7 @@ const BLANK_BUSINESS: BusinessAccount = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const { isDashboardLocked, isBiometricEnabled } = useBiometrics();
+  const { isDashboardLocked, isBiometricEnabled, unenrollBiometrics } = useBiometrics();
 
   // Authentication State - starts from scratch (no preloaded user profile)
   const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getActiveSession());
@@ -687,6 +687,9 @@ export default function App() {
   const handleLogout = async () => {
     await authService.logout();
     biometricService.setLocked(false);
+    // Remove the device's biometric enrollment too, so the login screen never
+    // shows the previous operator's email after logout.
+    unenrollBiometrics();
     setCurrentUser(null);
     setIsAuthModalOpen(false);
     sendPushNotification({
