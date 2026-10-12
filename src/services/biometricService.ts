@@ -40,7 +40,7 @@ export const DEFAULT_BIOMETRIC_SETTINGS: BiometricSecuritySettings = {
   autoLockOnBackground: true,
   autoLockTimeoutMinutes: 5,
   requireForCriticalActions: true,
-  operatorPin: '7267' // default RCOS keypad pin (R-C-O-S)
+  operatorPin: '' // empty until the user sets their own backup PIN
 };
 
 /**
@@ -349,7 +349,7 @@ class BiometricService {
       }
       return {
         success: false,
-        error: err?.message || 'Biometric sensor error. Please use backup PIN 7267.'
+        error: err?.message || 'Biometric sensor error. Please use your backup PIN.'
       };
     }
   }
@@ -368,10 +368,24 @@ class BiometricService {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
       if (raw) {
-        return { ...DEFAULT_BIOMETRIC_SETTINGS, ...JSON.parse(raw) };
+        const merged = { ...DEFAULT_BIOMETRIC_SETTINGS, ...JSON.parse(raw) };
+        return this.migrateLegacyPin(merged);
       }
     } catch {}
-    return DEFAULT_BIOMETRIC_SETTINGS;
+    return this.migrateLegacyPin({ ...DEFAULT_BIOMETRIC_SETTINGS });
+  }
+
+  /**
+   * The old builds shipped universal fallback PINs (7267 / 6073 / 1234).
+   * Those values were the same for everyone, so they can never be trusted
+   * as a user-chosen PIN — treat them as "no PIN set".
+   */
+  private migrateLegacyPin(settings: BiometricSecuritySettings): BiometricSecuritySettings {
+    const pin = (settings.operatorPin || '').trim();
+    if (pin === '7267' || pin === '6073' || pin === '1234') {
+      return { ...settings, operatorPin: '' };
+    }
+    return settings;
   }
 
   /**
@@ -427,20 +441,50 @@ class BiometricService {
   }
 
   /**
-   * Verify backup operator PIN
+   * Verify backup operator PIN.
+   * Only the user's own PIN (set at registration or in biometric setup)
+   * can unlock — there are no master or fallback PINs.
    */
   verifyOperatorPin(inputPin: string): boolean {
     const settings = this.getSettings();
     const cleanInput = (inputPin || '').trim();
-    const targetPin = (settings.operatorPin || DEFAULT_BIOMETRIC_SETTINGS.operatorPin).trim();
-    
-    // Support configured PIN or master emergency PIN
-    const isValid = cleanInput === targetPin || cleanInput === '7267' || cleanInput === '1234';
+    const targetPin = (settings.operatorPin || '').trim();
+
+    // No backup PIN was ever set — PIN unlock is unavailable.
+    if (!targetPin) {
+      return false;
+    }
+
+    const isValid = cleanInput === targetPin;
     if (isValid) {
       this.setLocked(false);
       this.recordActiveTimestamp();
     }
     return isValid;
+  }
+
+  /**
+   * Whether the user has set their own backup PIN.
+   */
+  hasBackupPin(): boolean {
+    try {
+      return !!(this.getSettings().operatorPin || '').trim();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Save the user's own backup PIN. Must be exactly 4 digits.
+   * Returns false when the PIN is invalid and nothing was saved.
+   */
+  setOperatorPin(pin: string): boolean {
+    const clean = (pin || '').replace(/[^0-9]/g, '');
+    if (clean.length !== 4) {
+      return false;
+    }
+    this.saveSettings({ operatorPin: clean });
+    return true;
   }
 
   /**
