@@ -32,6 +32,9 @@ import { useAuth } from '../context/AuthContext';
 import { haptic } from '../utils/haptics';
 import { apiFetch } from '../lib/api';
 import { firestoreService } from '../services/firestoreService';
+import { biometricService } from '../services/biometricService';
+
+const UPLOADED_FILE_SESSION_KEY = 'rcos_onboarding_uploaded_file';
 
 const toLocalStorageBusiness = (business: BusinessAccount): Omit<BusinessAccount, 'activeEmployees'> => {
   const { activeEmployees: _activeEmployees, ...safeBusiness } = business;
@@ -193,8 +196,36 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // File Upload State
-  const [uploadedFile, setUploadedFile] = useState<UploadedFileRecord | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<UploadedFileRecord | null>(() => {
+    // Restore a file that was read before an interruption (e.g. app backgrounding).
+    try {
+      const raw = sessionStorage.getItem(UPLOADED_FILE_SESSION_KEY);
+      return raw ? (JSON.parse(raw) as UploadedFileRecord) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isDragging, setIsDragging] = useState(false);
+
+  const persistUploadedFile = (record: UploadedFileRecord | null) => {
+    setUploadedFile(record);
+    try {
+      if (record) {
+        sessionStorage.setItem(UPLOADED_FILE_SESSION_KEY, JSON.stringify(record));
+      } else {
+        sessionStorage.removeItem(UPLOADED_FILE_SESSION_KEY);
+      }
+    } catch {}
+  };
+
+  const clearUploadedFile = () => persistUploadedFile(null);
+
+  // Opening the native picker backgrounds the WebView — tell the biometric
+  // guard not to auto-lock while the picker is on screen.
+  const openFilePicker = () => {
+    biometricService.notifyFilePickerOpened();
+    fileInputRef.current?.click();
+  };
 
   // Manual Inputs
   const [businessName, setBusinessName] = useState(initialBusiness?.name || '');
@@ -292,10 +323,19 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
     const reader = new FileReader();
 
+    // If the read is interrupted (e.g. the app was backgrounded), say so
+    // plainly instead of silently dropping the file.
+    reader.onerror = () => {
+      setError('The file read was interrupted before it finished. Please tap the upload area and choose the file again.');
+    };
+    reader.onabort = () => {
+      setError('The file read was interrupted before it finished. Please tap the upload area and choose the file again.');
+    };
+
     if (isText) {
       reader.onload = (e) => {
         const textContent = (e.target?.result as string) || '';
-        setUploadedFile({
+        persistUploadedFile({
           name: file.name,
           size: file.size,
           type: file.type || 'text/plain',
@@ -309,7 +349,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       reader.onload = (e) => {
         const dataUrl = (e.target?.result as string) || '';
         const base64Data = dataUrl.split(',')[1] || '';
-        setUploadedFile({
+        persistUploadedFile({
           name: file.name,
           size: file.size,
           type: file.type || (isPdf ? 'application/pdf' : 'image/jpeg'),
@@ -323,7 +363,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       // Fallback read as text
       reader.onload = (e) => {
         const textContent = (e.target?.result as string) || '';
-        setUploadedFile({
+        persistUploadedFile({
           name: file.name,
           size: file.size,
           type: file.type || 'application/octet-stream',
@@ -336,10 +376,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    biometricService.clearFilePickerFlag();
     if (e.target.files && e.target.files[0]) {
       haptic.light();
       processUploadedFile(e.target.files[0]);
     }
+    // Reset the input so choosing the same file again still fires onChange.
+    e.target.value = '';
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -354,6 +397,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+    biometricService.clearFilePickerFlag();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       haptic.selection();
       processUploadedFile(e.dataTransfer.files[0]);
@@ -362,7 +406,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   const handleLoadSampleFile = (sample: typeof SAMPLE_BUSINESS_FILES[0]) => {
     haptic.selection();
-    setUploadedFile({
+    persistUploadedFile({
       name: sample.name,
       size: sample.content.length,
       type: 'text/plain',
@@ -725,7 +769,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={openFilePicker}
                   className={`p-5 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center cursor-pointer ${
                     isDragging
                       ? 'border-lime-400 bg-lime-500/10'
@@ -759,7 +803,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setUploadedFile(null);
+                          clearUploadedFile();
                         }}
                         className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-mono shrink-0"
                       >
