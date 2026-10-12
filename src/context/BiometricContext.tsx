@@ -63,6 +63,11 @@ export const BiometricProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
+        // Skip the lock when the user just opened a system file picker —
+        // the picker backgrounds the WebView and must not strand an upload.
+        if (biometricService.isFilePickerActive()) {
+          return;
+        }
         const currentSettings = biometricService.getSettings();
         if (currentSettings.enabled && currentSettings.autoLockOnBackground) {
           biometricService.setLocked(true);
