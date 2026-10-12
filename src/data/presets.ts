@@ -13,6 +13,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Standard Clean', 'Deep Clean', 'Move-in/Move-out Clean', 'Office Sanitation', 'Window & Baseboard Add-on'],
     recommendedTone: 'Friendly, warm, dependable, and sparkling clean',
     technicianRoleName: 'Cleaning Specialist',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Cleaning Specialist', 'Field Cleaner', 'Quality Inspector', 'Dispatcher / Scheduler', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_deep_clean',
@@ -48,6 +49,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Drywall Patch & Paint', 'Door & Lock Replacement', 'Fixture & Fan Mounting', 'Plumbing Leak Fix', 'Cabinet Hardware & Shelving'],
     recommendedTone: 'Direct, honest, highly capable, and practical',
     technicianRoleName: 'Lead Handyman',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Lead Handyman', 'Field Technician', 'Apprentice', 'Dispatcher / Scheduler'],
     sampleJobPacks: [
       {
         id: 'jp_drywall_repair',
@@ -84,6 +86,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Weekly Mow & Edge', 'Spring/Fall Cleanup', 'Mulch & Bed Weeding', 'Hedge & Shrub Trimming', 'Aeration & Overseeding'],
     recommendedTone: 'Polite, active, proud of craftsmanship, and punctual',
     technicianRoleName: 'Crew Foreman',
+    staffRoles: ['Owner / Operator', 'Crew Lead', 'Field Technician', 'Irrigation Specialist', 'Dispatcher / Scheduler', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_mow_edge',
@@ -120,6 +123,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Interior Room Painting', 'Exterior House Painting', 'Cabinet Refinishing', 'Deck Staining & Sealing', 'Trim & Molding Enamel'],
     recommendedTone: 'Artisanal, meticulous, neat, and detail-obsessed',
     technicianRoleName: 'Lead Painter',
+    staffRoles: ['Owner / Operator', 'Project Manager', 'Lead Painter', 'Painter', 'Apprentice', 'Estimator'],
     sampleJobPacks: [
       {
         id: 'jp_interior_paint',
@@ -156,6 +160,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Driveway & Sidewalk Wash', 'House Siding Soft Wash', 'Roof Moss Treatment', 'Fence & Deck Rejuvenation', 'Commercial Storefront Cleaning'],
     recommendedTone: 'Energetic, pristine, safety-conscious, and transformative',
     technicianRoleName: 'Wash Technician',
+    staffRoles: ['Owner / Operator', 'Crew Lead', 'Field Technician', 'Dispatcher / Scheduler', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_driveway_wash',
@@ -193,6 +198,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['AC Diagnostic & Repair', 'Furnace Seasonal Tune-up', 'Heat Pump System Install', 'Duct Inspection & Air Quality', 'Thermostat Smart Setup'],
     recommendedTone: 'Technical, reassuring, precise, and safety-rigorous',
     technicianRoleName: 'HVAC Certified Technician',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'HVAC Lead Technician', 'Service Technician', 'Installer', 'Dispatcher', 'Sales / Estimator'],
     sampleJobPacks: [
       {
         id: 'jp_ac_tuneup',
@@ -230,6 +236,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Roof Leak Inspection', 'Gutter Cleaning & Guards', 'Shingle Repair & Ridge Cap', 'Storm Damage Assessment', 'Full Reroof Estimate'],
     recommendedTone: 'Vigilant, safety-first, durable, and transparent',
     technicianRoleName: 'Roof Inspector / Specialist',
+    staffRoles: ['Owner / Operator', 'Project Manager', 'Crew Lead', 'Roofer', 'Estimator', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_roof_inspection',
@@ -266,6 +273,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Framing & Structural', 'Concrete Pour & Finish', 'Electrical Rough-in', 'Commercial Tenant Buildout', 'Safety & Code Inspection'],
     recommendedTone: 'Authoritative, code-compliant, disciplined, and safety-focused',
     technicianRoleName: 'Site Foreman',
+    staffRoles: ['Owner / Operator', 'Project Manager', 'Site Foreman', 'Tradesperson', 'Apprentice', 'Estimator'],
     sampleJobPacks: [
       {
         id: 'jp_code_inspection',
@@ -302,6 +310,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Mobile Oil & Filter Change', 'Brake Pad & Rotor Replacement', 'Battery & Alternator Test', 'Full Mobile Detail', 'Fleet Multi-Point Inspection'],
     recommendedTone: 'Straightforward, trustworthy, precise, and mechanical',
     technicianRoleName: 'Certified Auto Mechanic',
+    staffRoles: ['Owner / Operator', 'Shop Manager', 'Master Technician', 'Service Technician', 'Service Advisor', 'Parts Coordinator'],
     sampleJobPacks: [
       {
         id: 'jp_brake_service',
@@ -339,6 +348,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Technical Feasibility Study', 'Operational Audit', 'Compliance Review', 'Implementation Roadmap', 'Executive Advisory Session'],
     recommendedTone: 'Formal, strategic, rigorous, and insight-driven',
     technicianRoleName: 'Senior Technical Consultant',
+    staffRoles: ['Principal / Owner', 'Account Manager', 'Consultant / Specialist', 'Project Coordinator', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_operational_audit',
@@ -375,6 +385,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Tenant Move-Out Inspection', 'Listing Prep Walkthrough', 'Rental Turnover Coordination', 'Routine Property Health Check', 'Lease Renewal Outreach'],
     recommendedTone: 'Responsive, professional, proactive, and polished',
     technicianRoleName: 'Property Inspector',
+    staffRoles: ['Broker / Owner', 'Listing Agent', "Buyer's Agent", 'Transaction Coordinator', 'Marketing Coordinator', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_turnover_inspection',
@@ -411,6 +422,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Standard Service Appointment', 'Emergency Service Call', 'Consultation & Estimate', 'Maintenance Check', 'Follow-up Service'],
     recommendedTone: 'Clear, dependable, polite, and responsive',
     technicianRoleName: 'Service Specialist',
+    staffRoles: ['Owner', 'Manager', 'Team Member', 'Sales', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_standard_service',
@@ -447,6 +459,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Patient Intake & Screening', 'Hygiene & Sterilization Audit', 'Appointment Reminders & Recalls', 'Insurance Verification', 'Patient Follow-up Care'],
     recommendedTone: 'Empathetic, reassuring, strictly confidential, and clinical',
     technicianRoleName: 'Clinical Coordinator',
+    staffRoles: ['Practice Owner', 'Office Manager', 'Provider / Clinician', 'Medical Assistant', 'Front Desk', 'Billing Specialist'],
     sampleJobPacks: [
       {
         id: 'jp_intake_screening',
@@ -482,6 +495,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Client Intake & Conflict Check', 'Tax Document Preparation', 'Retainer Agreement Drafting', 'Quarterly Financial Review', 'Statutory Compliance Filing'],
     recommendedTone: 'Rigorous, ethical, confidential, and detail-oriented',
     technicianRoleName: 'Case / Account Specialist',
+    staffRoles: ['Partner / Owner', 'Attorney / CPA', 'Paralegal / Bookkeeper', 'Legal Assistant', 'Office Manager', 'Intake Coordinator'],
     sampleJobPacks: [
       {
         id: 'jp_client_intake_legal',
@@ -518,6 +532,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Catering Package Proposal', 'Health Inspection Pre-Audit', 'Weekly Inventory & Supplier Order', 'Staff Shift Dispatch', 'VIP Guest Experience Follow-up'],
     recommendedTone: 'Hospitality-driven, appetizing, fast-paced, and food-safety focused',
     technicianRoleName: 'Kitchen / Ops Lead',
+    staffRoles: ['Owner / Operator', 'General Manager', 'Kitchen Manager', 'Chef / Cook', 'Server', 'Host', 'Bartender'],
     sampleJobPacks: [
       {
         id: 'jp_health_preaudit',
@@ -554,6 +569,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['VIP Service Booking', 'Consultation & Skin/Hair Analysis', 'Station Disinfection & Sanitization', 'Package / Membership Sales', 'Post-Service Aftercare Check-in'],
     recommendedTone: 'Pampering, stylish, warm, and attentive',
     technicianRoleName: 'Senior Stylist / Aesthetician',
+    staffRoles: ['Owner / Operator', 'Salon Manager', 'Stylist / Therapist', 'Front Desk / Receptionist', 'Assistant'],
     sampleJobPacks: [
       {
         id: 'jp_station_sanitization',
@@ -589,6 +605,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Order Fulfillment & Shipping', 'Product Return / Exchange', 'Inventory Reorder & Restock', 'Promotional Campaign Launch', 'Customer Review Request'],
     recommendedTone: 'Enthusiastic, helpful, prompt, and brand-forward',
     technicianRoleName: 'Fulfillment Specialist',
+    staffRoles: ['Owner / Operator', 'Store Manager', 'Sales Associate', 'Warehouse / Fulfillment', 'Customer Support', 'Marketing'],
     sampleJobPacks: [
       {
         id: 'jp_order_fulfillment',
@@ -625,6 +642,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Donor Outreach & Stewardship', 'Volunteer Shift Coordination', 'Grant Proposal Tracking', 'Community Event Logistics', 'Impact Report Distribution'],
     recommendedTone: 'Purpose-driven, grateful, inspiring, and transparent',
     technicianRoleName: 'Program Coordinator',
+    staffRoles: ['Executive Director', 'Program Manager', 'Volunteer Coordinator', 'Fundraising Lead', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_volunteer_coordination',
@@ -661,6 +679,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Emergency Water Leak Repair', 'Water Heater Replacement', 'Drain Hydro-Jetting & Snaking', 'Sewer Camera Inspection', 'Fixture & Valve Installation'],
     recommendedTone: 'Responsive, urgent, certified, and clean-handed',
     technicianRoleName: 'Journeyman Plumber',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Master Plumber', 'Journeyman Plumber', 'Apprentice', 'Dispatcher'],
     sampleJobPacks: [
       {
         id: 'jp_leak_isolation',
@@ -697,6 +716,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['200A Main Panel Upgrade', 'Level 2 EV Charger Install', 'Whole-Home Rewire & GFCI', 'Smart Lighting & Automation', 'Emergency Circuit Diagnostic'],
     recommendedTone: 'Methodical, NEC code-compliant, precision-driven, and safety-rigorous',
     technicianRoleName: 'Master Electrician',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Master Electrician', 'Journeyman Electrician', 'Apprentice', 'Dispatcher', 'Estimator'],
     sampleJobPacks: [
       {
         id: 'jp_ev_charger_install',
@@ -734,6 +754,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Managed IT Helpdesk (24/7)', 'Cloud Migration (M365/Google)', 'Cybersecurity Risk Audit', 'Network & WiFi Deployment', 'Disaster Recovery & Backup'],
     recommendedTone: 'High-tech, dependable, cyber-vigilant, and jargon-free',
     technicianRoleName: 'Senior Systems Engineer',
+    staffRoles: ['Owner / Principal', 'Service Manager', 'Systems Engineer', 'Helpdesk Technician', 'Network Specialist', 'Account Manager'],
     sampleJobPacks: [
       {
         id: 'jp_cyber_audit',
@@ -770,6 +791,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['1-on-1 Personal Training Session', 'New Member Fitness Assessment', 'Group Class Enrollment', 'Nutrition & Lifestyle Coaching', 'Gym Floor Safety & Equipment Maintenance'],
     recommendedTone: 'Motivating, energizing, empowering, and health-first',
     technicianRoleName: 'Head Coach / Fitness Specialist',
+    staffRoles: ['Owner / Operator', 'General Manager', 'Head Coach / Trainer', 'Personal Trainer', 'Front Desk', 'Class Instructor'],
     sampleJobPacks: [
       {
         id: 'jp_member_assessment',
@@ -806,6 +828,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Full-Service Pet Grooming & Spa', 'Veterinary Wellness Exam', 'Dog Daycare & Boarding Intake', 'Canine Behavior Training', 'Vaccine & Microchip Clinic'],
     recommendedTone: 'Compassionate, gentle, pet-loving, and trustworthy',
     technicianRoleName: 'Certified Pet Stylist / Vet Tech',
+    staffRoles: ['Owner / Operator', 'Manager', 'Groomer', 'Veterinary Technician', 'Pet Sitter / Walker', 'Receptionist'],
     sampleJobPacks: [
       {
         id: 'jp_pet_grooming',
@@ -842,6 +865,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Full-Service Event Planning', 'Banquet Catering & Bar Service', 'Event Photography & Cinema', 'Audio/Visual Staging & Lighting', 'Day-Of Event Coordination'],
     recommendedTone: 'Sophisticated, celebratory, calm under pressure, and flawless',
     technicianRoleName: 'Event Director / Lead Producer',
+    staffRoles: ['Owner / Producer', 'Event Manager', 'Production Lead', 'AV Technician', 'Coordinator', 'Catering Lead'],
     sampleJobPacks: [
       {
         id: 'jp_event_runofshow',
@@ -878,6 +902,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Comprehensive Oral Exam & Cleaning', 'Emergency Toothache Visit', 'Cosmetic Whitening / Veneers', 'Orthodontic / Clear Aligner Check', 'Dental Implant Consultation'],
     recommendedTone: 'Calming, clinically immaculate, gentle, and transparent',
     technicianRoleName: 'Lead Dental Hygienist / Clinical Coordinator',
+    staffRoles: ['Practice Owner / Dentist', 'Office Manager', 'Dental Hygienist', 'Dental Assistant', 'Front Desk', 'Billing Coordinator'],
     sampleJobPacks: [
       {
         id: 'jp_dental_operatory',
@@ -914,6 +939,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Residential Home Move', 'Commercial Office Relocation', 'Full-Service Packing & Crating', 'Short & Long Term Vault Storage', 'Heavy Item & Piano Transport'],
     recommendedTone: 'Careful, robust, punctual, and highly organized',
     technicianRoleName: 'Moving Crew Lead / Dispatcher',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Crew Lead', 'Mover / Driver', 'Dispatcher', 'Sales / Estimator'],
     sampleJobPacks: [
       {
         id: 'jp_residential_move',
@@ -950,6 +976,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Rooftop Solar PV Installation', 'Home Battery Storage (Powerwall)', 'Solar System Energy Audit', 'Inverter Replacement & Troubleshooting', 'Solar Panel Cleaning & Maintenance'],
     recommendedTone: 'Innovative, eco-conscious, mathematically exact, and future-forward',
     technicianRoleName: 'NABCEP Certified Solar Lead',
+    staffRoles: ['Owner / Operator', 'Project Manager', 'Solar Installer', 'Electrician', 'Site Surveyor', 'Sales Consultant', 'Permit Coordinator'],
     sampleJobPacks: [
       {
         id: 'jp_solar_commissioning',
@@ -987,6 +1014,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Monthly Retainer Marketing Growth', 'Paid Meta & Google Ads Management', 'SEO & Organic Content Strategy', 'Custom Website Design & Launch', 'Brand Identity & Design System'],
     recommendedTone: 'Creative, strategic, metric-driven, and high-energy',
     technicianRoleName: 'Growth Strategist / Creative Director',
+    staffRoles: ['Owner / Principal', 'Account Director', 'Strategist', 'Designer', 'Copywriter', 'Ads Specialist', 'Project Manager'],
     sampleJobPacks: [
       {
         id: 'jp_ad_campaign_launch',
@@ -1023,6 +1051,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Same-Day Guest Turnover & Staging', '24/7 Guest Concierge & Communication', 'Property Maintenance & Emergency Fix', 'Smart Lock & Keyless Access Dispatch', 'Listing Optimization & Pricing Algorithm'],
     recommendedTone: 'Luxurious, welcoming, hyper-responsive, and 5-star hospitality',
     technicianRoleName: 'Hospitality Operations Lead',
+    staffRoles: ['Owner / Host', 'Property Manager', 'Housekeeper', 'Maintenance Technician', 'Guest Coordinator'],
     sampleJobPacks: [
       {
         id: 'jp_turnover_staging',
@@ -1060,6 +1089,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Academic Tutoring (1-on-1)', 'Standardized Test Prep (SAT/ACT)', 'Student Learning Style Assessment', 'Curriculum Progress Tracking', 'Parent Milestone Review Conference'],
     recommendedTone: 'Encouraging, intellectual, structured, and student-focused',
     technicianRoleName: 'Lead Academic Mentor / Instructor',
+    staffRoles: ['Owner / Director', 'Program Coordinator', 'Lead Tutor / Teacher', 'Tutor', 'Admissions / Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_student_diagnostic',
@@ -1096,6 +1126,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Tenant Move-In / Move-Out Audit', '24/7 Facility Maintenance Dispatch', 'Lease Renewal & Rent Collection', 'Vendor Contract & Bid Management', 'Annual Life-Safety & Code Audit'],
     recommendedTone: 'Authoritative, proactive, compliance-strict, and community-minded',
     technicianRoleName: 'Facility Operations Manager',
+    staffRoles: ['Owner / Asset Manager', 'Property Manager', 'Leasing Agent', 'Maintenance Technician', 'Bookkeeper'],
     sampleJobPacks: [
       {
         id: 'jp_facility_audit',
@@ -1132,6 +1163,7 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
     defaultServices: ['Emergency Lockout & Rekeying', 'Commercial Card Access Control', 'HD Security Camera CCTV Install', 'Smart Lock & Deadbolt Retrofit', 'Intrusion Alarm System Setup'],
     recommendedTone: 'Discreet, highly secure, rapid response, and certified',
     technicianRoleName: 'Licensed Master Locksmith / Security Tech',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Locksmith Technician', 'Security Installer', 'Dispatcher', 'Office Admin'],
     sampleJobPacks: [
       {
         id: 'jp_access_control_install',
@@ -1159,3 +1191,15 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
   }
 ];
 
+
+/**
+ * Job positions shown on the registration screen for a given industry.
+ * Falls back to a neutral list when the preset is unknown.
+ */
+export function getStaffRolesForIndustry(presetId: string): string[] {
+  const preset = INDUSTRY_PRESETS.find((p) => p.id === presetId);
+  if (preset && preset.staffRoles && preset.staffRoles.length > 0) {
+    return preset.staffRoles;
+  }
+  return ['Owner', 'Manager', 'Team Member', 'Sales', 'Office Admin'];
+}
