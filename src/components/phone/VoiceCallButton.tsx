@@ -21,6 +21,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
   const [callSeconds, setCallSeconds] = useState(0);
   const roomRef = useRef<Room | null>(null);
   const timerRef = useRef<number | null>(null);
+  const agentTimeoutRef = useRef<number | null>(null);
 
   const startTimer = () => {
     setCallSeconds(0);
@@ -33,10 +34,22 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
 
   const endCall = () => {
     stopTimer();
+    if (agentTimeoutRef.current) window.clearTimeout(agentTimeoutRef.current);
+    agentTimeoutRef.current = null;
     const room = roomRef.current;
     roomRef.current = null;
     if (room) room.disconnect();
     setState('idle');
+  };
+
+  const failNoAgent = () => {
+    agentTimeoutRef.current = null;
+    const room = roomRef.current;
+    roomRef.current = null;
+    if (room) room.disconnect();
+    stopTimer();
+    setState('error');
+    setError('The AI receptionist did not answer. The voice worker may be offline — check that the rcos-voice-agent service is running in Railway.');
   };
 
   const startCall = async () => {
@@ -52,8 +65,11 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
       // 2. Connect to the voice room and turn on the microphone
       const room = new Room();
       roomRef.current = room;
-      room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Audio) {
+      room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+        if (track.kind === Track.Kind.Audio && !participant.isLocal) {
+          // Agent joined and is speaking - cancel the no-agent timeout
+          if (agentTimeoutRef.current) window.clearTimeout(agentTimeoutRef.current);
+          agentTimeoutRef.current = null;
           const el = track.attach();
           el.style.display = 'none';
           document.body.appendChild(el);
@@ -66,6 +82,8 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
 
       setState('in-call');
       startTimer();
+      // If no agent audio arrives within 25s, the worker is down - fail loudly
+      agentTimeoutRef.current = window.setTimeout(failNoAgent, 25000);
     } catch (e: any) {
       setState('error');
       setError(
