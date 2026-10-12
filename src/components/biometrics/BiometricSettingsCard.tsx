@@ -45,7 +45,7 @@ export const BiometricSettingsCard: React.FC<BiometricSettingsCardProps> = ({ cu
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [editingPin, setEditingPin] = useState(false);
-  const [newPin, setNewPin] = useState(settings.operatorPin || '6073');
+  const [newPin, setNewPin] = useState(settings.operatorPin || '');
   const [pinSavedToast, setPinSavedToast] = useState(false);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [modalInitialType, setModalInitialType] = useState<'fingerprint' | 'face'>('fingerprint');
@@ -113,7 +113,7 @@ export const BiometricSettingsCard: React.FC<BiometricSettingsCardProps> = ({ cu
 
   const handleSavePin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPin.trim().length >= 4) {
+    if (/^\d{4}$/.test(newPin.trim())) {
       updateSettings({ operatorPin: newPin.trim() });
       setEditingPin(false);
       setPinSavedToast(true);
@@ -360,17 +360,18 @@ export const BiometricSettingsCard: React.FC<BiometricSettingsCardProps> = ({ cu
 
           {!editingPin ? (
             <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
-              <span>Configured PIN: <strong className="text-white tracking-widest">••••</strong></span>
-              <span className="text-[10px] text-zinc-500">(Default: 6073 / R-C-O-S)</span>
+              <span>Configured PIN: <strong className="text-white tracking-widest">{settings.operatorPin ? '••••' : 'Not set'}</strong></span>
+              <span className="text-[10px] text-zinc-500">(Your 4-digit backup PIN)</span>
             </div>
           ) : (
             <form onSubmit={handleSavePin} className="flex items-center gap-2 pt-1">
               <input
                 type="text"
-                maxLength={6}
+                inputMode="numeric"
+                maxLength={4}
                 value={newPin}
                 onChange={(e) => setNewPin(e.target.value.replace(/[^0-9]/g, ''))}
-                placeholder="4-6 digit PIN"
+                placeholder="4-digit PIN"
                 className="bg-black border border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono w-28 text-center"
               />
               <button
