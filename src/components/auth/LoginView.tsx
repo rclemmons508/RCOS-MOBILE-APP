@@ -6,6 +6,7 @@ import { RCLogo } from '../RCLogo';
 import { BiometricSetupModal } from '../biometrics/BiometricSetupModal';
 import { haptic } from '../../utils/haptics';
 import { INDUSTRY_PRESETS, getStaffRolesForIndustry } from '../../data/presets';
+import { Capacitor } from '@capacitor/core';
 import { 
   Mail, 
   Lock, 
@@ -39,6 +40,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isDemoAuthEnabled = import.meta.env?.VITE_ENABLE_DEMO_AUTH === 'true';
+
+  // Google sign-in cannot run real OAuth inside the native WebView, so the
+  // button is hidden there entirely (no fake fallback login exists anymore).
+  const isNativeApp = Capacitor.isNativePlatform();
 
   // Sign In Form State - Secure empty defaults
   const [loginEmail, setLoginEmail] = useState('');
@@ -80,12 +85,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     return { score: 100, label: 'Strong Security', color: 'bg-lime-500' };
   };
 
-  // Google Login Handler
-  const handleGoogleLogin = async (overrideEmail?: string) => {
+  // Google Login Handler (real Google auth only; unavailable in native builds)
+  const handleGoogleLogin = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const user = await authService.loginWithGoogle(overrideEmail);
+      const user = await authService.loginWithGoogle();
       await haptic.success();
       onLoginSuccess(user);
     } catch (err: any) {
@@ -232,7 +237,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           </div>
         )}
 
-        {/* PRIMARY AUTH OPTION 1: GOOGLE SIGN-IN */}
+        {/* PRIMARY AUTH OPTION 1: GOOGLE SIGN-IN (web only — hidden in native builds) */}
+        {!isNativeApp && (
         <div className="space-y-2">
           <button
             type="button"
@@ -261,6 +267,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             <span>Continue with Google</span>
           </button>
         </div>
+        )}
 
         {/* PRIMARY AUTH OPTION 2: BIOMETRIC LOGIN */}
         <div className="relative">
