@@ -16,14 +16,8 @@ import {
   ChatMessage
 } from './types';
 import {
-  INITIAL_CALLS,
-  INITIAL_JOBS,
-  INITIAL_CLIENTS,
-  INITIAL_METRICS,
-  INITIAL_NOTIFICATIONS,
   INITIAL_NOTIFICATION_PREFERENCES,
   INITIAL_AUTOMATION_TASKS,
-  INITIAL_MESSAGES,
 } from './data/mockData';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -583,6 +577,8 @@ export default function App() {
   };
 
   const handleSimulateInboundCall = () => {
+    // Demo data injection disabled in production builds.
+    if (import.meta.env.PROD) { console.warn('[demo] disabled'); return; }
     const newCall: PhoneCall = {
       id: 'call-' + Date.now(),
       callerName: 'Alex Vance (Apex Corporate)',
@@ -612,6 +608,8 @@ export default function App() {
   };
 
   const handleEmergencyJobTrigger = async () => {
+    // Demo data injection disabled in production builds.
+    if (import.meta.env.PROD) { console.warn('[demo] disabled'); return; }
     await haptic.warning();
     const emergencyJob: Job = {
       id: 'RC-' + Math.floor(9000 + Math.random() * 900),
@@ -804,7 +802,7 @@ export default function App() {
                   id: `job-${Date.now()}`,
                   title: jobData.title || 'Email Dispatch Request',
                   clientName: jobData.clientName || 'Gmail Client',
-                  clientPhone: jobData.clientPhone || '(555) 019-4820',
+                  clientPhone: jobData.clientPhone || '',
                   address: jobData.address || 'Facility Mechanical Room',
                   status: jobData.status || 'unassigned',
                   priority: jobData.priority || 'high',
