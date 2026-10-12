@@ -196,38 +196,31 @@ class AuthService {
   }
 
   /**
-   * Sign In with Google
+   * Sign In with Google.
+   *
+   * Real Google authentication only — there is deliberately no fallback login.
+   * Google's OAuth policy blocks sign-in inside embedded WebViews, so the
+   * native app build cannot offer Google sign-in until the native Google
+   * SDK is wired up (needs google-services.json from the Firebase console).
    */
-  async loginWithGoogle(preferredEmail?: string): Promise<User> {
-    const targetEmail = preferredEmail || 'rcsoulutions@gmail.com';
-
-    // In native Android APK (Capacitor), Google's OAuth 2.0 policy disallows embedded WebViews
-    // (HTTP 403: disallowed_useragent). Directly authenticate with user's verified operator profile.
+  async loginWithGoogle(): Promise<User> {
     if (Capacitor.isNativePlatform()) {
-      const email = targetEmail;
-      const prefs = userPreferencesService.getUserPreferences(email);
-      const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      const user: User = {
-        id: `usr_google_${Date.now()}`,
-        email,
-        fullName: name || 'Operator Lead',
-        role: 'Operations Lead',
-        avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`,
-        organization: '',
-        authenticated: true,
-        biometricsEnabled: true,
-        lastLogin: 'Just now',
-        preferences: prefs
-      };
-
-      setCachedAccessToken(`mob_token_${Date.now()}`);
-      this.upsertUser(user);
-      this.saveActiveSession(user);
-      return user;
+      throw new Error(
+        'Google sign-in is not available in this app build yet. Please sign in with email, fingerprint, or your backup PIN.'
+      );
     }
 
+    let result;
     try {
-      const result = await signInWithPopup(auth, googleProvider);
+      result = await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        throw new Error('Google sign-in was cancelled.');
+      }
+      throw new Error('Google sign-in failed. Please try again or sign in with email.');
+    }
+    {
       const googleUser = result.user;
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
@@ -259,30 +252,6 @@ class AuthService {
       this.upsertUser(user);
       this.saveActiveSession(user);
       return user;
-    } catch (err: any) {
-      console.warn('[AuthService] Google Sign-In notice:', err?.code, err?.message);
-
-      // In browser preview sandbox, iframe, unauthorized domain, blocked/closed popup, or mobile environments:
-      // Gracefully authenticate so the user is never locked out
-      const fallbackEmail = targetEmail;
-      const prefs = userPreferencesService.getUserPreferences(fallbackEmail);
-      const name = fallbackEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      const fallbackUser: User = {
-        id: `usr_google_${Date.now()}`,
-        email: fallbackEmail,
-        fullName: name || 'Operator Lead',
-        role: 'Operations Lead',
-        avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(fallbackEmail)}`,
-        organization: '',
-        authenticated: true,
-        biometricsEnabled: true,
-        lastLogin: 'Just now',
-        preferences: prefs
-      };
-      setCachedAccessToken(`mob_token_${Date.now()}`);
-      this.upsertUser(fallbackUser);
-      this.saveActiveSession(fallbackUser);
-      return fallbackUser;
     }
   }
 
