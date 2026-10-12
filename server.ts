@@ -123,6 +123,7 @@ app.get('/api/firebase-config', (_req: Request, res: Response) => {
   const dbId = (!rawDb || rawDb === 'rcos-mobile' || rawDb === '(default)') ? CANONICAL_DB : rawDb;
 
   res.json({
+    telephonyProvider,
     projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'rcos-mobile',
     firestoreDatabaseId: dbId,
     storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'rcos-mobile.firebasestorage.app'
