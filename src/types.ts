@@ -298,6 +298,48 @@ export interface RCOSNotification {
   actionTaken?: string;
 }
 
+// A proactive message from one of the AI agents to the owner. Agents post
+// here when something needs the owner's eyes or a decision — the inbox is
+// how the team "comes to you" instead of waiting to be tapped.
+// (Named AgentInboxMessage to avoid clashing with the chat AgentMessage below.)
+export type AgentId = 'sales' | 'operations' | 'marketing' | 'support' | 'receptionist' | 'system';
+export type AgentMessageKind = 'alert' | 'suggestion' | 'question';
+export type AgentMessageStatus = 'unread' | 'read' | 'answered' | 'dismissed' | 'snoozed';
+
+export interface AgentInboxMessage {
+  id: string;
+  businessId: string;
+  agent: AgentId;
+  kind: AgentMessageKind;
+  title: string;
+  body: string;
+  // Optional call-to-action: label shown on the button + tab it navigates to.
+  actionLabel?: string;
+  actionTab?: TabType;
+  actionUrl?: string;
+  status: AgentMessageStatus;
+  responseText?: string;
+  // Stable key used to avoid posting the same proactive message twice.
+  dedupeKey?: string;
+  createdAt: string;
+  readAt?: string;
+}
+
+// Chat message used by the floating AI assistant (pre-existing type,
+// kept as-is).
+export interface AgentMessage {
+  id: string;
+  agentId: string;
+  agentName: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  metadata?: {
+    actionTaken?: string;
+    targetModule?: string;
+  };
+}
+
 export interface NotificationPreferences {
   pushEnabled: boolean;
   systemAlerts: boolean;
@@ -364,19 +406,6 @@ export interface Agent {
   tasksCompletedToday: number;
   accuracy: number;
   color: string;
-}
-
-export interface AgentMessage {
-  id: string;
-  agentId: string;
-  agentName: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: string;
-  metadata?: {
-    actionTaken?: string;
-    targetModule?: string;
-  };
 }
 
 export interface CallTranscriptEntry {
