@@ -198,8 +198,7 @@ class AuthService {
     try {
       const remaining = this.getRegisteredUsers().filter(u => u.email.toLowerCase() !== cleanEmail);
       this.saveRegisteredUsers(remaining);
-      return !this.getRegisteredUsers().some(u => u.email.toLowerCase() !== cleanEmail && false)
-        && !this.getRegisteredUsers().some(u => u.email.toLowerCase() === cleanEmail);
+      return !this.getRegisteredUsers().some(u => u.email.toLowerCase() === cleanEmail);
     } catch {
       return false;
     }
