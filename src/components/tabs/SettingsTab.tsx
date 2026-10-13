@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion } from '../../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion, BusinessAccount } from '../../types';
 import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
@@ -12,6 +12,8 @@ import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerMo
 import { haptic } from '../../utils/haptics';
 import { deleteAccount, isReauthRequired } from '../../services/accountDeletionService';
 import { auth } from '../../lib/firebase';
+import { biometricService } from '../../services/biometricService';
+import { DEFAULT_PROFILE_PICTURES, defaultPictureDataUrl, downscaleImageFile, resolveProfilePicture } from '../../utils/profilePicture';
 import { 
   Settings2, 
   Plus, 
@@ -49,9 +51,19 @@ import {
   History,
 } from 'lucide-react';
 
+ /** Values from the Settings → My Profile editor. */
+export interface ProfileUpdate {
+  fullName: string;
+  phone: string;
+  contactEmail: string;
+  profilePicture: string;
+}
+
 interface SettingsTabProps {
   currentUser?: User | null;
   businessId?: string;
+  business?: BusinessAccount | null;
+  onUpdateProfile?: (profile: ProfileUpdate) => Promise<void>;
   onLogout?: () => void;
   automationTasks: AutomationTask[];
   onToggleAutomation: (taskId: string, isAutomated: boolean) => void;
@@ -88,6 +100,8 @@ interface SettingsTabProps {
 export const SettingsTab: React.FC<SettingsTabProps> = ({
   currentUser,
   businessId,
+  business,
+  onUpdateProfile,
   onLogout,
   automationTasks,
   onToggleAutomation,
@@ -129,6 +143,61 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [companyPhone, setCompanyPhone] = useState('(555) 302-8491');
   const [dispatchEmail, setDispatchEmail] = useState(currentUser?.email || 'dispatch@company.com');
   const [is24x7Emergency, setIs24x7Emergency] = useState(true);
+
+  // ---- My Profile (editable name, contact info, profile picture) ----
+  const [profileName, setProfileName] = useState(currentUser?.fullName || '');
+  const [profilePhone, setProfilePhone] = useState(business?.contactPhone || '');
+  const [profileContactEmail, setProfileContactEmail] = useState(business?.contactEmail || '');
+  const [profilePicture, setProfilePicture] = useState(business?.profilePicture || '');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const profileFileRef = useRef<HTMLInputElement | null>(null);
+  // When a different account/business loads, reset the form to its values.
+  useEffect(() => {
+    setProfileName(currentUser?.fullName || '');
+    setProfilePhone(business?.contactPhone || '');
+    setProfileContactEmail(business?.contactEmail || '');
+    setProfilePicture(business?.profilePicture || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business?.id, currentUser?.email]);
+
+  const handleSaveProfile = async () => {
+    if (!profileName.trim()) { setProfileError('Please enter your name.'); return; }
+    if (profileContactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileContactEmail.trim())) {
+      setProfileError('That contact email does not look right.');
+      return;
+    }
+    if (!onUpdateProfile) { setProfileError('Profile saving is not available right now.'); return; }
+    setProfileSaving(true);
+    setProfileError(null);
+    try {
+      await onUpdateProfile({
+        fullName: profileName.trim(),
+        phone: profilePhone.trim(),
+        contactEmail: profileContactEmail.trim(),
+        profilePicture,
+      });
+      showToast('Profile saved!');
+    } catch (e: any) {
+      setProfileError(e?.message || 'Could not save your profile. Please try again.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleProfilePhotoFile = async (file: File | null) => {
+    if (!file) { biometricService.clearFilePickerFlag(); return; }
+    try {
+      const dataUrl = await downscaleImageFile(file);
+      setProfilePicture(dataUrl);
+      setProfileError(null);
+      showToast('Photo chosen — tap Save profile to keep it.');
+    } catch (e: any) {
+      setProfileError(e?.message || 'Could not use that photo.');
+    } finally {
+      biometricService.clearFilePickerFlag();
+    }
+  };
 
   // App Agents State
   const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>('autonomous');
@@ -351,6 +420,105 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </button>
               )}
             </div>
+          </div>
+
+          {/* My Profile — editable name, contact info, profile picture */}
+          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3.5">
+            <div className="flex items-center gap-2">
+              <UserIcon className="w-4 h-4 text-lime-400" />
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">My Profile</h3>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <img
+                src={resolveProfilePicture(profilePicture, currentUser?.avatar || '')}
+                alt="Your profile picture"
+                className="w-16 h-16 rounded-2xl object-cover border border-lime-500/50 shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-xs text-white font-bold truncate">{profileName || 'Your name'}</p>
+                <p className="text-[11px] text-zinc-400">Pick a picture or upload your own photo.</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] text-zinc-400 font-mono mb-1.5">Choose a picture:</p>
+              <div className="flex gap-2 flex-wrap">
+                {DEFAULT_PROFILE_PICTURES.map((pic) => {
+                  const value = `default:${pic.id}`;
+                  const selected = profilePicture === value;
+                  return (
+                    <button
+                      key={pic.id}
+                      type="button"
+                      title={pic.label}
+                      onClick={() => { setProfilePicture(value); setProfileError(null); }}
+                      className={`w-10 h-10 rounded-xl overflow-hidden border-2 transition cursor-pointer ${selected ? 'border-lime-400' : 'border-transparent'}`}
+                    >
+                      <img src={defaultPictureDataUrl(pic.id)} alt={pic.label} className="w-full h-full object-cover" />
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => { biometricService.notifyFilePickerOpened(); profileFileRef.current?.click(); }}
+                  className="h-10 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[11px] font-bold text-zinc-200 transition cursor-pointer"
+                >
+                  Upload a photo
+                </button>
+              </div>
+              <input
+                ref={profileFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0] || null; e.target.value = ''; handleProfilePhotoFile(f); }}
+              />
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[10px] text-zinc-400 font-mono block mb-1">Full name:</label>
+                <input
+                  type="text"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  placeholder="Your full name"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-400 font-mono block mb-1">Phone:</label>
+                <input
+                  type="tel"
+                  value={profilePhone}
+                  onChange={(e) => setProfilePhone(e.target.value)}
+                  placeholder="(555) 123-4567"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-400 font-mono block mb-1">Contact email:</label>
+                <input
+                  type="email"
+                  value={profileContactEmail}
+                  onChange={(e) => setProfileContactEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none font-mono"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">This is the email customers see. Your login email stays the same.</p>
+              </div>
+            </div>
+
+            {profileError && <p className="text-xs text-red-300">{profileError}</p>}
+            <button
+              type="button"
+              onClick={handleSaveProfile}
+              disabled={profileSaving}
+              className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
+            >
+              {profileSaving ? 'Saving…' : 'Save profile'}
+            </button>
           </div>
 
           {/* Company Profile (Multi-Company Configuration) */}
