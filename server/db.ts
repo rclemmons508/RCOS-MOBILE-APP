@@ -164,7 +164,7 @@ export const db = {
     data.businesses = data.businesses.filter(b => !targets.has(b.id));
     data.requests = data.requests.filter(r => !targets.has(r.businessId));
     data.actions = data.actions.filter(a => !targets.has(a.businessId));
-    data.chatMessages = data.chatMessages.filter(m => !targets.has(m.businessId));
+    data.chatMessages = data.chatMessages.filter(m => !targets.has(m.businessId ?? ''));
     if (data.agentMessages) {
       data.agentMessages = data.agentMessages.filter(m => !targets.has(m.businessId));
     }
