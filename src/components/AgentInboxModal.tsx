@@ -49,7 +49,7 @@ const MessageCard: React.FC<{
   const KindIcon = kind.icon;
   const [reply, setReply] = useState('');
   const [replyOpen, setReplyOpen] = useState(false);
-  const done = msg.status !== 'unread' && msg.status !== 'read');
+  const done = msg.status !== 'unread' && msg.status !== 'read';
 
   // Follow-up drafts (Send now / Edit / Dismiss). Detected by the sms: action
   // the engine stores. Send now only OPENS the phone's SMS app — nothing is
