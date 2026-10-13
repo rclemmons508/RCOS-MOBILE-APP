@@ -1,1 +1,135 @@
-LyoqCiAqIFJDT1MgQUkgUmVjZXB0aW9uaXN0IOKAlCBXZWJSVEMgdm9pY2UgYWdlbnQgd29ya2VyLgogKgogKiBSdW4gc2VwYXJhdGVseSBmcm9tIHRoZSBFeHByZXNzIHNlcnZlcjoKICogICBucHggdHN4IHNlcnZlci92b2ljZS1hZ2VudC50cwogKiAoT24gUmFpbHdheTogZGVwbG95IGFzIGEgc2Vjb25kIHNlcnZpY2Ugd2l0aCB0aGUgc2FtZSBlbnZpcm9ubWVudCB2YXJpYWJsZXMuKQogKgogKiBXaGF0IGl0IGRvZXM6IGpvaW5zIHRoZSBMaXZlS2l0IHJvb20gY3JlYXRlZCBieSBQT1NUIC9hcGkvdm9pY2UvdG9rZW4sCiAqIGdyZWV0cyB0aGUgY2FsbGVyLCBsaXN0ZW5zLCB0aGlua3Mgd2l0aCBHZW1pbmkgKExpdmUgQVBJKSwgc3BlYWtzIGJhY2ssCiAqIGFuZCB1c2VzIHRoZSByb3V0ZV90b19yZXByZXNlbnRhdGl2ZSB0b29sIHRvIHJlY29yZCB3aGljaCBkZXBhcnRtZW50CiAqIHNob3VsZCBoYW5kbGUgdGhlIGNhbGxlcidzIGlzc3VlLgogKgogKiBOZWVkcyBpbiB0aGUgZW52aXJvbm1lbnQ6CiAqICAgTElWRUtJVF9VUkwsIExJVkVLSVRfQVBJX0tFWSwgTElWRUtJVF9BUElfU0VDUkVUIChMaXZlS2l0IENsb3VkIOKAlCBmcmVlIHRpZXIgd29ya3MpCiAqICAgR0VNSU5JX0FQSV9LRVkgKHNhbWUga2V5IHRoZSBFeHByZXNzIHNlcnZlciBhbHJlYWR5IHVzZXMpCiAqICAgQVBQX1VSTCAoc28gdGhlIHJvdXRpbmcgdG9vbCBjYW4gbG9nIHRvIHlvdXIgb3duIEFQSSkKICovCmltcG9ydCAnZG90ZW52L2NvbmZpZyc7CmltcG9ydCB7IGRlZmluZUFnZW50LCBjbGksIFdvcmtlck9wdGlvbnMsIEFnZW50LCBBZ2VudFNlc3Npb24sIHRvb2wgfSBmcm9tICdAbGl2ZWtpdC9hZ2VudHMnOwppbXBvcnQgeyByZWFsdGltZSB9IGZyb20gJ0BsaXZla2l0L2FnZW50cy1wbHVnaW4tZ29vZ2xlJzsKaW1wb3J0IHsgeiB9IGZyb20gJ3pvZCc7CmltcG9ydCB7IGZpbGVVUkxUb1BhdGggfSBmcm9tICd1cmwnOwoKY29uc3QgQUdFTlRfTkFNRSA9ICdyY29zLXJlY2VwdGlvbmlzdCc7Cgpjb25zdCBJTlNUUlVDVElPTlMgPSBgWW91IGFyZSB0aGUgZnJpZW5kbHkgQUkgcmVjZXB0aW9uaXN0IGZvciBSQyBTb2x1dGlvbnMsIGEgc2VydmljZSBidXNpbmVzcy4KWW91ciBqb2Igb24gdGhpcyBjYWxsOgoxLiBHcmVldCB0aGUgY2FsbGVyIHdhcm1seSBhbmQgYXNrIGhvdyB5b3UgY2FuIGhlbHAuCjIuIExpc3RlbiBjYXJlZnVsbHkgYW5kIGFzayBvbmUgY2xhcmlmeWluZyBxdWVzdGlvbiBpZiB0aGUgaXNzdWUgaXMgdW5jbGVhci4KMy4gUm91dGUgdGhlIGNhbGwgdXNpbmcgdGhpcyBwcmlvcml0eSBvcmRlciDigJQgc2FmZXR5IGZpcnN0LCB0aGVuIHRlY2huaWNhbCwgdGhlbiB0aGUgcmVzdDoKICAgMS4gU0FGRVRZIChlbWVyZ2VuY3kpOiBnYXMgc21lbGwsIGZsb29kaW5nLCBzcGFya2luZyB3aXJlcywgbm8gaGVhdCBpbiBmcmVlemluZwogICAgICB3ZWF0aGVyLCBvciBhbnlvbmUgaW4gZGFuZ2VyLiBTYXkgc28gcGxhaW5seSBhbmQgcm91dGUgdG8gZW1lcmdlbmN5IGltbWVkaWF0ZWx5LgogICAyLiBUZWNobmljYWw6IGVxdWlwbWVudCBwcm9ibGVtcyBuZWVkaW5nIGEgc3BlY2lhbGlzdCBkaWFnbm9zaXMuCiAgIDMuIENvbXBsZXggcHJvamVjdDogbXVsdGktc3RlcCB3b3JrIG5lZWRpbmcgYSBwcm9qZWN0IG1hbmFnZXIuCiAgIDQuIE9wZXJhdGlvbmFsOiBzY2hlZHVsaW5nLCBkaXNwYXRjaCwgam9iIHN0YXR1cyB1cGRhdGVzLgogICA1LiBDbGllbnQtZmFjaW5nOiBxdWVzdGlvbnMsIGNvbXBsYWludHMsIGZvbGxvdy11cHMuCiAgIDYuIEFkbWluaXN0cmF0aXZlOiBiaWxsaW5nIHF1ZXN0aW9ucyBnbyB0byBiaWxsaW5nOyBhbnl0aGluZyBlbHNlIGdvZXMgdG8gc3VwcG9ydC4KNC4gRXNjYWxhdGUgcmlnaHQgYXdheSB3aGVuOiB0aGUgY2FsbGVyIHNvdW5kcyBmcnVzdHJhdGVkLCB5b3UgYXJlIG1pc3NpbmcgaW5mb3JtYXRpb24KICAgYW5kIGNhbm5vdCBwcm9jZWVkLCBvciBhbnl0aGluZyBsb29rcyBsaWtlIGEgc2FmZXR5IGlzc3VlLiBOZXZlciBsZWF2ZSBhbiB1cmdlbnQKICAgY2FsbGVyIGhhbmdpbmcg4oCUIHRlbGwgdGhlbSBwbGFpbmx5IHdoYXQgaGFwcGVucyBuZXh0Lgo1LiBVc2UgdGhlIHJvdXRlX3RvX3JlcHJlc2VudGF0aXZlIHRvb2wgdG8gcmVjb3JkIHRoZSByb3V0aW5nLCB0aGVuIHRlbGwgdGhlIGNhbGxlcgogICB3aG8gd2lsbCBoZWxwIHRoZW0gYW5kIHdoYXQgaGFwcGVucyBuZXh0LgpLZWVwIHJlcGxpZXMgc2hvcnQgYW5kIHNwZWFrIG5hdHVyYWxseSDigJQgdGhpcyBpcyBhIHBob25lIGNhbGwsIG5vdCBhbiBlbWFpbC4KTmV2ZXIgaW52ZW50IHByaWNlcywgYXJyaXZhbCB0aW1lcywgb3IgcHJvbWlzZXMuIElmIHlvdSBkbyBub3Qga25vdywgc2F5IHlvdSB3aWxsCmhhdmUgdGhlIHJpZ2h0IHBlcnNvbiBjYWxsIHRoZW0gYmFjay5gOwoKY29uc3Qgcm91dGVUb1JlcHJlc2VudGF0aXZlID0gdG9vbCh7CiAgZGVzY3JpcHRpb246CiAgICAnUmVjb3JkIHdoaWNoIGRlcGFydG1lbnQgc2hvdWxkIGhhbmRsZSB0aGUgY2FsbGVyIGFuZCB3aHkuIENhbGwgdGhpcyBvbmNlIHlvdSBrbm93IHRoZSBjYWxsZXJcJ3MgaXNzdWUuJywKICBwYXJhbWV0ZXJzOiB6Lm9iamVjdCh7CiAgICBkZXBhcnRtZW50OiB6CiAgICAgIC5lbnVtKFsnc2FsZXMnLCAnc3VwcG9ydCcsICdkaXNwYXRjaCcsICdiaWxsaW5nJywgJ2VtZXJnZW5jeSddKQogICAgICAuZGVzY3JpYmUoJ1doaWNoIGRlcGFydG1lbnQgb3ducyB0aGlzIGlzc3VlJyksCiAgICBzdW1tYXJ5OiB6LnN0cmluZygpLmRlc2NyaWJlKCdPbmUgb3IgdHdvIHNlbnRlbmNlcyBkZXNjcmliaW5nIHRoZSBjYWxsZXJcJ3MgaXNzdWUnKSwKICAgIHVyZ2VuY3k6IHouZW51bShbJ3JvdXRpbmUnLCAndXJnZW50JywgJ2VtZXJnZW5jeSddKS5kZXNjcmliZSgnSG93IHVyZ2VudCB0aGlzIGlzJyksCiAgICBjYWxsZXJOYW1lOiB6LnN0cmluZygpLm9wdGlvbmFsKCkuZGVzY3JpYmUoJ0NhbGxlciBuYW1lIGlmIHRoZXkgZ2F2ZSBvbmUnKSwKICB9KSwKICBleGVjdXRlOiBhc3luYyAoeyBkZXBhcnRtZW50LCBzdW1tYXJ5LCB1cmdlbmN5LCBjYWxsZXJOYW1lIH0pID0+IHsKICAgIC8vIExvZyB0aGUgcm91dGluZyBkZWNpc2lvbiB0byB0aGUgUkNPUyBBUEkgc28gaXQgc2hvd3MgdXAgaW4gdGhlIGRhc2hib2FyZC4KICAgIHRyeSB7CiAgICAgIGNvbnN0IGFwcFVybCA9IHByb2Nlc3MuZW52LkFQUF9VUkw7CiAgICAgIGlmIChhcHBVcmwpIHsKICAgICAgICAvLyBOZXZlciBsZXQgYSBzbG93IGxvZyBjYWxsIHN0YWxsIHRoZSBjb252ZXJzYXRpb246IGdpdmUgdXAgYWZ0ZXIgOHMuCiAgICAgICAgY29uc3QgY29udHJvbGxlciA9IG5ldyBBYm9ydENvbnRyb2xsZXIoKTsKICAgICAgICBjb25zdCB0aW1lb3V0ID0gc2V0VGltZW91dCgoKSA9PiBjb250cm9sbGVyLmFib3J0KCksIDgwMDApOwogICAgICAgIHRyeSB7CiAgICAgICAgICBhd2FpdCBmZXRjaChgJHthcHBVcmx9L2FwaS92b2ljZS9yb3V0aW5nLWxvZ2AsIHsKICAgICAgICAgIG1ldGhvZDogJ1BPU1QnLAogICAgICAgICAgaGVhZGVyczogewogICAgICAgICAgICAnQ29udGVudC1UeXBlJzogJ2FwcGxpY2F0aW9uL2pzb24nLAogICAgICAgICAgICAuLi4ocHJvY2Vzcy5lbnYuVk9JQ0VfQUdFTlRfU0VDUkVUID8geyAneC12b2ljZS1zZWNyZXQnOiBwcm9jZXNzLmVudi5WT0lDRV9BR0VOVF9TRUNSRVQgfSA6IHt9KSwKICAgICAgICAgIH0sCiAgICAgICAgICBib2R5OiBKU09OLnN0cmluZ2lmeSh7CiAgICAgICAgICAgIGRlcGFydG1lbnQsCiAgICAgICAgICAgIHN1bW1hcnksCiAgICAgICAgICAgIHVyZ2VuY3ksCiAgICAgICAgICAgIGNhbGxlck5hbWU6IGNhbGxlck5hbWUgfHwgJ1Vua25vd24gY2FsbGVyJywKICAgICAgICAgICAgYXQ6IG5ldyBEYXRlKCkudG9JU09TdHJpbmcoKSwKICAgICAgICAgICAgc291cmNlOiAnd2VicnRjLXJlY2VwdGlvbmlzdCcsCiAgICAgICAgICB9KSwKICAgICAgICAgICAgc2lnbmFsOiBjb250cm9sbGVyLnNpZ25hbCwKICAgICAgICAgIH0pOwogICAgICAgIH0gZmluYWxseSB7CiAgICAgICAgICBjbGVhclRpbWVvdXQodGltZW91dCk7CiAgICAgICAgfQogICAgICB9CiAgICB9IGNhdGNoIChlKSB7CiAgICAgIGNvbnNvbGUud2FybignW3ZvaWNlLWFnZW50XSByb3V0aW5nIGxvZyBmYWlsZWQ6JywgKGUgYXMgRXJyb3IpPy5tZXNzYWdlKTsKICAgIH0KICAgIHJldHVybiBgUmVjb3JkZWQ6IHJvdXRlIHRvICR7ZGVwYXJ0bWVudH0gKCR7dXJnZW5jeX0pLiBTdW1tYXJ5OiAke3N1bW1hcnl9YDsKICB9LAp9KTsKCmV4cG9ydCBkZWZhdWx0IGRlZmluZUFnZW50KHsKICBlbnRyeTogYXN5bmMgKGN0eCkgPT4gewogICAgYXdhaXQgY3R4LmNvbm5lY3QoKTsKICAgIC8vIFdhaXQgdW50aWwgdGhlIGNhbGxlciBoYXMgYWN0dWFsbHkgam9pbmVkIGJlZm9yZSBzYXlpbmcgYW55dGhpbmcuCiAgICAvLyBHcmVldGluZyBpbW1lZGlhdGVseSBjYW4gcGxheSB0byBhbiBlbXB0eSByb29tLCBzbyB0aGUgY2FsbGVyIGhlYXJzIHNpbGVuY2UuCiAgICBhd2FpdCBjdHgud2FpdEZvclBhcnRpY2lwYW50KCk7CgogICAgY29uc3QgbW9kZWwgPSBuZXcgcmVhbHRpbWUuUmVhbHRpbWVNb2RlbCh7CiAgICAgIGFwaUtleTogcHJvY2Vzcy5lbnYuR0VNSU5JX0FQSV9LRVksCiAgICAgIHZvaWNlOiAnS29yZScsCiAgICAgIGluc3RydWN0aW9uczogSU5TVFJVQ1RJT05TLAogICAgfSk7CgogICAgY29uc3QgYWdlbnQgPSBuZXcgQWdlbnQoewogICAgICBpbnN0cnVjdGlvbnM6IElOU1RSVUNUSU9OUywKICAgICAgdG9vbHM6IHsgcm91dGVfdG9fcmVwcmVzZW50YXRpdmU6IHJvdXRlVG9SZXByZXNlbnRhdGl2ZSB9LAogICAgfSk7CgogICAgY29uc3Qgc2Vzc2lvbiA9IG5ldyBBZ2VudFNlc3Npb24oeyBsbG06IG1vZGVsIH0pOwogICAgYXdhaXQgc2Vzc2lvbi5zdGFydCh7IGFnZW50LCByb29tOiBjdHgucm9vbSB9KTsKICAgIGF3YWl0IHNlc3Npb24uZ2VuZXJhdGVSZXBseSh7CiAgICAgIGluc3RydWN0aW9uczogJ0dyZWV0IHRoZSBjYWxsZXIgYXMgdGhlIFJDIFNvbHV0aW9ucyByZWNlcHRpb25pc3QgYW5kIGFzayBob3cgeW91IGNhbiBoZWxwLicsCiAgICB9KTsKICB9LAp9KTsKCi8vIFJlY2VpdmVzIHRoZSByb3V0ZWQgY2FsbCdzIGJ1c2luZXNzIGlkIHZpYSB0aGUgcm9vbSBtZXRhZGF0YSBzZXQgaW4gL2FwaS92b2ljZS90b2tlbi4KZXhwb3J0IGZ1bmN0aW9uIHN0YXJ0V29ya2VyKCkgewogIC8vIGNsaS5ydW5BcHAoKSBwYXJzZXMgcHJvY2Vzcy5hcmd2IGZvciBhIHN1YmNvbW1hbmQgKHN0YXJ0L2Rldi9jb25uZWN0KS4KICAvLyBXaGVuIGxhdW5jaGVkIHZpYSBzdGFydC50cyAoYHRzeCBzdGFydC50c2ApIHRoZXJlIGlzIG5vIHN1YmNvbW1hbmQsIHNvIHRoZQogIC8vIENMSSBvbmx5IHByaW50cyBpdHMgaGVscCB0ZXh0IGFuZCBleGl0cyDigJQgdGhlIHdvcmtlciBuZXZlciBydW5zLiBEZWZhdWx0CiAgLy8gdG8gJ3N0YXJ0JyBzbyBSYWlsd2F5IGFjdHVhbGx5IGxhdW5jaGVzIHRoZSBwcm9kdWN0aW9uIHdvcmtlci4KICBpZiAocHJvY2Vzcy5hcmd2Lmxlbmd0aCA8IDMpIHsKICAgIHByb2Nlc3MuYXJndi5wdXNoKCdzdGFydCcpOwogIH0KICBjb25zb2xlLmxvZygnW3ZvaWNlLWFnZW50XSBzdGFydGluZyBMaXZlS2l0IHdvcmtlciAoYWdlbnQ6IHJjb3MtcmVjZXB0aW9uaXN0KS4uLicpOwogIGNsaS5ydW5BcHAobmV3IFdvcmtlck9wdGlvbnMoeyBhZ2VudDogZmlsZVVSTFRvUGF0aChpbXBvcnQubWV0YS51cmwpLCBhZ2VudE5hbWU6IEFHRU5UX05BTUUgfSkpOwp9CgppZiAocHJvY2Vzcy5hcmd2WzFdID09PSBmaWxlVVJMVG9QYXRoKGltcG9ydC5tZXRhLnVybCkpIHsKICBzdGFydFdvcmtlcigpOwp9Cg==
+/**
+ * RCOS AI Receptionist — WebRTC voice agent worker.
+ *
+ * Run separately from the Express server:
+ *   npx tsx server/voice-agent.ts
+ * (On Railway: deploy as a second service with the same environment variables.)
+ *
+ * What it does: joins the LiveKit room created by POST /api/voice/token,
+ * greets the caller, listens, thinks with Gemini (Live API), speaks back,
+ * and uses the route_to_representative tool to record which department
+ * should handle the caller's issue.
+ *
+ * Needs in the environment:
+ *   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (LiveKit Cloud — free tier works)
+ *   GEMINI_API_KEY (same key the Express server already uses)
+ *   APP_URL (so the routing tool can log to your own API)
+ */
+import 'dotenv/config';
+import { defineAgent, cli, WorkerOptions, Agent, AgentSession, tool } from '@livekit/agents';
+import { realtime } from '@livekit/agents-plugin-google';
+import { z } from 'zod';
+import { fileURLToPath } from 'url';
+
+const AGENT_NAME = 'rcos-receptionist';
+
+const INSTRUCTIONS = `You are the friendly AI receptionist for RC Solutions, a service business.
+Your job on this call:
+1. Greet the caller warmly and ask how you can help.
+2. Listen carefully and ask one clarifying question if the issue is unclear.
+3. Route the call using this priority order — safety first, then technical, then the rest:
+   1. SAFETY (emergency): gas smell, flooding, sparking wires, no heat in freezing
+      weather, or anyone in danger. Say so plainly and route to emergency immediately.
+   2. Technical: equipment problems needing a specialist diagnosis.
+   3. Complex project: multi-step work needing a project manager.
+   4. Operational: scheduling, dispatch, job status updates.
+   5. Client-facing: questions, complaints, follow-ups.
+   6. Administrative: billing questions go to billing; anything else goes to support.
+4. Escalate right away when: the caller sounds frustrated, you are missing information
+   and cannot proceed, or anything looks like a safety issue. Never leave an urgent
+   caller hanging — tell them plainly what happens next.
+5. Use the route_to_representative tool to record the routing, then tell the caller
+   who will help them and what happens next.
+Keep replies short and speak naturally — this is a phone call, not an email.
+Never invent prices, arrival times, or promises. If you do not know, say you will
+have the right person call them back.`;
+
+const routeToRepresentative = tool({
+  description:
+    'Record which department should handle the caller and why. Call this once you know the caller\'s issue.',
+  parameters: z.object({
+    department: z
+      .enum(['sales', 'support', 'dispatch', 'billing', 'emergency'])
+      .describe('Which department owns this issue'),
+    summary: z.string().describe('One or two sentences describing the caller\'s issue'),
+    urgency: z.enum(['routine', 'urgent', 'emergency']).describe('How urgent this is'),
+    callerName: z.string().optional().describe('Caller name if they gave one'),
+  }),
+  execute: async ({ department, summary, urgency, callerName }) => {
+    // Log the routing decision to the RCOS API so it shows up in the dashboard.
+    try {
+      const appUrl = process.env.APP_URL;
+      if (appUrl) {
+        // Never let a slow log call stall the conversation: give up after 8s.
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+          await fetch(`${appUrl}/api/voice/routing-log`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(process.env.VOICE_AGENT_SECRET ? { 'x-voice-secret': process.env.VOICE_AGENT_SECRET } : {}),
+          },
+          body: JSON.stringify({
+            department,
+            summary,
+            urgency,
+            callerName: callerName || 'Unknown caller',
+            at: new Date().toISOString(),
+            source: 'webrtc-receptionist',
+          }),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+    } catch (e) {
+      console.warn('[voice-agent] routing log failed:', (e as Error)?.message);
+    }
+    return `Recorded: route to ${department} (${urgency}). Summary: ${summary}`;
+  },
+});
+
+export default defineAgent({
+  entry: async (ctx) => {
+    await ctx.connect();
+    // Wait until the caller has actually joined before saying anything.
+    // Greeting immediately can play to an empty room, so the caller hears silence.
+    await ctx.waitForParticipant();
+
+    const model = new realtime.RealtimeModel({
+      apiKey: process.env.GEMINI_API_KEY,
+      voice: 'Kore',
+      instructions: INSTRUCTIONS,
+    });
+
+    const agent = new Agent({
+      instructions: INSTRUCTIONS,
+      tools: { route_to_representative: routeToRepresentative },
+    });
+
+    const session = new AgentSession({ llm: model });
+    await session.start({ agent, room: ctx.room });
+    await session.generateReply({
+      instructions: 'Greet the caller as the RC Solutions receptionist and ask how you can help.',
+    });
+  },
+});
+
+// Receives the routed call's business id via the room metadata set in /api/voice/token.
+export function startWorker() {
+  // cli.runApp() parses process.argv for a subcommand (start/dev/connect).
+  // When launched via start.ts (`tsx start.ts`) there is no subcommand, so the
+  // CLI only prints its help text and exits — the worker never runs. Default
+  // to 'start' so Railway actually launches the production worker.
+  if (process.argv.length < 3) {
+    process.argv.push('start');
+  }
+  console.log('[voice-agent] starting LiveKit worker (agent: rcos-receptionist)...');
+  cli.runApp(new WorkerOptions({ agent: fileURLToPath(import.meta.url), agentName: AGENT_NAME }));
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  startWorker();
+}
