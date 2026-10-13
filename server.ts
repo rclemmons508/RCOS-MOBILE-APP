@@ -1977,6 +1977,42 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
   res.json(updatedAction);
 });
 
+// Money loop: mark an approved invoice as paid.
+app.post('/api/business/:id/actions/:actionId/mark-paid', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const action = db.getAction(req.params.actionId);
+  if (!action || action.businessId !== req.params.id) {
+    return res.status(404).json({ error: 'Action not found' });
+  }
+  const total = action.result?.invoiceDetails?.totalAmount || action.dollarAmount || 0;
+  const amount = Number(req.body?.amount) > 0 ? Number(req.body.amount) : total;
+  action.paymentStatus = 'paid';
+  action.paidAt = new Date().toISOString();
+  action.paidAmount = amount;
+  action.updatedAt = new Date().toISOString();
+  db.saveAction(action);
+  res.json(action);
+});
+
+// Money loop: link pipeline records (quote -> job -> invoice). Only the
+// linkage fields are writable here.
+app.post('/api/business/:id/actions/:actionId/link', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const action = db.getAction(req.params.actionId);
+  if (!action || action.businessId !== req.params.id) {
+    return res.status(404).json({ error: 'Action not found' });
+  }
+  const { scheduledJobId, invoiceId, jobId } = req.body || {};
+  if (typeof scheduledJobId === 'string') action.scheduledJobId = scheduledJobId.slice(0, 80);
+  if (typeof invoiceId === 'string') action.invoiceId = invoiceId.slice(0, 80);
+  if (typeof jobId === 'string') action.jobId = jobId.slice(0, 80);
+  action.updatedAt = new Date().toISOString();
+  db.saveAction(action);
+  res.json(action);
+});
+
 // Multi-turn Gemini Chat with AI Employees
 app.get('/api/business/:id/chat', (req: Request, res: Response) => {
   const employeeId = req.query.employeeId as string | undefined;
