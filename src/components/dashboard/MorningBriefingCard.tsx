@@ -4,9 +4,9 @@ import {
   PhoneMissed,
   Briefcase,
   FileText,
+  DollarSign,
   Inbox,
   ChevronRight,
-  Coffee,
 } from 'lucide-react';
 import { PhoneCall, Job, ActionRecord, CustomerRequest, TabType } from '../../types';
 import { AGENT_META } from '../../services/agentInboxService';
@@ -79,6 +79,15 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
     (r) => r.status === 'pending' || r.status === 'in_progress'
   );
 
+  // Money loop: approved but unpaid invoices.
+  const unpaidInvoices = actions.filter(
+    (a) => a.status === 'approved' && a.result?.invoiceDetails && a.paymentStatus !== 'paid'
+  );
+  const owedTotal = unpaidInvoices.reduce(
+    (sum, a) => sum + (a.result?.invoiceDetails?.totalAmount || 0),
+    0
+  );
+
   const suggestions: Suggestion[] = [];
   if (missedOvernight > 0) {
     suggestions.push({
@@ -116,8 +125,8 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   const stats = [
     { icon: PhoneMissed, label: 'Overnight calls', value: String(overnightCalls.length) },
     { icon: Briefcase, label: "Today's jobs", value: String(todaysJobs.length) },
-    { icon: FileText, label: 'Quotes waiting', value: pendingQuotes.length ? money(quotesTotal) : '0' },
-    { icon: Coffee, label: 'Open requests', value: String(openRequests.length) },
+    { icon: DollarSign, label: 'Money owed', value: unpaidInvoices.length ? money(owedTotal) : '$0' },
+    { icon: FileText, label: 'Quotes waiting', value: pendingQuotes.length ? money(quotesTotal) : '$0' },
   ];
 
   return (
