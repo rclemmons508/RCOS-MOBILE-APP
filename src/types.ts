@@ -307,6 +307,10 @@ export interface AutomationTask {
   /** Run stats for Start/Pause/Resume/Reset controls. */
   runCount?: number;
   lastFiredAt?: string;
+  /** Editable message template for follow-up rules. Placeholders: {firstName}, {businessName}, {reviewLink}. */
+  messageTemplate?: string;
+  /** Review-page link used by the review-request rule's {reviewLink}. */
+  reviewLink?: string;
 }
 
 export interface RCOSNotification {
