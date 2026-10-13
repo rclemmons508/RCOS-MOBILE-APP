@@ -359,6 +359,12 @@ export const INITIAL_AUTOMATION_TASKS: AutomationTask[] = [
     description: 'Hold any quote over the approval limit for the owner\u2019s sign-off before it goes out.',
     isAutomated: true,
   },
+  {
+    id: 'rule-proactive',
+    name: 'Proactive team check-ins',
+    description: 'Your agents message you in the inbox — idle quotes, waiting requests, unpaid invoices.',
+    isAutomated: true,
+  },
 ];
 
 export const INITIAL_MESSAGES: ChatMessage[] = [
