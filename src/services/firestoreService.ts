@@ -1,7 +1,8 @@
 import { 
   collection, 
   doc, 
-  getDoc, 
+  getDoc,
+  getDocs, 
   setDoc, 
   deleteDoc, 
   onSnapshot, 
@@ -245,6 +246,33 @@ export const firestoreService = {
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `businesses/${businessId}/actions/${actionId}`);
+    }
+  },
+
+  // ==================== DELETE ALL BUSINESS DATA ====================
+  /**
+   * Permanently delete a business document and every document in its
+   * subcollections (jobs, customers, requests, actions, chat messages,
+   * audit logs). Failures throw (via handleFirestoreError) so the caller
+   * can report what could not be removed — nothing is silently faked.
+   */
+  async deleteBusinessData(businessId: string): Promise<void> {
+    const subcollections = ['jobs', 'customers', 'requests', 'actions', 'chatMessages', 'auditLogs'];
+    for (const sub of subcollections) {
+      try {
+        const colRef = collection(db, 'businesses', businessId, sub);
+        const snap = await getDocs(colRef);
+        for (const d of snap.docs) {
+          await deleteDoc(d.ref);
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, `businesses/${businessId}/${sub}`);
+      }
+    }
+    try {
+      await deleteDoc(doc(db, 'businesses', businessId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `businesses/${businessId}`);
     }
   },
 
