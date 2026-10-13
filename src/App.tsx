@@ -28,7 +28,7 @@ import { DashboardTab } from './components/tabs/DashboardTab';
 import { PhoneSystemTab } from './components/tabs/PhoneSystemTab';
 import { JobsTab } from './components/tabs/JobsTab';
 import { ClientsTab } from './components/tabs/ClientsTab';
-import { SettingsTab } from './components/tabs/SettingsTab';
+import { SettingsTab, ProfileUpdate } from './components/tabs/SettingsTab';
 import { GmailTab } from './components/tabs/GmailTab';
 import { GeminiChatView } from './components/GeminiChatView';
 import { AiTeamView } from './components/AiTeamView';
@@ -50,6 +50,8 @@ import { authService } from './services/authService';
 import { firestoreService } from './services/firestoreService';
 import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
+import { auth } from './lib/firebase';
+import { updateProfile } from 'firebase/auth';
 import { useSyncEngine } from './hooks/useSyncEngine';
 import { logAutomationFired } from './utils/automationLog';
 import {
@@ -1268,6 +1270,39 @@ export default function App() {
     });
   };
 
+  // Settings → My Profile save: business record (contact info + picture),
+  // login user record (name + avatar shown in headers), and the Firebase
+  // display name when a Firebase user is signed in. The login email itself
+  // never changes here.
+  const handleUpdateProfile = async (p: ProfileUpdate) => {
+    const email = currentUser?.email;
+    if (!email) throw new Error('No signed-in account found.');
+    const updatedBiz: BusinessAccount = {
+      ...activeBusiness,
+      contactName: p.fullName,
+      contactPhone: p.phone,
+      contactEmail: p.contactEmail,
+      profilePicture: p.profilePicture,
+      updatedAt: new Date().toISOString(),
+    };
+    setBusinessAccount(updatedBiz);
+    try {
+      localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(updatedBiz)));
+    } catch { /* storage unavailable */ }
+    if (updatedBiz.id) {
+      await apiFetch(`/api/business/${updatedBiz.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updatedBiz)
+      }).catch(() => null);
+      await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+    }
+    const updatedUser = authService.updateStoredUser(email, { fullName: p.fullName, avatar: p.profilePicture });
+    if (updatedUser) setCurrentUser(updatedUser);
+    if (auth.currentUser) {
+      await updateProfile(auth.currentUser, { displayName: p.fullName }).catch(() => null);
+    }
+  };
+
   const handleLogout = async () => {
     await authService.logout();
     biometricService.setLocked(false);
@@ -1494,6 +1529,8 @@ export default function App() {
             <SettingsTab
               currentUser={currentUser}
               businessId={activeBusiness.id}
+              business={activeBusiness}
+              onUpdateProfile={handleUpdateProfile}
               onLogout={handleLogout}
               automationTasks={automationTasks}
               onToggleAutomation={(taskId, isAutomated) => {
