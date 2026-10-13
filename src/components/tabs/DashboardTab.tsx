@@ -28,6 +28,7 @@ import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
 import { haptic } from '../../utils/haptics';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
+import { RequestDetailModal } from '../RequestDetailModal';
 
 interface DashboardTabProps {
   calls: PhoneCall[];
@@ -127,6 +128,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     return `${Math.floor(h / 24)}d ago`;
   };
   const [linkCopied, setLinkCopied] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<CustomerRequest | null>(null);
   const bookingLink = businessId ? `${window.location.origin}/#/book/${businessId}` : '';
   const shareBookingLink = async () => {
     if (!bookingLink) return;
@@ -581,19 +583,26 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               return (
                 <div
                   key={req.id}
-                  className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-1.5"
+                  onClick={() => {
+                    haptic.light();
+                    setSelectedRequest(req);
+                  }}
+                  className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-1.5 cursor-pointer hover:border-lime-500/40 active:scale-[0.99] transition-all"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-white truncate">{req.customerName}</span>
-                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider border ${
-                      sla.breached
-                        ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
-                        : sla.urgent
-                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                        : 'bg-zinc-800 text-zinc-300 border-zinc-700'
-                    }`}>
-                      {sla.breached ? 'Overdue' : sla.urgent ? `Same-day · ${timeLeft(sla.leftMs)}` : `24h · ${timeLeft(sla.leftMs)}`}
-                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
+                        sla.breached
+                          ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                          : sla.urgent
+                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                          : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                      }`}>
+                        {sla.breached ? 'Overdue' : sla.urgent ? `Same-day · ${timeLeft(sla.leftMs)}` : `24h · ${timeLeft(sla.leftMs)}`}
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
+                    </div>
                   </div>
                   <p className="text-[11px] text-zinc-400 truncate">
                     {req.serviceType || 'General Service'} — {req.description}
@@ -681,6 +690,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <ChevronRight className="w-3.5 h-3.5" />
         </div>
       </div>
+
+      <RequestDetailModal request={selectedRequest} onClose={() => setSelectedRequest(null)} />
     </div>
   );
 };
