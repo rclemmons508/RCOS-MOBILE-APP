@@ -13,6 +13,7 @@ import {
   FileText, 
   BarChart3, 
   Phone, 
+  Mic, 
   Mail, 
   FileCheck, 
   Share2, 
@@ -37,6 +38,17 @@ import { CustomAIEmployee, employeeCustomizationService } from '../services/empl
 import { INDUSTRY_PRESETS } from '../data/presets';
 import { haptic } from '../utils/haptics';
 import { apiFetch } from '../lib/api';
+import { AgentTalkConsole, TalkPersona } from './phone/AgentTalkConsole';
+
+// Which AI Team members can be talked to by voice, and which voice persona
+// they use. Customer Service talks as Support; the receptionist already has
+// its own call button elsewhere, so it is not listed here.
+const TALK_PERSONAS: Partial<Record<string, TalkPersona>> = {
+  customer_service: 'support',
+  operations: 'operations',
+  sales: 'sales',
+  marketing: 'marketing',
+};
 
 interface AiTeamViewProps {
   business: BusinessAccount;
@@ -52,6 +64,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   );
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('executive_assistant');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [talkPersona, setTalkPersona] = useState<TalkPersona | null>(null);
 
   // Identify the business's detected industry preset
   const activePreset = INDUSTRY_PRESETS.find(p => 
@@ -318,6 +331,23 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  {(() => {
+                    const talkTarget = TALK_PERSONAS[emp.id];
+                    return talkTarget ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          haptic.light();
+                          setTalkPersona(talkTarget);
+                        }}
+                        title={`Talk to ${emp.name} by voice`}
+                        className="p-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-lime-400 hover:bg-zinc-700 cursor-pointer"
+                      >
+                        <Mic className="w-4 h-4" />
+                      </button>
+                    ) : null;
+                  })()}
                   <button
                     type="button"
                     onClick={(e) => {
@@ -582,6 +612,20 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
             </div>
         </div>
       </div>
+
+      {/* Push-to-talk voice conversation with the selected agent */}
+      {talkPersona && (() => {
+        const talkEmployee = industryEmployees.find((e) => TALK_PERSONAS[e.id] === talkPersona);
+        return (
+          <AgentTalkConsole
+            persona={talkPersona}
+            agentName={talkEmployee?.name || 'AI Agent'}
+            agentRole={talkEmployee?.roleTitle || ''}
+            businessId={business.id}
+            onClose={() => setTalkPersona(null)}
+          />
+        );
+      })()}
     </div>
   );
 };
