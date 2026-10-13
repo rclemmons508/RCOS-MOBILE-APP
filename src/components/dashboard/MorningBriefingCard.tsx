@@ -11,6 +11,7 @@ import {
 import { PhoneCall, Job, ActionRecord, CustomerRequest, TabType } from '../../types';
 import { AGENT_META } from '../../services/agentInboxService';
 import { AgentId } from '../../types';
+import { getFollowupWindowMs } from '../../utils/automation';
 
 interface MorningBriefingCardProps {
   ownerName: string;
@@ -21,6 +22,8 @@ interface MorningBriefingCardProps {
   unreadInboxCount: number;
   onOpenInbox: () => void;
   onNavigateTab: (tab: TabType) => void;
+  industry?: string;
+  industryModifierOn?: boolean;
 }
 
 interface Suggestion {
@@ -43,6 +46,8 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   unreadInboxCount,
   onOpenInbox,
   onNavigateTab,
+  industry,
+  industryModifierOn = true,
 }) => {
   const now = new Date();
   const hour = now.getHours();
@@ -69,11 +74,11 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
     0
   );
 
-  const dayAgo = now.getTime() - 24 * 60 * 60 * 1000;
+  const followupWindow = getFollowupWindowMs(industry, industryModifierOn);
   const overdueRequests = customerRequests.filter(
     (r) =>
       (r.status === 'pending' || r.status === 'in_progress') &&
-      new Date(r.createdAt).getTime() < dayAgo
+      new Date(r.createdAt).getTime() < now.getTime() - followupWindow
   );
   const openRequests = customerRequests.filter(
     (r) => r.status === 'pending' || r.status === 'in_progress'
@@ -108,9 +113,10 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
     });
   }
   if (overdueRequests.length > 0) {
+    const windowH = Math.round(followupWindow / 3600000);
     suggestions.push({
       agent: 'support',
-      text: `${overdueRequests.length} request${overdueRequests.length === 1 ? ' is' : 's are'} waiting over a day. A quick follow-up keeps customers happy.`,
+      text: `${overdueRequests.length} request${overdueRequests.length === 1 ? ' is' : 's are'} waiting over ${windowH}h. A quick follow-up keeps customers happy.`,
       actionLabel: 'View requests',
       actionTab: 'dashboard',
     });
