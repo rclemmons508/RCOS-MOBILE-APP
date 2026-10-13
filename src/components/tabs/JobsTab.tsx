@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Job } from '../../types';
+import { Job, InvoicePrefill } from '../../types';
 import { 
   Briefcase, 
   MapPin, 
@@ -16,7 +16,8 @@ import {
   ArrowRight,
   Phone,
   Eye,
-  AlertCircle
+  AlertCircle,
+  DollarSign
 } from 'lucide-react';
 import { JobDetailModal } from '../jobs/JobDetailModal';
 import { haptic } from '../../utils/haptics';
@@ -27,14 +28,16 @@ interface JobsTabProps {
   onUpdateJob?: (updatedJob: Job) => void;
   onDeleteJob?: (id: string) => void;
   onTriggerNotification?: (title: string, message: string) => void;
+  onCreateInvoice?: (prefill: InvoicePrefill) => void;
 }
 
-export const JobsTab: React.FC<JobsTabProps> = ({ 
-  jobs, 
+export const JobsTab: React.FC<JobsTabProps> = ({
+  jobs,
   onAddJob,
   onUpdateJob,
   onDeleteJob,
-  onTriggerNotification
+  onTriggerNotification,
+  onCreateInvoice
 }) => {
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -359,6 +362,31 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                       <CheckCircle2 className="w-3 h-3" />
                       <span>Complete</span>
                     </button>
+                  )}
+                  {job.status === 'completed' && !job.invoiceId && onCreateInvoice && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        haptic.medium();
+                        onCreateInvoice({
+                          clientName: job.clientName,
+                          serviceName: job.title,
+                          amount: job.estimatedValue || 0,
+                          details: job.description || '',
+                          jobId: job.id,
+                        });
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <DollarSign className="w-3 h-3" />
+                      <span>Create Invoice</span>
+                    </button>
+                  )}
+                  {job.status === 'completed' && job.invoiceId && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                      Invoiced
+                    </span>
                   )}
                   {job.status === 'urgent' && (
                     <button
