@@ -122,6 +122,24 @@ export interface ActionRecord {
   };
   createdAt: string;
   updatedAt: string;
+  // Money-loop tracking
+  paymentStatus?: 'unpaid' | 'paid';
+  paidAt?: string;
+  paidAmount?: number;
+  // Pipeline linkage: quote -> job -> invoice
+  scheduledJobId?: string;
+  invoiceId?: string;
+  jobId?: string;
+  quoteId?: string;
+}
+
+// Pre-filled values for opening the invoice modal (e.g. from a completed job).
+export interface InvoicePrefill {
+  clientName: string;
+  serviceName: string;
+  amount: number;
+  details?: string;
+  jobId?: string;
 }
 
 export interface CustomerRequest {
@@ -512,6 +530,8 @@ export interface Job {
   description: string;
   aiNotes?: string;
   category: 'HVAC' | 'Electrical' | 'Automation' | 'Security' | 'Maintenance' | 'Software AI';
+  quoteId?: string;
+  invoiceId?: string;
 }
 
 export interface Client {
