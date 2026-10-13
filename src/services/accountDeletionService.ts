@@ -1,4 +1,4 @@
-import { apiFetch } from './api';
+import { apiFetch } from '../lib/api';
 import { firestoreService } from './firestoreService';
 import { biometricService } from './biometricService';
 import { auth } from '../lib/firebase';
