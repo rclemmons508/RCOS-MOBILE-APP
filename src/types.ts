@@ -208,6 +208,19 @@ export interface BusinessAccount {
   id: string;
   ownerId?: string;
   name: string;
+  /**
+   * Owner's public contact profile, editable in Settings → My Profile.
+   * contactEmail is the email customers see — it is separate from the
+   * login email, which never changes here.
+   */
+  contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  /**
+   * Profile picture: 'default:<id>' for one of the built-in pictures, or
+   * a small downscaled photo as a data URL (<=200KB).
+   */
+  profilePicture?: string;
   industry: string;
   size: string;
   services: string[];
@@ -404,6 +417,14 @@ export interface User {
   /** Free-form role title — the registration screen offers per-industry options. */
   role: string;
   avatar: string;
+  /**
+   * Local SHA-256 hash of the account password + salt. The password itself
+   * is NEVER stored. Login checks the typed password against this hash;
+   * older accounts created before passwords were enforced have no hash
+   * and adopt the password they next log in with (one-time migration).
+   */
+  passwordHash?: string;
+  passwordSalt?: string;
   organization: string;
   authenticated: boolean;
   biometricsEnabled?: boolean;
