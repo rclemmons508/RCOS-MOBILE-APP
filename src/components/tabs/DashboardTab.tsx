@@ -56,6 +56,8 @@ interface DashboardTabProps {
   onOpenAuth: () => void;
   onOpenNotifications: () => void;
   onOpenInbox: () => void;
+  industry?: string;
+  industryModifierOn?: boolean;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -85,6 +87,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onOpenAuth,
   onOpenNotifications,
   onOpenInbox,
+  industry,
+  industryModifierOn,
 }) => {
   const urgentJobs = jobs.filter(j => j.priority === 'critical' || j.status === 'urgent');
   const upcomingJobs = jobs.filter(j => j.status !== 'completed').slice(0, 3);
@@ -165,6 +169,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         unreadInboxCount={unreadInboxCount}
         onOpenInbox={onOpenInbox}
         onNavigateTab={onNavigateTab}
+        industry={industry}
+        industryModifierOn={industryModifierOn}
       />
 
       {/* Friendly Header with Business & Operator Status */}
