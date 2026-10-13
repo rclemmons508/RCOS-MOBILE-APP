@@ -302,6 +302,11 @@ export interface AutomationTask {
   description: string;
   isAutomated: boolean;
   isCustom?: boolean;
+  /** Paused rules stay on but never fire until resumed. */
+  paused?: boolean;
+  /** Run stats for Start/Pause/Resume/Reset controls. */
+  runCount?: number;
+  lastFiredAt?: string;
 }
 
 export interface RCOSNotification {
