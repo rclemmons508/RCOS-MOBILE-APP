@@ -24,6 +24,7 @@ interface MorningBriefingCardProps {
   onNavigateTab: (tab: TabType) => void;
   industry?: string;
   industryModifierOn?: boolean;
+  followupsDraftedYesterday?: number;
 }
 
 interface Suggestion {
@@ -48,6 +49,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   onNavigateTab,
   industry,
   industryModifierOn = true,
+  followupsDraftedYesterday = 0,
 }) => {
   const now = new Date();
   const hour = now.getHours();
@@ -94,6 +96,12 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   );
 
   const suggestions: Suggestion[] = [];
+  if (followupsDraftedYesterday > 0) {
+    suggestions.push({
+      agent: 'system',
+      text: `Your team drafted ${followupsDraftedYesterday} follow-up message${followupsDraftedYesterday === 1 ? '' : 's'} yesterday — ${followupsDraftedYesterday === 1 ? "it's" : "they're"} waiting in your Agent Inbox to send.`,
+    });
+  }
   if (missedOvernight > 0) {
     suggestions.push({
       agent: 'receptionist',
