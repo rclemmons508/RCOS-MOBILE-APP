@@ -149,7 +149,16 @@ export function registerGmailOAuthPublic(app: Express) {
           grant_type: 'authorization_code',
         }),
       });
-      if (!tokenRes.ok) throw new Error('Token exchange failed (HTTP ' + tokenRes.status + ')');
+      if (!tokenRes.ok) {
+        let detail = '';
+        try {
+          const errBody = (await tokenRes.json()) as any;
+          if (errBody?.error) {
+            detail = ` (Google said: ${errBody.error}${errBody.error_description ? ' — ' + errBody.error_description : ''})`;
+          }
+        } catch { /* keep the generic message */ }
+        throw new Error('Token exchange failed (HTTP ' + tokenRes.status + ')' + detail);
+      }
       const tokens = (await tokenRes.json()) as any;
 
       let email = '';
@@ -172,9 +181,12 @@ export function registerGmailOAuthPublic(app: Express) {
       saveTokens(store);
     } catch (e) {
       console.error('[gmail-oauth] callback failed:', (e as Error)?.message);
+      const reason = String((e as Error)?.message || 'Unknown error')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return res.status(500).send(
         '<!doctype html><html><body style="font-family:sans-serif;padding:40px">'
         + '<h1>Gmail login hit a snag</h1><p>Please go back to the RCOS app and try again.</p>'
+        + '<p style="color:#666">Reason: ' + reason + '</p>'
         + '</body></html>');
     }
     // Bounce straight back into the app. The link below is a fallback in case
