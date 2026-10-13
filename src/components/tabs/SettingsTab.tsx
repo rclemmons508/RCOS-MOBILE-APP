@@ -10,6 +10,7 @@ import { TrainingChecklist } from '../training/TrainingChecklist';
 import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
 import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
 import { haptic } from '../../utils/haptics';
+import { deleteAccount, isReauthRequired } from '../../services/accountDeletionService';
 import { 
   Settings2, 
   Plus, 
@@ -49,6 +50,7 @@ import {
 
 interface SettingsTabProps {
   currentUser?: User | null;
+  businessId?: string;
   onLogout?: () => void;
   automationTasks: AutomationTask[];
   onToggleAutomation: (taskId: string, isAutomated: boolean) => void;
@@ -84,6 +86,7 @@ interface SettingsTabProps {
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
   currentUser,
+  businessId,
   onLogout,
   automationTasks,
   onToggleAutomation,
@@ -180,6 +183,39 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       setTimeout(() => setCacheCleared(false), 3000);
     } catch {
       showToast('Cache cleared.');
+    }
+  };
+
+  // ---- Delete Account (Danger Zone) ----
+  // Two-step: warning screen, then type DELETE to enable the final button.
+  // Server delete first; local data is only wiped after the server confirms.
+  const [deleteStep, setDeleteStep] = useState<'idle' | 'warn' | 'confirm' | 'done'>('idle');
+  const [deleteInput, setDeleteInput] = useState('');
+  const [deleteDeleting, setDeleteDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteFirestoreFailures, setDeleteFirestoreFailures] = useState<string[]>([]);
+
+  const handleDeleteAccount = async () => {
+    if (deleteInput !== 'DELETE' || deleteDeleting) return;
+    setDeleteDeleting(true);
+    setDeleteError(null);
+    try {
+      const result = await deleteAccount(businessId || '');
+      setDeleteFirestoreFailures(result.firestoreFailures);
+      setDeleteStep('done');
+      // Reload to a clean login screen — guarantees no stale in-memory data.
+      setTimeout(() => {
+        window.location.reload();
+      }, 1800);
+    } catch (err: any) {
+      if (isReauthRequired(err)) {
+        setDeleteError('Your sign-in is too old for this step. Please log out, log back in, then try deleting again.');
+      } else {
+        setDeleteError(err?.message || 'Could not delete the account. Please try again.');
+      }
+      // Stay on the confirm screen so the owner can retry. Local data is untouched.
+    } finally {
+      setDeleteDeleting(false);
     }
   };
 
@@ -1206,6 +1242,114 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Danger Zone — Delete Account */}
+      <div className="p-4 rounded-2xl bg-zinc-950 border border-red-900/60 space-y-3">
+        <span className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+          <ShieldAlert className="w-4 h-4 text-red-400" />
+          <span>Danger Zone</span>
+        </span>
+
+        {deleteStep === 'idle' && (
+          <>
+            <p className="text-xs text-zinc-400">
+              Delete your account and all of your data from this app. This cannot be undone.
+            </p>
+            <button
+              type="button"
+              onClick={() => setDeleteStep('warn')}
+              className="px-3 py-2 rounded-xl bg-transparent hover:bg-red-500/10 border border-red-800 text-xs font-bold text-red-400 flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Delete Account</span>
+            </button>
+          </>
+        )}
+
+        {deleteStep === 'warn' && (
+          <>
+            <p className="text-sm text-white font-bold">This will permanently delete:</p>
+            <ul className="text-xs text-zinc-300 list-disc pl-5 space-y-1">
+              <li>Your login and profile</li>
+              <li>Your business profile</li>
+              <li>Your customers and customer requests</li>
+              <li>Your jobs, quotes, invoices, and approvals</li>
+              <li>Your chat history and Agent Inbox messages</li>
+              <li>Your voicemails and call history</li>
+              <li>Your Gmail connection</li>
+              <li>Your saved settings, including fingerprint login</li>
+            </ul>
+            <p className="text-xs text-red-300 font-semibold">
+              This cannot be undone. Once you delete your account, everything above is gone for good.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteStep('idle')}
+                className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-zinc-300 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteStep('confirm')}
+                className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white transition cursor-pointer"
+              >
+                I understand, continue
+              </button>
+            </div>
+          </>
+        )}
+
+        {deleteStep === 'confirm' && (
+          <>
+            <p className="text-xs text-zinc-300">
+              To confirm, type <span className="font-mono font-bold text-white">DELETE</span> in the box below.
+            </p>
+            <input
+              value={deleteInput}
+              onChange={(e) => setDeleteInput(e.target.value)}
+              placeholder="Type DELETE"
+              autoComplete="off"
+              autoCapitalize="characters"
+              className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-red-700"
+            />
+            {deleteError && (
+              <p className="text-xs text-red-300">{deleteError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setDeleteStep('idle'); setDeleteInput(''); setDeleteError(null); }}
+                className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-zinc-300 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleteInput !== 'DELETE' || deleteDeleting}
+                className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-white transition cursor-pointer"
+              >
+                {deleteDeleting ? 'Deleting…' : 'Delete everything'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {deleteStep === 'done' && (
+          <>
+            <p className="text-sm text-white font-bold">Your account and all data have been deleted.</p>
+            <p className="text-xs text-zinc-400">Taking you to the login screen…</p>
+            {deleteFirestoreFailures.length > 0 && (
+              <p className="text-xs text-amber-300">
+                Note: some saved records in the cloud backup could not be removed automatically.
+                Please contact support if you need those removed as well.
+              </p>
+            )}
+          </>
+        )}
+      </div>
 
       {/* AI Employee Job Customizer Modal */}
       <EmployeeJobCustomizerModal
