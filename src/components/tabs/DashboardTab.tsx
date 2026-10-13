@@ -59,6 +59,7 @@ interface DashboardTabProps {
   onOpenInbox: () => void;
   industry?: string;
   industryModifierOn?: boolean;
+  followupsDraftedYesterday?: number;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -90,6 +91,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onOpenInbox,
   industry,
   industryModifierOn,
+  followupsDraftedYesterday = 0,
 }) => {
   const urgentJobs = jobs.filter(j => j.priority === 'critical' || j.status === 'urgent');
   const upcomingJobs = jobs.filter(j => j.status !== 'completed').slice(0, 3);
@@ -169,6 +171,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         actions={actions}
         customerRequests={customerRequests}
         unreadInboxCount={unreadInboxCount}
+        followupsDraftedYesterday={followupsDraftedYesterday}
         onOpenInbox={onOpenInbox}
         onNavigateTab={onNavigateTab}
         industry={industry}
