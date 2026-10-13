@@ -8,7 +8,8 @@ import {
   JobPack,
   VoicemailRecord,
   TelephonyConfig,
-  PhoneCall
+  PhoneCall,
+  AgentInboxMessage
 } from '../src/types';
 import { INDUSTRY_PRESETS } from '../src/data/presets';
 
@@ -27,6 +28,7 @@ interface DatabaseSchema {
   voicemails?: VoicemailRecord[];
   telephonyConfig?: TelephonyConfig;
   calls?: PhoneCall[];
+  agentMessages?: AgentInboxMessage[];
 }
 
 export function getDefaultTelephonyConfig(): TelephonyConfig {
@@ -315,5 +317,40 @@ export const db = {
     }
     saveDb(data);
     return call;
+  },
+
+  // Proactive agent messages (the Agent Inbox)
+  getAgentMessages(businessId: string): AgentInboxMessage[] {
+    const data = ensureDb();
+    return (data.agentMessages || [])
+      .filter(m => m.businessId === businessId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  saveAgentMessage(msg: AgentInboxMessage): AgentInboxMessage {
+    const data = ensureDb();
+    if (!data.agentMessages) data.agentMessages = [];
+    // Dedupe: never store two unread messages with the same dedupe key.
+    if (msg.dedupeKey) {
+      const dup = data.agentMessages.find(
+        m => m.businessId === msg.businessId && m.dedupeKey === msg.dedupeKey && m.status === 'unread'
+      );
+      if (dup) return dup;
+    }
+    data.agentMessages.unshift(msg);
+    // Keep the inbox bounded.
+    if (data.agentMessages.length > 300) data.agentMessages.length = 300;
+    saveDb(data);
+    return msg;
+  },
+
+  updateAgentMessage(businessId: string, id: string, patch: Partial<AgentInboxMessage>): AgentInboxMessage | undefined {
+    const data = ensureDb();
+    if (!data.agentMessages) return undefined;
+    const msg = data.agentMessages.find(m => m.businessId === businessId && m.id === id);
+    if (!msg) return undefined;
+    Object.assign(msg, patch);
+    saveDb(data);
+    return msg;
   }
 };
