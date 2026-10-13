@@ -52,6 +52,7 @@ import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
 import { useSyncEngine } from './hooks/useSyncEngine';
 import { logAutomationFired } from './utils/automationLog';
+import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automation';
 import { haptic } from './utils/haptics';
 
 const toLocalStorageBusiness = (business: BusinessAccount): Omit<BusinessAccount, 'activeEmployees'> => {
@@ -110,6 +111,20 @@ export default function App() {
     memoryUsagePct: 34
   });
   const [automationTasks, setAutomationTasks] = useState(INITIAL_AUTOMATION_TASKS);
+  // Automation engine controls: master switch, smart timing, industry pacing.
+  const [automationMasterOn, setAutomationMasterOn] = useState(true);
+  const [conditionalLogicOn, setConditionalLogicOn] = useState(true);
+  const [industryModifierOn, setIndustryModifierOn] = useState(true);
+
+
+  // Record a rule firing (feeds Start/Pause/Resume/Reset run stats).
+  const bumpAutomationRun = useCallback((taskId: string) => {
+    setAutomationTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId ? { ...t, runCount: (t.runCount || 0) + 1, lastFiredAt: new Date().toISOString() } : t
+      )
+    );
+  }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(true);
 
@@ -162,6 +177,51 @@ export default function App() {
   });
 
   const activeBusiness = businessAccount || BLANK_BUSINESS;
+
+  // Persist the automation slice per business so switches survive reloads.
+  useEffect(() => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    let tasks = INITIAL_AUTOMATION_TASKS;
+    let masterOn = true;
+    let condOn = true;
+    let indOn = true;
+    try {
+      const raw = localStorage.getItem(`rcos_automation_${bizId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const byId = new Map<string, any>((parsed.tasks || []).map((t: any) => [t.id, t]));
+        const customs = (parsed.tasks || []).filter((t: any) => t.isCustom);
+        tasks = [...INITIAL_AUTOMATION_TASKS.map((t) => ({ ...t, ...(byId.get(t.id) || {}) })), ...customs];
+        if (typeof parsed.masterOn === 'boolean') masterOn = parsed.masterOn;
+        if (typeof parsed.conditionalLogicOn === 'boolean') condOn = parsed.conditionalLogicOn;
+        if (typeof parsed.industryModifierOn === 'boolean') indOn = parsed.industryModifierOn;
+      }
+    } catch { /* corrupted storage — fall back to defaults */ }
+    setAutomationTasks(tasks);
+    setAutomationMasterOn(masterOn);
+    setConditionalLogicOn(condOn);
+    setIndustryModifierOn(indOn);
+    try {
+      localStorage.setItem(`rcos_automation_${bizId}`, JSON.stringify({ tasks, masterOn, conditionalLogicOn: condOn, industryModifierOn: indOn }));
+    } catch { /* storage unavailable */ }
+  }, [businessAccount?.id]);
+
+  useEffect(() => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    const h = setTimeout(() => {
+      try {
+        localStorage.setItem(`rcos_automation_${bizId}`, JSON.stringify({
+          tasks: automationTasks,
+          masterOn: automationMasterOn,
+          conditionalLogicOn,
+          industryModifierOn,
+        }));
+      } catch { /* storage unavailable */ }
+    }, 300);
+    return () => clearTimeout(h);
+  }, [businessAccount?.id, automationTasks, automationMasterOn, conditionalLogicOn, industryModifierOn]);
 
   // Onboarding gate state - starts immediately if not completed or company not configured
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(() => {
@@ -351,7 +411,7 @@ export default function App() {
       return;
     }
     if (!Array.isArray(entries)) return;
-    const ruleOn = automationTasks.some((t) => t.id === 'rule-emergency' && t.isAutomated);
+    const ruleOn = isTaskFiring(automationTasks.find((t) => t.id === 'rule-emergency'), automationMasterOn);
     for (const entry of entries) {
       const key = `${entry.at || ''}|${entry.summary || ''}`;
       if (seenRoutingRef.current.includes(key)) continue;
@@ -373,6 +433,7 @@ export default function App() {
         };
         setActions((prev) => [action, ...prev]);
         logAutomationFired('rule-emergency', 'Emergency escalation', action.title);
+        bumpAutomationRun('rule-emergency');
         sendPushNotification({
           type: 'emergency_dispatch',
           title: 'Emergency call escalation',
@@ -390,6 +451,7 @@ export default function App() {
     // Also log the emergency in the Agent Inbox so the owner sees the full
     // history there. The escalation push above already covers the alert, so
     // no second push is sent for the inbox copy.
+    if (!ruleOn) return;
     for (const entry of entries) {
       const urgency = String(entry.urgency || 'routine');
       if (urgency !== 'emergency' && urgency !== 'urgent') continue;
@@ -411,7 +473,7 @@ export default function App() {
         /* offline — the next poll will retry */
       }
     }
-  }, [businessAccount?.id, automationTasks]);
+  }, [businessAccount?.id, automationTasks, automationMasterOn, bumpAutomationRun]);
 
   // Proactive agent suggestions (once daily per topic) + inbox polling.
   // The team "comes to you": new inbox messages trigger a push notification.
@@ -420,13 +482,19 @@ export default function App() {
     if (!bizId) return;
 
     // 1. Daily suggestions from the team, based on live business data.
+    // Gated by the master switch + the proactive rule; smart timing holds
+    // non-urgent suggestions during quiet hours.
+    const suggestionsOn =
+      isTaskFiring(automationTasks.find((t) => t.id === 'rule-proactive'), automationMasterOn) &&
+      !(conditionalLogicOn && inQuietHours(notifPreferences));
     const today = new Date().toISOString().slice(0, 10);
     const existing = new Set(agentMessagesRef.current.map((m) => m.dedupeKey).filter(Boolean));
-    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const followupWindow = getFollowupWindowMs(businessAccount?.industry, industryModifierOn);
+    const overdueCutoff = Date.now() - followupWindow;
     const overdue = customerRequests.filter(
       (r) =>
         (r.status === 'pending' || r.status === 'in_progress') &&
-        new Date(r.createdAt).getTime() < dayAgo
+        new Date(r.createdAt).getTime() < overdueCutoff
     );
     const waitingQuotes = actions.filter(
       (a) => a.status === 'awaiting_approval' && (a.result?.quoteDetails || a.result?.invoiceDetails)
@@ -476,14 +544,17 @@ export default function App() {
         dedupeKey: `daily:unpaid:${today}`,
       });
     }
-    for (const s of suggestions) {
-      if (s.dedupeKey && existing.has(s.dedupeKey)) continue;
-      try {
-        const created = await agentInboxService.create(bizId, s);
-        seenInboxIdsRef.current.add(created.id);
-        setAgentMessages((prev) => [created, ...prev]);
-      } catch {
-        /* offline — the next poll will retry */
+    if (suggestionsOn) {
+      for (const s of suggestions) {
+        if (s.dedupeKey && existing.has(s.dedupeKey)) continue;
+        try {
+          const created = await agentInboxService.create(bizId, s);
+          seenInboxIdsRef.current.add(created.id);
+          setAgentMessages((prev) => [created, ...prev]);
+          bumpAutomationRun('rule-proactive');
+        } catch {
+          /* offline — the next poll will retry */
+        }
       }
     }
 
@@ -515,7 +586,7 @@ export default function App() {
     } catch {
       /* offline */
     }
-  }, [businessAccount?.id, customerRequests, actions]);
+  }, [businessAccount?.id, customerRequests, actions, automationTasks, automationMasterOn, conditionalLogicOn, industryModifierOn, notifPreferences, bumpAutomationRun]);
 
   useSyncEngine(
     useCallback(async () => {
@@ -1029,6 +1100,8 @@ export default function App() {
               onOpenAuth={() => setIsAuthModalOpen(true)}
               onOpenNotifications={() => setIsNotifCenterOpen(true)}
               onOpenInbox={() => setIsInboxOpen(true)}
+              industry={businessAccount?.industry || industryProfile}
+              industryModifierOn={industryModifierOn}
             />
           )}
 
@@ -1166,6 +1239,19 @@ export default function App() {
               onToggleAutomation={(taskId, isAutomated) => {
                 setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, isAutomated } : t));
               }}
+              onPauseAutomation={(taskId, paused) => {
+                setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, paused } : t));
+              }}
+              onResetAutomation={(taskId) => {
+                setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, runCount: 0, lastFiredAt: undefined } : t));
+              }}
+              automationMasterOn={automationMasterOn}
+              onToggleMaster={setAutomationMasterOn}
+              conditionalLogicOn={conditionalLogicOn}
+              onToggleConditionalLogic={setConditionalLogicOn}
+              industryModifierOn={industryModifierOn}
+              onToggleIndustryModifier={setIndustryModifierOn}
+              industryName={businessAccount?.industry || industryProfile}
               onAddCustomTask={(task) => {
                 setAutomationTasks(prev => [...prev, task]);
               }}
