@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RCLogo } from './RCLogo';
-import { Bell, User as UserIcon, MessageSquare, ShieldCheck, Mail, Fingerprint, Lock } from 'lucide-react';
+import { Bell, User as UserIcon, MessageSquare, ShieldCheck, Mail, Fingerprint, Lock, Inbox } from 'lucide-react';
 import { TabType, User } from '../types';
 import { useBiometrics } from '../context/BiometricContext';
 
@@ -8,8 +8,10 @@ interface HeaderProps {
   activeTab: TabType;
   titleOverride?: string;
   unreadCount?: number;
+  unreadInboxCount?: number;
   currentUser?: User | null;
   onOpenNotifications?: () => void;
+  onOpenInbox?: () => void;
   onOpenAuth?: () => void;
   onOpenChat?: () => void;
   onOpenGmail?: () => void;
@@ -19,8 +21,10 @@ export const Header: React.FC<HeaderProps> = ({
   activeTab,
   titleOverride,
   unreadCount = 0,
+  unreadInboxCount = 0,
   currentUser,
   onOpenNotifications,
+  onOpenInbox,
   onOpenAuth,
   onOpenChat,
   onOpenGmail,
@@ -130,6 +134,22 @@ export const Header: React.FC<HeaderProps> = ({
               <Fingerprint className="w-3.5 h-3.5 text-lime-400" />
             </button>
           )}
+
+          {/* Agent Inbox with Unread Badge */}
+          <button
+            type="button"
+            onClick={onOpenInbox}
+            className="relative w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-lime-500/50 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+            aria-label="Open Agent Inbox"
+            title="Agent Inbox"
+          >
+            <Inbox className="w-3.5 h-3.5 text-lime-400" />
+            {unreadInboxCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-3.5 h-3.5 px-0.5 rounded-full bg-red-500 text-white font-black text-[8px] flex items-center justify-center border border-black">
+                {unreadInboxCount > 9 ? '9+' : unreadInboxCount}
+              </span>
+            )}
+          </button>
 
           {/* Notification Center Bell with Unread Badge */}
           <button
