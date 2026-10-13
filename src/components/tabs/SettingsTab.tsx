@@ -3,6 +3,7 @@ import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSugg
 import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
+import { timeAgoShort, describeFollowupWindow } from '../../utils/automation';
 import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
 import { TrainingChecklist } from '../training/TrainingChecklist';
 import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
@@ -50,6 +51,15 @@ interface SettingsTabProps {
   onLogout?: () => void;
   automationTasks: AutomationTask[];
   onToggleAutomation: (taskId: string, isAutomated: boolean) => void;
+  onPauseAutomation: (taskId: string, paused: boolean) => void;
+  onResetAutomation: (taskId: string) => void;
+  automationMasterOn: boolean;
+  onToggleMaster: (on: boolean) => void;
+  conditionalLogicOn: boolean;
+  onToggleConditionalLogic: (on: boolean) => void;
+  industryModifierOn: boolean;
+  onToggleIndustryModifier: (on: boolean) => void;
+  industryName?: string;
   onAddCustomTask: (task: AutomationTask) => void;
   aiAssistantEnabled: boolean;
   onToggleAiAssistant: () => void;
@@ -74,6 +84,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onLogout,
   automationTasks,
   onToggleAutomation,
+  onPauseAutomation,
+  onResetAutomation,
+  automationMasterOn,
+  onToggleMaster,
+  conditionalLogicOn,
+  onToggleConditionalLogic,
+  industryModifierOn,
+  onToggleIndustryModifier,
+  industryName,
   onAddCustomTask,
   aiAssistantEnabled,
   onToggleAiAssistant,
@@ -714,42 +733,165 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </button>
             </div>
 
-            {/* Automation Task List */}
+            {/* Master automation switch */}
+            <div className="p-3.5 rounded-2xl bg-zinc-950 border border-lime-500/30 space-y-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-extrabold text-white flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-lime-400" />
+                    Automation Engine
+                  </div>
+                  <div className="text-[10px] text-zinc-400">
+                    {automationMasterOn
+                      ? 'Live — your rules are running.'
+                      : 'Paused — nothing will fire until you turn it back on.'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onToggleMaster(!automationMasterOn)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    automationMasterOn ? 'bg-lime-500' : 'bg-zinc-800'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow transition duration-200 ease-in-out ${
+                      automationMasterOn ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Automation Task List with Start / Pause / Resume / Reset */}
             <div className="space-y-2">
-              {automationTasks.map((task) => (
+              {automationTasks.map((task) => {
+                const live = automationMasterOn && task.isAutomated && !task.paused;
+                return (
                 <div
                   key={task.id}
-                  className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between gap-3"
+                  className={`p-3 rounded-xl bg-zinc-900/60 border ${live ? 'border-zinc-800/80' : 'border-zinc-800/40 opacity-70'} space-y-2`}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
-                      <span>{task.name}</span>
-                      {task.isCustom && (
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
-                          CUSTOM
-                        </span>
-                      )}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
+                        <span>{task.name}</span>
+                        {task.isCustom && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
+                            CUSTOM
+                          </span>
+                        )}
+                        {live && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-bold">
+                            RUNNING
+                          </span>
+                        )}
+                        {task.isAutomated && task.paused && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
+                            PAUSED
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 truncate">
+                        {task.description}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                        Ran {task.runCount || 0}× • last {timeAgoShort(task.lastFiredAt)}
+                      </div>
                     </div>
-                    <div className="text-[10px] text-zinc-400 truncate">
-                      {task.description}
-                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onToggleAutomation(task.id, !task.isAutomated)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        task.isAutomated ? 'bg-lime-500' : 'bg-zinc-800'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-black shadow transition duration-200 ease-in-out ${
+                          task.isAutomated ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onToggleAutomation(task.id, !task.isAutomated)}
-                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      task.isAutomated ? 'bg-lime-500' : 'bg-zinc-800'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-black shadow transition duration-200 ease-in-out ${
-                        task.isAutomated ? 'translate-x-4' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {task.paused ? (
+                      <button
+                        type="button"
+                        disabled={!task.isAutomated}
+                        onClick={() => onPauseAutomation(task.id, false)}
+                        className="px-2.5 py-1 rounded-lg bg-lime-500/10 text-lime-300 border border-lime-500/30 text-[10px] font-bold disabled:opacity-40"
+                      >
+                        Resume
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!task.isAutomated}
+                        onClick={() => onPauseAutomation(task.id, true)}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-bold disabled:opacity-40"
+                      >
+                        Pause
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onResetAutomation(task.id)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-400 border border-zinc-700 text-[10px] font-bold"
+                    >
+                      Reset stats
+                    </button>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
+            </div>
+
+            {/* Smart timing (conditional logic) + Industry pacing (industry modifier) */}
+            <div className="space-y-2">
+              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-white">Smart timing</div>
+                  <div className="text-[10px] text-zinc-400">
+                    Hold non-urgent automations during your quiet hours. Emergencies always fire.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onToggleConditionalLogic(!conditionalLogicOn)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    conditionalLogicOn ? 'bg-lime-500' : 'bg-zinc-800'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-black shadow transition duration-200 ease-in-out ${
+                      conditionalLogicOn ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-white">Industry pacing</div>
+                  <div className="text-[10px] text-zinc-400">
+                    Follow-up timing matches your trade's pace. Now: {describeFollowupWindow(industryName, industryModifierOn)}.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onToggleIndustryModifier(!industryModifierOn)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    industryModifierOn ? 'bg-lime-500' : 'bg-zinc-800'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-black shadow transition duration-200 ease-in-out ${
+                      industryModifierOn ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {/* Custom Rule Creation Form */}
