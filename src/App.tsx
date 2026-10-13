@@ -14,7 +14,8 @@ import {
   CustomerRequest,
   IndustryOptimizationSuggestion,
   ChatMessage,
-  AgentInboxMessage
+  AgentInboxMessage,
+  InvoicePrefill
 } from './types';
 import {
   INITIAL_NOTIFICATION_PREFERENCES,
@@ -138,6 +139,10 @@ export default function App() {
   agentMessagesRef.current = agentMessages;
   const seenInboxIdsRef = useRef<Set<string>>(new Set());
   const firstInboxPollRef = useRef(true);
+
+  // Money loop: prefill for opening the invoice modal from a completed job.
+  const [invoicePrefill, setInvoicePrefill] = useState<InvoicePrefill | null>(null);
+  const pendingJobInvoiceRef = useRef<string | null>(null);
 
   // Business context for Chat & Enterprise operations - starts from scratch (no preloaded company)
   const [businessAccount, setBusinessAccount] = useState<BusinessAccount | null>(() => {
@@ -426,6 +431,9 @@ export default function App() {
     const waitingQuotes = actions.filter(
       (a) => a.status === 'awaiting_approval' && (a.result?.quoteDetails || a.result?.invoiceDetails)
     );
+    const unpaidInvoices = actions.filter(
+      (a) => a.status === 'approved' && a.result?.invoiceDetails && a.paymentStatus !== 'paid'
+    );
     const suggestions: Array<Parameters<typeof agentInboxService.create>[1]> = [];
     if (overdue.length > 0) {
       suggestions.push({
@@ -451,6 +459,21 @@ export default function App() {
         actionLabel: 'Review quotes',
         actionTab: 'approvals',
         dedupeKey: `daily:quotes:${today}`,
+      });
+    }
+    if (unpaidInvoices.length > 0) {
+      const owed = unpaidInvoices.reduce(
+        (sum, a) => sum + (a.result?.invoiceDetails?.totalAmount || 0),
+        0
+      );
+      suggestions.push({
+        agent: 'operations',
+        kind: 'suggestion',
+        title: `${unpaidInvoices.length} invoice${unpaidInvoices.length === 1 ? '' : 's'} still unpaid`,
+        body: `Operations here — $${Math.round(owed).toLocaleString('en-US')} in approved invoices hasn't been paid yet. A friendly reminder usually moves things along.`,
+        actionLabel: 'View invoices',
+        actionTab: 'approvals',
+        dedupeKey: `daily:unpaid:${today}`,
       });
     }
     for (const s of suggestions) {
@@ -658,6 +681,85 @@ export default function App() {
       });
     }
   };
+
+  // Money loop: approved quote -> scheduled job.
+  const handleScheduleJob = async (quoteAction: ActionRecord) => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    const q = quoteAction.result?.quoteDetails;
+    const job: Job = {
+      id: `job_${Date.now()}`,
+      title: q?.items?.[0]?.description || quoteAction.title || 'Scheduled job',
+      clientName: q?.clientName || 'Client',
+      clientPhone: '',
+      address: '',
+      status: 'dispatched',
+      priority: 'medium',
+      estimatedValue: q?.totalAmount || quoteAction.dollarAmount || 0,
+      scheduledTime: 'Today at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      description: `Scheduled from approved quote${q ? ` for ${q.clientName} ($${q.totalAmount})` : ''}.`,
+      category: 'Maintenance',
+      quoteId: quoteAction.id,
+    };
+    handleAddJob(job);
+    try {
+      const updated = await apiFetch<ActionRecord>(
+        `/api/business/${bizId}/actions/${quoteAction.id}/link`,
+        { method: 'POST', body: JSON.stringify({ scheduledJobId: job.id }) }
+      );
+      setActions((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch {
+      /* offline — will resync */
+    }
+  };
+
+  // Money loop: approved invoice -> paid.
+  const handleMarkPaid = async (action: ActionRecord) => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    try {
+      const updated = await apiFetch<ActionRecord>(
+        `/api/business/${bizId}/actions/${action.id}/mark-paid`,
+        { method: 'POST', body: JSON.stringify({}) }
+      );
+      setActions((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      sendPushNotification({
+        type: 'task_completion',
+        title: 'Invoice marked paid',
+        message: `$${updated.paidAmount || ''} recorded for ${action.result?.invoiceDetails?.clientName || 'client'}.`.trim(),
+        priority: 'low',
+        module: 'Money Pipeline',
+        actionTaken: 'Payment recorded',
+      });
+    } catch {
+      /* offline — will resync */
+    }
+  };
+
+  // Money loop: completed job -> invoice modal (pre-filled).
+  const handleCreateInvoiceFromJob = useCallback((prefill: InvoicePrefill) => {
+    pendingJobInvoiceRef.current = prefill.jobId || null;
+    setInvoicePrefill(prefill);
+    setActiveTab('approvals');
+  }, []);
+
+  const handleInvoiceCreated = useCallback(async (createdId?: string) => {
+    const jobId = pendingJobInvoiceRef.current;
+    pendingJobInvoiceRef.current = null;
+    setInvoicePrefill(null);
+    if (!jobId || !createdId || !businessAccount?.id) return;
+    try {
+      const updated = await apiFetch<ActionRecord>(
+        `/api/business/${businessAccount.id}/actions/${createdId}/link`,
+        { method: 'POST', body: JSON.stringify({ jobId }) }
+      );
+      setActions((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch {
+      /* offline — will resync */
+    }
+    const job = jobs.find((j) => j.id === jobId);
+    if (job) handleUpdateJob({ ...job, invoiceId: createdId });
+  }, [businessAccount?.id, jobs, refetchActions]);
 
   const handleAddClient = (newClient: Client) => {
     setClients((prev) => [newClient, ...prev]);
@@ -1001,6 +1103,7 @@ export default function App() {
               onAddJob={handleAddJob}
               onUpdateJob={handleUpdateJob}
               onDeleteJob={handleDeleteJob}
+              onCreateInvoice={handleCreateInvoiceFromJob}
               onTriggerNotification={(title, message) => {
                 sendPushNotification({
                   type: 'task_completion',
@@ -1040,6 +1143,11 @@ export default function App() {
               actions={actions}
               onDecision={handleApprovalDecision}
               onRefresh={refetchActions}
+              onScheduleJob={handleScheduleJob}
+              onMarkPaid={handleMarkPaid}
+              onMoneyCreated={handleInvoiceCreated}
+              invoicePrefill={invoicePrefill}
+              onInvoicePrefillConsumed={() => setInvoicePrefill(null)}
             />
           )}
 
