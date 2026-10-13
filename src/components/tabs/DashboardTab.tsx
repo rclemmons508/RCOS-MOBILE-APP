@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PhoneCall, Job, SystemMetric, TabType, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
+import { PhoneCall, Job, ActionRecord, SystemMetric, TabType, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
 import { 
   PhoneCall as PhoneIcon, 
   Briefcase, 
@@ -25,15 +25,18 @@ import {
   Link2
 } from 'lucide-react';
 import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
+import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
 import { haptic } from '../../utils/haptics';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
 
 interface DashboardTabProps {
   calls: PhoneCall[];
   jobs: Job[];
+  actions: ActionRecord[];
   metrics: SystemMetric;
   currentUser: User | null;
   unreadNotifCount: number;
+  unreadInboxCount: number;
   businessName?: string;
   industryName?: string;
   proactiveSuggestion?: IndustryOptimizationSuggestion | null;
@@ -52,14 +55,17 @@ interface DashboardTabProps {
   onTriggerEmergencyJob: () => void;
   onOpenAuth: () => void;
   onOpenNotifications: () => void;
+  onOpenInbox: () => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
   calls,
   jobs,
+  actions = [],
   metrics,
   currentUser,
   unreadNotifCount,
+  unreadInboxCount = 0,
   businessName = 'My Business',
   industryName = 'Field Services',
   proactiveSuggestion,
@@ -78,6 +84,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onTriggerEmergencyJob,
   onOpenAuth,
   onOpenNotifications,
+  onOpenInbox,
 }) => {
   const urgentJobs = jobs.filter(j => j.priority === 'critical' || j.status === 'urgent');
   const upcomingJobs = jobs.filter(j => j.status !== 'completed').slice(0, 3);
@@ -148,6 +155,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-4 pb-8 px-3.5 sm:px-4 pt-2 max-w-full overflow-x-hidden">
+      {/* Morning Briefing — the team reports in */}
+      <MorningBriefingCard
+        ownerName={currentUser?.fullName || ''}
+        calls={calls}
+        jobs={jobs}
+        actions={actions}
+        customerRequests={customerRequests}
+        unreadInboxCount={unreadInboxCount}
+        onOpenInbox={onOpenInbox}
+        onNavigateTab={onNavigateTab}
+      />
+
       {/* Friendly Header with Business & Operator Status */}
       <div className="flex items-center justify-between gap-2">
         <div className="space-y-0.5 min-w-0">
