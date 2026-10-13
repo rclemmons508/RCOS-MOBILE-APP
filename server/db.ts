@@ -148,6 +148,35 @@ export const db = {
     return data.businesses.length < initLen;
   },
 
+  /**
+   * Delete one or more businesses and ALL of their scoped records:
+   * customer requests, actions (quotes/invoices/approvals), chat messages,
+   * and agent inbox messages.
+   * Voicemails and calls carry no business id, so they are only removed
+   * when no businesses remain at all (then they could only have belonged
+   * to the deleted businesses). Shared seed job packs are never touched —
+   * they are starter templates, not user data.
+   */
+  deleteBusinessData(businessIds: string[]): { deletedBusinessIds: string[] } {
+    const data = ensureDb();
+    const targets = new Set(businessIds);
+    const deletedBusinessIds = data.businesses.filter(b => targets.has(b.id)).map(b => b.id);
+    data.businesses = data.businesses.filter(b => !targets.has(b.id));
+    data.requests = data.requests.filter(r => !targets.has(r.businessId));
+    data.actions = data.actions.filter(a => !targets.has(a.businessId));
+    data.chatMessages = data.chatMessages.filter(m => !targets.has(m.businessId));
+    if (data.agentMessages) {
+      data.agentMessages = data.agentMessages.filter(m => !targets.has(m.businessId));
+    }
+    // Unattributed records: only safe to clear when nothing remains.
+    if (data.businesses.length === 0) {
+      data.voicemails = [];
+      data.calls = [];
+    }
+    saveDb(data);
+    return { deletedBusinessIds };
+  },
+
   // Customer Requests
   getRequests(businessId: string): CustomerRequest[] {
     const data = ensureDb();
