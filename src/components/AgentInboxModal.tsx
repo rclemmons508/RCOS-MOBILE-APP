@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { AgentInboxMessage, TabType } from '../types';
 import { AGENT_META } from '../services/agentInboxService';
+import { buildSmsUrl, isFollowupMessage, parseSmsUrl } from '../utils/followups';
 
 interface AgentInboxModalProps {
   isOpen: boolean;
@@ -48,7 +49,19 @@ const MessageCard: React.FC<{
   const KindIcon = kind.icon;
   const [reply, setReply] = useState('');
   const [replyOpen, setReplyOpen] = useState(false);
-  const done = msg.status !== 'unread' && msg.status !== 'read';
+  const done = msg.status !== 'unread' && msg.status !== 'read');
+
+  // Follow-up drafts (Send now / Edit / Dismiss). Detected by the sms: action
+  // the engine stores. Send now only OPENS the phone's SMS app — nothing is
+  // marked sent; the owner taps Dismiss once they've actually sent it.
+  const followup = isFollowupMessage(msg);
+  const sms = followup ? parseSmsUrl(msg.actionUrl) : null;
+  const [editOpen, setEditOpen] = useState(false);
+  const [editText, setEditText] = useState(sms?.text || '');
+  const openSmsApp = (draft: string) => {
+    if (!sms) return;
+    window.location.href = buildSmsUrl(sms.phone, draft);
+  };
 
   const goAction = () => {
     if (msg.actionTab) onNavigateTab(msg.actionTab);
@@ -88,7 +101,63 @@ const MessageCard: React.FC<{
 
       {!done && (
         <div className="mt-3">
-          {msg.kind === 'question' && !replyOpen && (
+          {followup && !editOpen && (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openSmsApp(sms?.text || '')}
+                  className="flex-1 py-2 rounded-xl bg-lime-500 text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98"
+                >
+                  <Send className="w-3.5 h-3.5" /> Send now
+                </button>
+                <button
+                  onClick={() => {
+                    setEditText(sms?.text || '');
+                    setEditOpen(true);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => onRespond(msg, 'dismissed')}
+                  className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <div className="text-[10px] text-zinc-500">
+                Nothing has been sent yet. Send it from your texting app, then tap Dismiss.
+              </div>
+            </div>
+          )}
+          {followup && editOpen && (
+            <div className="space-y-2">
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                rows={3}
+                autoComplete="off"
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-lime-500"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openSmsApp(editText)}
+                  disabled={!editText.trim()}
+                  className="flex-1 py-2 rounded-xl bg-lime-500 text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
+                >
+                  <Send className="w-3.5 h-3.5" /> Open in SMS app
+                </button>
+                <button
+                  onClick={() => setEditOpen(false)}
+                  className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {!followup && msg.kind === 'question' && !replyOpen && (
             <div className="flex gap-2">
               <button
                 onClick={() => setReplyOpen(true)}
@@ -104,7 +173,7 @@ const MessageCard: React.FC<{
               </button>
             </div>
           )}
-          {msg.kind === 'question' && replyOpen && (
+          {!followup && msg.kind === 'question' && replyOpen && (
             <div className="space-y-2">
               <textarea
                 value={reply}
@@ -131,7 +200,7 @@ const MessageCard: React.FC<{
               </div>
             </div>
           )}
-          {msg.kind !== 'question' && (
+          {!followup && msg.kind !== 'question' && (
             <div className="flex gap-2">
               {msg.actionLabel && (
                 <button
