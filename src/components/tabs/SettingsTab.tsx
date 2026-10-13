@@ -4,6 +4,7 @@ import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
 import { timeAgoShort, describeFollowupWindow } from '../../utils/automation';
+import { FOLLOWUP_META, isFollowupRuleId } from '../../utils/followups';
 import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
 import { TrainingChecklist } from '../training/TrainingChecklist';
 import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
@@ -53,6 +54,8 @@ interface SettingsTabProps {
   onToggleAutomation: (taskId: string, isAutomated: boolean) => void;
   onPauseAutomation: (taskId: string, paused: boolean) => void;
   onResetAutomation: (taskId: string) => void;
+  onUpdateAutomationTemplate?: (taskId: string, template: string) => void;
+  onUpdateAutomationReviewLink?: (taskId: string, link: string) => void;
   automationMasterOn: boolean;
   onToggleMaster: (on: boolean) => void;
   conditionalLogicOn: boolean;
@@ -86,6 +89,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onToggleAutomation,
   onPauseAutomation,
   onResetAutomation,
+  onUpdateAutomationTemplate,
+  onUpdateAutomationReviewLink,
   automationMasterOn,
   onToggleMaster,
   conditionalLogicOn,
@@ -843,6 +848,41 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       Reset stats
                     </button>
                   </div>
+
+                  {isFollowupRuleId(task.id) && (
+                    <div className="space-y-2 pt-1">
+                      <label className="block">
+                        <span className="text-[10px] font-bold text-zinc-400">Message text — use {'{firstName}'}, {'{businessName}'}{task.id === 'rule-review' ? ', {reviewLink}' : ''}</span>
+                        <textarea
+                          value={task.messageTemplate || FOLLOWUP_META[task.id as 'rule-welcome' | 'rule-missed-call' | 'rule-review'].defaultTemplate}
+                          onChange={(e) => onUpdateAutomationTemplate?.(task.id, e.target.value)}
+                          rows={3}
+                          autoComplete="off"
+                          className="mt-1 w-full bg-zinc-950 border border-zinc-700 rounded-xl px-2.5 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-lime-500"
+                        />
+                      </label>
+                      {task.id === 'rule-review' && (
+                        <label className="block">
+                          <span className="text-[10px] font-bold text-zinc-400">Review link (your Google review page — pasted into the message)</span>
+                          <input
+                            type="url"
+                            value={task.reviewLink || ''}
+                            onChange={(e) => onUpdateAutomationReviewLink?.(task.id, e.target.value)}
+                            placeholder="https://g.page/r/…"
+                            autoComplete="off"
+                            className="mt-1 w-full bg-zinc-950 border border-zinc-700 rounded-xl px-2.5 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-lime-500"
+                          />
+                        </label>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onUpdateAutomationTemplate?.(task.id, FOLLOWUP_META[task.id as 'rule-welcome' | 'rule-missed-call' | 'rule-review'].defaultTemplate)}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-400 border border-zinc-700 text-[10px] font-bold"
+                      >
+                        Reset message to default
+                      </button>
+                    </div>
+                  )}
                 </div>
                 );
               })}
