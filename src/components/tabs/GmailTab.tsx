@@ -47,6 +47,7 @@ import { User, Job } from '../../types';
 
 interface GmailTabProps {
   currentUser?: User | null;
+  businessId?: string;
   onOpenAuthModal?: () => void;
   onAddJobFromEmail?: (jobData: Partial<Job>) => void;
 }
@@ -55,6 +56,7 @@ type MailboxFolder = 'INBOX' | 'STARRED' | 'SENT' | 'DRAFT' | 'TRASH';
 
 export const GmailTab: React.FC<GmailTabProps> = ({
   currentUser,
+  businessId,
   onOpenAuthModal,
   onAddJobFromEmail,
 }) => {
@@ -180,16 +182,16 @@ export const GmailTab: React.FC<GmailTabProps> = ({
     setIsAuthenticating(true);
     setAuthError(null);
     try {
-      const { user, accessToken } = await authenticateGmail();
+      const { user, accessToken } = await authenticateGmail(businessId);
       setToken(accessToken);
       setIsLiveConnected(true);
       setStatusNotice(`Authenticated with Google as ${user.email}. Live Gmail synced.`);
       setTimeout(() => setStatusNotice(null), 5000);
     } catch (err: any) {
       console.warn('Google Sign-in status:', err);
-      handleActivateSandboxMode();
-      setStatusNotice(`Google Mailbox connected for ${currentUser?.email || 'rcsoulutions@gmail.com'}. Live emails synced.`);
-      setTimeout(() => setStatusNotice(null), 5000);
+      setAuthError({
+        message: err?.message || 'Gmail login did not complete. Please try again.',
+      });
     } finally {
       setIsAuthenticating(false);
     }
