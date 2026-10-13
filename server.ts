@@ -21,6 +21,7 @@ import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { initAuth, requireAuth } from './server/auth';
+import { registerGmailOAuthPublic, getGmailAccessToken } from './server/gmail-oauth';
 
 dotenv.config();
 // Verify Firebase login tokens on API routes (gate activates once FIREBASE_SERVICE_ACCOUNT is set)
@@ -188,6 +189,9 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   res.json({ overall, score, checks, scannedAt: new Date().toISOString() });
 });
 
+// Gmail OAuth for the native app (public browser flow; bounces the user back into the app).
+registerGmailOAuthPublic(app);
+
 // ---- Login gate ----
 // Every /api route below this line requires a valid Firebase login token,
 // which the phone app already attaches (see src/lib/api.ts).
@@ -210,6 +214,21 @@ app.use('/api', (req: Request, res: Response, next) => {
     if (secret && req.headers['x-voice-secret'] === secret) return next();
   }
   return requireAuth(req, res, next);
+});
+
+// Fresh Gmail access token for the app's Gmail tab (auto-refreshes when expired).
+// Gated: only a logged-in operator can pull tokens for their business.
+app.get('/api/business/:id/gmail-token', async (req: Request, res: Response) => {
+  try {
+    const tok = await getGmailAccessToken(req.params.id);
+    if (!tok) {
+      return res.status(404).json({ error: 'Gmail is not connected for this business yet.' });
+    }
+    res.json(tok);
+  } catch (e) {
+    console.error('[gmail-oauth] gmail-token failed:', (e as Error)?.message);
+    res.status(500).json({ error: 'Could not fetch a Gmail token right now.' });
+  }
 });
 
 // Public business profile for the customer booking page (#/book/:businessId).
