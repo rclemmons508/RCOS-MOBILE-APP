@@ -21,7 +21,7 @@ import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { initAuth, requireAuth } from './server/auth';
-import { registerGmailOAuthPublic, getGmailAccessToken } from './server/gmail-oauth';
+import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 
 dotenv.config();
 // Verify Firebase login tokens on API routes (gate activates once FIREBASE_SERVICE_ACCOUNT is set)
@@ -104,6 +104,7 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
 
 const aiRateLimiter = createRateLimiter(60, 60000); // 60 req / min
 const publicIntakeRateLimiter = createRateLimiter(30, 60000); // 30 req / min
+const deleteAccountLimiter = createRateLimiter(3, 10 * 60 * 1000); // 3 delete tries / 10 min
 
 // Telephony provider: 'twilio' mounts the Twilio PSTN router. Anything else parks it —
 // testing/review builds use the in-app WebRTC voice call instead (see /api/voice/token).
@@ -228,6 +229,44 @@ app.get('/api/business/:id/gmail-token', async (req: Request, res: Response) => 
   } catch (e) {
     console.error('[gmail-oauth] gmail-token failed:', (e as Error)?.message);
     res.status(500).json({ error: 'Could not fetch a Gmail token right now.' });
+  }
+});
+
+// Permanently delete an account and all of its data. Owner-only: when the
+// login gate is on, the caller's Firebase UID must match the business owner
+// (or the business must have no owner recorded). When the gate is off, this
+// route is as open as every other /api route — the gate being off is the
+// thing to fix, not this endpoint. Requires body { confirm: 'DELETE' }.
+// Idempotent: deleting an already-deleted business returns ok.
+app.post('/api/business/:id/delete-account', deleteAccountLimiter, async (req: Request, res: Response) => {
+  try {
+    const confirm = (req.body as any)?.confirm;
+    if (confirm !== 'DELETE') {
+      return res.status(400).json({ error: 'Type DELETE to confirm account deletion.' });
+    }
+    const businessId = req.params.id;
+    const business = businessId ? db.getBusiness(businessId) : undefined;
+    if (!business) {
+      return res.json({ ok: true, deletedBusinessIds: [], alreadyDeleted: true });
+    }
+    const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
+    const idsToDelete = [businessId];
+    if (caller?.uid) {
+      const ownerId = business.ownerId;
+      if (ownerId && ownerId !== 'unassigned_owner' && ownerId !== caller.uid) {
+        return res.status(403).json({ error: 'You can only delete your own account.' });
+      }
+      // Delete every other business this owner owns too — "all data" means all.
+      for (const b of db.getAllBusinesses()) {
+        if (b.id !== businessId && b.ownerId === caller.uid) idsToDelete.push(b.id);
+      }
+    }
+    const { deletedBusinessIds } = db.deleteBusinessData(idsToDelete);
+    for (const id of deletedBusinessIds) deleteGmailTokens(id);
+    return res.json({ ok: true, deletedBusinessIds });
+  } catch (e) {
+    console.error('[delete-account] failed:', (e as Error)?.message);
+    return res.status(500).json({ error: 'Could not delete the account. Please try again.' });
   }
 });
 
