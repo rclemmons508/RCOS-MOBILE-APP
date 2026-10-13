@@ -301,8 +301,10 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
   res.status(201).json({ ok: true, id: saved.id });
 });
 
-// WebRTC voice: mint a LiveKit access token for an AI receptionist call.
+// WebRTC voice: mint a LiveKit access token for an AI agent call.
 // The voice-agent worker ('rcos-receptionist') is dispatched into the new room automatically.
+// Body may include persona: 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support'
+// (default 'receptionist'). The worker reads it from the room metadata.
 app.post('/api/voice/token', async (req: Request, res: Response) => {
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
@@ -312,14 +314,18 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
     const { AccessToken, RoomServiceClient } = await import('livekit-server-sdk');
     const user = (req as any).user || {};
     const businessId = typeof req.body?.businessId === 'string' ? req.body.businessId : 'default';
-    const roomName = `receptionist-${businessId}-${Date.now()}`;
+    const personaRaw = typeof req.body?.persona === 'string' ? req.body.persona.toLowerCase() : 'receptionist';
+    const persona = ['receptionist', 'sales', 'operations', 'marketing', 'support'].includes(personaRaw)
+      ? personaRaw
+      : 'receptionist';
+    const roomName = `${persona}-${businessId}-${Date.now()}`;
     const roomClient = new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
     await roomClient.createRoom({
       name: roomName,
       emptyTimeout: 60,
       departureTimeout: 20,
       maxParticipants: 2,
-      metadata: JSON.stringify({ businessId }),
+      metadata: JSON.stringify({ businessId, persona }),
       // The LiveKit API only needs agentName to dispatch the receptionist worker;
       // the installed SDK types mark the rest of RoomAgentDispatch required.
       agents: [{ agentName: 'rcos-receptionist' }] as any,
