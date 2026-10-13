@@ -11,6 +11,7 @@ import { employeeCustomizationService, CustomAIEmployee } from '../../services/e
 import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
 import { haptic } from '../../utils/haptics';
 import { deleteAccount, isReauthRequired } from '../../services/accountDeletionService';
+import { auth } from '../../lib/firebase';
 import { 
   Settings2, 
   Plus, 
@@ -191,17 +192,26 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   // Server delete first; local data is only wiped after the server confirms.
   const [deleteStep, setDeleteStep] = useState<'idle' | 'warn' | 'confirm' | 'done'>('idle');
   const [deleteInput, setDeleteInput] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
   const [deleteDeleting, setDeleteDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [deleteFirestoreFailures, setDeleteFirestoreFailures] = useState<string[]>([]);
+  // Google-only sign-ins have no password, so no password field is shown for them.
+  // Everyone else must type their account password — it is checked before
+  // anything is deleted, so a deleted account can never come back.
+  const deleteNeedsPassword = !auth.currentUser
+    || auth.currentUser.providerData.some((p) => p.providerId === 'password');
 
   const handleDeleteAccount = async () => {
     if (deleteInput !== 'DELETE' || deleteDeleting) return;
+    if (deleteNeedsPassword && !deletePassword) {
+      setDeleteError('Please type your account password to confirm deletion.');
+      return;
+    }
     setDeleteDeleting(true);
     setDeleteError(null);
     try {
-      const result = await deleteAccount(businessId || '');
-      setDeleteFirestoreFailures(result.firestoreFailures);
+      await deleteAccount(businessId || '', { password: deletePassword });
+      setDeletePassword('');
       setDeleteStep('done');
       // Reload to a clean login screen — guarantees no stale in-memory data.
       setTimeout(() => {
@@ -1314,13 +1324,32 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               autoCapitalize="characters"
               className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-red-700"
             />
+            {deleteNeedsPassword ? (
+              <>
+                <p className="text-xs text-zinc-300">
+                  Then type your account password. It must match, or nothing is deleted.
+                </p>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Your account password"
+                  autoComplete="current-password"
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-red-700"
+                />
+              </>
+            ) : (
+              <p className="text-xs text-zinc-400">
+                You signed in with Google, so no password is needed.
+              </p>
+            )}
             {deleteError && (
               <p className="text-xs text-red-300">{deleteError}</p>
             )}
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => { setDeleteStep('idle'); setDeleteInput(''); setDeleteError(null); }}
+                onClick={() => { setDeleteStep('idle'); setDeleteInput(''); setDeletePassword(''); setDeleteError(null); }}
                 className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-zinc-300 transition cursor-pointer"
               >
                 Cancel
@@ -1328,7 +1357,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 type="button"
                 onClick={handleDeleteAccount}
-                disabled={deleteInput !== 'DELETE' || deleteDeleting}
+                disabled={deleteInput !== 'DELETE' || deleteDeleting || (deleteNeedsPassword && !deletePassword)}
                 className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-white transition cursor-pointer"
               >
                 {deleteDeleting ? 'Deleting…' : 'Delete everything'}
@@ -1341,12 +1370,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <>
             <p className="text-sm text-white font-bold">Your account and all data have been deleted.</p>
             <p className="text-xs text-zinc-400">Taking you to the login screen…</p>
-            {deleteFirestoreFailures.length > 0 && (
-              <p className="text-xs text-amber-300">
-                Note: some saved records in the cloud backup could not be removed automatically.
-                Please contact support if you need those removed as well.
-              </p>
-            )}
           </>
         )}
       </div>
