@@ -13,7 +13,8 @@ import {
   ActionRecord,
   CustomerRequest,
   IndustryOptimizationSuggestion,
-  ChatMessage
+  ChatMessage,
+  AgentInboxMessage
 } from './types';
 import {
   INITIAL_NOTIFICATION_PREFERENCES,
@@ -34,6 +35,8 @@ import { ApprovalQueueView } from './components/ApprovalQueueView';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
 import { NotificationPreferencesModal } from './components/notifications/NotificationPreferencesModal';
+import { AgentInboxModal } from './components/AgentInboxModal';
+import { agentInboxService } from './services/agentInboxService';
 import { AuthModal } from './components/auth/AuthModal';
 import { useBiometrics } from './context/BiometricContext';
 import { BiometricLockScreen } from './components/biometrics/BiometricLockScreen';
@@ -127,6 +130,14 @@ export default function App() {
   const [activePushToast, setActivePushToast] = useState<RCOSNotification | null>(null);
   const [isNotifCenterOpen, setIsNotifCenterOpen] = useState(false);
   const [isNotifPrefsOpen, setIsNotifPrefsOpen] = useState(false);
+
+  // Proactive Agent Inbox — the AI team messages the owner here.
+  const [agentMessages, setAgentMessages] = useState<AgentInboxMessage[]>([]);
+  const [isInboxOpen, setIsInboxOpen] = useState(false);
+  const agentMessagesRef = useRef<AgentInboxMessage[]>([]);
+  agentMessagesRef.current = agentMessages;
+  const seenInboxIdsRef = useRef<Set<string>>(new Set());
+  const firstInboxPollRef = useRef(true);
 
   // Business context for Chat & Enterprise operations - starts from scratch (no preloaded company)
   const [businessAccount, setBusinessAccount] = useState<BusinessAccount | null>(() => {
@@ -370,12 +381,123 @@ export default function App() {
     if (seenRoutingRef.current.length > 200) {
       seenRoutingRef.current = seenRoutingRef.current.slice(-200);
     }
+
+    // Also log the emergency in the Agent Inbox so the owner sees the full
+    // history there. The escalation push above already covers the alert, so
+    // no second push is sent for the inbox copy.
+    for (const entry of entries) {
+      const urgency = String(entry.urgency || 'routine');
+      if (urgency !== 'emergency' && urgency !== 'urgent') continue;
+      const inboxKey = `routing:${entry.at || ''}|${entry.summary || ''}`;
+      if (agentMessagesRef.current.some((m) => m.dedupeKey === inboxKey)) continue;
+      try {
+        const created = await agentInboxService.create(bizId, {
+          agent: 'receptionist',
+          kind: 'alert',
+          title: `Emergency call routed to ${entry.department || 'support'}`,
+          body: entry.summary || 'An urgent caller needs the owner now. Call back immediately.',
+          actionLabel: 'Review now',
+          actionTab: 'approvals',
+          dedupeKey: inboxKey,
+        });
+        seenInboxIdsRef.current.add(created.id);
+        setAgentMessages((prev) => [created, ...prev]);
+      } catch {
+        /* offline — the next poll will retry */
+      }
+    }
   }, [businessAccount?.id, automationTasks]);
+
+  // Proactive agent suggestions (once daily per topic) + inbox polling.
+  // The team "comes to you": new inbox messages trigger a push notification.
+  const pollProactive = useCallback(async () => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+
+    // 1. Daily suggestions from the team, based on live business data.
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = new Set(agentMessagesRef.current.map((m) => m.dedupeKey).filter(Boolean));
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const overdue = customerRequests.filter(
+      (r) =>
+        (r.status === 'pending' || r.status === 'in_progress') &&
+        new Date(r.createdAt).getTime() < dayAgo
+    );
+    const waitingQuotes = actions.filter(
+      (a) => a.status === 'awaiting_approval' && (a.result?.quoteDetails || a.result?.invoiceDetails)
+    );
+    const suggestions: Array<Parameters<typeof agentInboxService.create>[1]> = [];
+    if (overdue.length > 0) {
+      suggestions.push({
+        agent: 'support',
+        kind: 'suggestion',
+        title: `${overdue.length} customer request${overdue.length === 1 ? ' is' : 's are'} waiting over a day`,
+        body: `Hi — Support here. ${overdue.length} request${overdue.length === 1 ? '' : 's'} ${overdue.length === 1 ? 'has' : 'have'} been waiting more than a day. Want me to draft follow-up messages for them?`,
+        actionLabel: 'View requests',
+        actionTab: 'dashboard',
+        dedupeKey: `daily:overdue:${today}`,
+      });
+    }
+    if (waitingQuotes.length > 0) {
+      const total = waitingQuotes.reduce(
+        (s, a) => s + (a.result?.quoteDetails?.totalAmount || a.result?.invoiceDetails?.totalAmount || 0),
+        0
+      );
+      suggestions.push({
+        agent: 'sales',
+        kind: 'suggestion',
+        title: `${waitingQuotes.length} quote${waitingQuotes.length === 1 ? '' : 's'} waiting for approval`,
+        body: `Sales here — $${Math.round(total).toLocaleString('en-US')} in quotes is sitting in your review queue. Approving them today keeps jobs moving.`,
+        actionLabel: 'Review quotes',
+        actionTab: 'approvals',
+        dedupeKey: `daily:quotes:${today}`,
+      });
+    }
+    for (const s of suggestions) {
+      if (s.dedupeKey && existing.has(s.dedupeKey)) continue;
+      try {
+        const created = await agentInboxService.create(bizId, s);
+        seenInboxIdsRef.current.add(created.id);
+        setAgentMessages((prev) => [created, ...prev]);
+      } catch {
+        /* offline — the next poll will retry */
+      }
+    }
+
+    // 2. Poll the inbox; anything new from the team gets a push.
+    try {
+      const msgs = await agentInboxService.list(bizId);
+      const fresh: AgentInboxMessage[] = [];
+      for (const m of msgs) {
+        if (m.status === 'unread' && !seenInboxIdsRef.current.has(m.id)) {
+          seenInboxIdsRef.current.add(m.id);
+          // Never push for history already sitting in the inbox on first load.
+          if (!firstInboxPollRef.current && !agentMessagesRef.current.some((x) => x.id === m.id)) {
+            fresh.push(m);
+          }
+        }
+      }
+      firstInboxPollRef.current = false;
+      setAgentMessages(msgs);
+      for (const m of fresh) {
+        sendPushNotification({
+          type: 'system_alert',
+          title: m.title,
+          message: m.body.slice(0, 140),
+          priority: m.kind === 'alert' ? 'high' : 'low',
+          module: 'AI Team',
+          actionTaken: 'Posted to Agent Inbox',
+        });
+      }
+    } catch {
+      /* offline */
+    }
+  }, [businessAccount?.id, customerRequests, actions]);
 
   useSyncEngine(
     useCallback(async () => {
-      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting()]);
-    }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting]),
+      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting(), pollProactive()]);
+    }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting, pollProactive]),
     30000
   );
 
@@ -459,6 +581,45 @@ export default function App() {
   };
 
   // Handlers
+
+  // Agent Inbox actions
+  const handleInboxRespond = useCallback(
+    async (msg: AgentInboxMessage, action: 'answered' | 'dismissed' | 'snoozed', text?: string) => {
+      const bizId = businessAccount?.id;
+      if (!bizId) return;
+      // Optimistic update so the UI feels instant.
+      setAgentMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id ? { ...m, status: action, responseText: text, readAt: new Date().toISOString() } : m
+        )
+      );
+      try {
+        const updated = await agentInboxService.respond(bizId, msg.id, action, text);
+        setAgentMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+      } catch {
+        /* offline — will resync on next poll */
+      }
+    },
+    [businessAccount?.id]
+  );
+
+  const handleInboxMarkRead = useCallback(
+    async (msg: AgentInboxMessage) => {
+      const bizId = businessAccount?.id;
+      if (!bizId || msg.status !== 'unread') return;
+      setAgentMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, status: 'read', readAt: new Date().toISOString() } : m))
+      );
+      try {
+        const updated = await agentInboxService.markRead(bizId, msg.id);
+        setAgentMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+      } catch {
+        /* offline — will resync on next poll */
+      }
+    },
+    [businessAccount?.id]
+  );
+
   const handleAddJob = (newJob: Job) => {
     setJobs((prev) => [newJob, ...prev]);
     if (businessAccount?.id) {
@@ -727,8 +888,10 @@ export default function App() {
         <Header
           activeTab={activeTab}
           unreadCount={unreadNotifCount}
+          unreadInboxCount={agentMessages.filter((m) => m.status === 'unread').length}
           currentUser={currentUser}
           onOpenNotifications={() => setIsNotifCenterOpen(true)}
+          onOpenInbox={() => setIsInboxOpen(true)}
           onOpenAuth={() => setIsAuthModalOpen(true)}
           onOpenChat={() => setActiveTab('chat')}
           onOpenGmail={() => setActiveTab('gmail')}
@@ -740,9 +903,11 @@ export default function App() {
             <DashboardTab
               calls={calls}
               jobs={jobs}
+              actions={actions}
               metrics={metrics}
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
+              unreadInboxCount={agentMessages.filter((m) => m.status === 'unread').length}
               businessId={activeBusiness.id}
               businessName={activeBusiness.name || 'Setup Company'}
               industryName={activeBusiness.industry || 'Field Operations'}
@@ -761,6 +926,7 @@ export default function App() {
               onTriggerEmergencyJob={handleEmergencyJobTrigger}
               onOpenAuth={() => setIsAuthModalOpen(true)}
               onOpenNotifications={() => setIsNotifCenterOpen(true)}
+              onOpenInbox={() => setIsInboxOpen(true)}
             />
           )}
 
@@ -965,6 +1131,19 @@ export default function App() {
           preferences={notifPreferences}
           onSavePreferences={(updated) => setNotifPreferences(updated)}
           onTriggerTestPush={handleTriggerTestPush}
+        />
+
+        {/* Proactive Agent Inbox */}
+        <AgentInboxModal
+          isOpen={isInboxOpen}
+          onClose={() => setIsInboxOpen(false)}
+          messages={agentMessages}
+          onRespond={handleInboxRespond}
+          onNavigateTab={(tab) => {
+            setIsInboxOpen(false);
+            setActiveTab(tab);
+          }}
+          onMarkRead={handleInboxMarkRead}
         />
 
         {/* User Authentication Modal */}
