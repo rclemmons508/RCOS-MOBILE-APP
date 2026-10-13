@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
-import { PhoneCall as PhoneIcon, PhoneOff, Loader2, Mic } from 'lucide-react';
+import { PhoneCall as PhoneIcon, PhoneOff, Loader2, Mic, Volume2, VolumeX } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
+import { enableEarpieceForCall, setCallSpeakerphone, restoreAudioAfterCall } from '../../utils/audioRoute';
 
 type CallState = 'idle' | 'connecting' | 'in-call' | 'error';
 
@@ -19,6 +20,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
   const [state, setState] = useState<CallState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [callSeconds, setCallSeconds] = useState(0);
+  const [speakerOn, setSpeakerOn] = useState(false);
   const roomRef = useRef<Room | null>(null);
   const timerRef = useRef<number | null>(null);
   const agentTimeoutRef = useRef<number | null>(null);
@@ -39,6 +41,8 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
     const room = roomRef.current;
     roomRef.current = null;
     if (room) room.disconnect();
+    setSpeakerOn(false);
+    void restoreAudioAfterCall();
     setState('idle');
   };
 
@@ -48,6 +52,8 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
     roomRef.current = null;
     if (room) room.disconnect();
     stopTimer();
+    setSpeakerOn(false);
+    void restoreAudioAfterCall();
     setState('error');
     setError('The AI receptionist did not answer. The voice worker may be offline — check that the rcos-voice-agent service is running in Railway.');
   };
@@ -77,6 +83,10 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
       });
       room.on(RoomEvent.Disconnected, () => endCall());
 
+      // Route call audio to the earpiece (never the loudspeaker) before any audio plays
+      await enableEarpieceForCall();
+      setSpeakerOn(false);
+
       await room.connect(url, token);
       await room.localParticipant.setMicrophoneEnabled(true);
 
@@ -91,6 +101,12 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
           'Could not start the call. Make sure the voice service is configured and you allowed microphone access.'
       );
     }
+  };
+
+  const toggleSpeaker = async () => {
+    const next = !speakerOn;
+    setSpeakerOn(next);
+    await setCallSpeakerphone(next);
   };
 
   const mm = String(Math.floor(callSeconds / 60)).padStart(2, '0');
@@ -119,14 +135,29 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
             </span>
             On the call — {mm}:{ss}
           </div>
-          <button
-            type="button"
-            onClick={endCall}
-            className="px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
-          >
-            <PhoneOff className="w-4 h-4" />
-            <span>End call</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleSpeaker}
+              aria-pressed={speakerOn}
+              title={speakerOn ? 'Switch to earpiece' : 'Switch to speakerphone'}
+              className={`p-2.5 rounded-xl border flex items-center transition cursor-pointer active:scale-95 ${
+                speakerOn
+                  ? 'bg-lime-500 text-black border-lime-500'
+                  : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+              }`}
+            >
+              {speakerOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={endCall}
+              className="px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            >
+              <PhoneOff className="w-4 h-4" />
+              <span>End call</span>
+            </button>
+          </div>
         </div>
       ) : (
         <button
