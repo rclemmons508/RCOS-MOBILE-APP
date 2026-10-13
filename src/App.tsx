@@ -1493,6 +1493,7 @@ export default function App() {
           {activeTab === 'settings' && (
             <SettingsTab
               currentUser={currentUser}
+              businessId={activeBusiness.id}
               onLogout={handleLogout}
               automationTasks={automationTasks}
               onToggleAutomation={(taskId, isAutomated) => {
