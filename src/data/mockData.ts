@@ -331,21 +331,27 @@ export const INITIAL_METRICS: SystemMetric = {
 export const INITIAL_AUTOMATION_TASKS: AutomationTask[] = [
   {
     id: 'rule-welcome',
-    name: 'Welcome new requests',
-    description: 'When a new customer request arrives, the AI sends a friendly welcome reply right away.',
+    name: 'Welcome new customers',
+    description: 'When a new customer is added, Support drafts a welcome text for you to send from your phone. Nothing is sent until you tap Send now.',
     isAutomated: true,
+    messageTemplate:
+      "Hi {firstName}! Thanks for choosing {businessName} — we're glad you're here. Reply to this text anytime you need us.",
   },
   {
     id: 'rule-missed-call',
     name: 'Missed call follow-up',
-    description: 'When a call is missed, save the voicemail and text the caller back.',
+    description: 'When a real call is missed, the Receptionist drafts a “sorry we missed you” text for you to send. Simulator test calls never fire this.',
     isAutomated: true,
+    messageTemplate:
+      'Sorry we missed your call! This is {businessName} — how can we help? Reply here or call back anytime.',
   },
   {
     id: 'rule-review',
     name: 'Ask for reviews',
-    description: 'After a job is marked done, ask the customer for a review.',
+    description: 'After a job is marked done, Marketing drafts a review request for you to send from your phone. Nothing is sent until you tap Send now.',
     isAutomated: true,
+    messageTemplate:
+      'Hi {firstName}, thanks for trusting {businessName}! If we did a great job, a quick review here would mean the world: {reviewLink}',
   },
   {
     id: 'rule-emergency',
