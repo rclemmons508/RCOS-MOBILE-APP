@@ -1,5 +1,5 @@
 import { auth, gmailOAuthProvider, GMAIL_SCOPES } from './firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { apiFetch } from './api';
@@ -100,7 +100,7 @@ export async function authenticateGmail(businessId?: string): Promise<{ user: an
       const finish = async (ok: boolean, err?: unknown) => {
         if (done) return;
         done = true;
-        try { await listener.remove(); } catch { /* noop */ }
+        try { await listener?.remove(); } catch { /* noop */ }
         try { await Browser.close(); } catch { /* tab may already be gone */ }
         if (!ok) {
           reject(err instanceof Error ? err : new Error('Gmail login did not finish.'));
