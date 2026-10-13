@@ -1140,6 +1140,7 @@ export default function App() {
           {activeTab === 'gmail' && (
             <GmailTab
               currentUser={currentUser}
+              businessId={activeBusiness.id}
               onOpenAuthModal={() => setIsAuthModalOpen(true)}
               onAddJobFromEmail={(jobData) => {
                 const newJob: Job = {
