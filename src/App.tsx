@@ -52,6 +52,17 @@ import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
 import { useSyncEngine } from './hooks/useSyncEngine';
 import { logAutomationFired } from './utils/automationLog';
+import {
+  FOLLOWUP_META,
+  FollowupRuleId,
+  PendingFollowup,
+  buildSmsUrl,
+  firstNameOf,
+  loadFollowupState,
+  normalizePhone,
+  renderFollowupTemplate,
+  saveFollowupState,
+} from './utils/followups';
 import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automation';
 import { haptic } from './utils/haptics';
 
@@ -154,6 +165,13 @@ export default function App() {
   agentMessagesRef.current = agentMessages;
   const seenInboxIdsRef = useRef<Set<string>>(new Set());
   const firstInboxPollRef = useRef(true);
+
+  // Follow-ups: per-source 'data has loaded' flags. A source is only scanned
+  // for new triggers after its first load, so the first-run baseline seeds
+  // from real data instead of firing for everything already on file.
+  const followupsJobsLoadedRef = useRef(false);
+  const followupsClientsLoadedRef = useRef(false);
+  const followupsRequestsLoadedRef = useRef(false);
 
   // Money loop: prefill for opening the invoice modal from a completed job.
   const [invoicePrefill, setInvoicePrefill] = useState<InvoicePrefill | null>(null);
@@ -334,12 +352,14 @@ export default function App() {
   useEffect(() => {
     if (!businessAccount?.id) return;
     const unsubJobs = firestoreService.listenToJobs(businessAccount.id, (loadedJobs) => {
+      followupsJobsLoadedRef.current = true;
       if (Array.isArray(loadedJobs) && loadedJobs.length > 0) {
         setJobs(loadedJobs);
       }
     });
 
     const unsubClients = firestoreService.listenToClients(businessAccount.id, (loadedClients) => {
+      followupsClientsLoadedRef.current = true;
       if (Array.isArray(loadedClients) && loadedClients.length > 0) {
         setClients(loadedClients);
       }
@@ -394,6 +414,7 @@ export default function App() {
     if (!bizId) return;
     try {
       const reqs = await apiFetch<CustomerRequest[]>(`/api/business/${bizId}/requests`);
+      followupsRequestsLoadedRef.current = true;
       if (Array.isArray(reqs)) setCustomerRequests(reqs);
     } catch {
       /* offline */
@@ -588,10 +609,239 @@ export default function App() {
     }
   }, [businessAccount?.id, customerRequests, actions, automationTasks, automationMasterOn, conditionalLogicOn, industryModifierOn, notifPreferences, bumpAutomationRun]);
 
+  // Automatic follow-ups (Phase A): draft, never send. The three follow-up
+  // rules watch for new customers, real missed calls, and completed jobs.
+  // When one fires, the agent posts a drafted text to the Agent Inbox with
+  // Send now (opens the phone's SMS app pre-filled) / Edit / Dismiss.
+  // Gates: master switch + per-rule on/off + pause + quiet hours (queued
+  // until morning). Simulator/test calls never fire the missed-call rule —
+  // it only trusts real carrier calls from the server.
+  const pollFollowups = useCallback(async () => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    const bizName = businessAccount?.name || '';
+    const state = loadFollowupState(bizId);
+    const existingDedupe = new Set(agentMessagesRef.current.map((m) => m.dedupeKey).filter(Boolean));
+    const taskById = new Map(automationTasks.map((t) => [t.id, t]));
+    const quiet = conditionalLogicOn && inQuietHours(notifPreferences);
+    const handledThisTick = new Set<string>();
+    let changed = false;
+
+    const fire = async (item: { ruleId: FollowupRuleId; dedupeKey: string; to: string; toName: string }): Promise<boolean> => {
+      const task = taskById.get(item.ruleId);
+      const meta = FOLLOWUP_META[item.ruleId];
+      if (!task || !meta) return false;
+      if (existingDedupe.has(item.dedupeKey) || handledThisTick.has(item.dedupeKey)) return true;
+      const text = renderFollowupTemplate(task.messageTemplate || meta.defaultTemplate, {
+        firstName: firstNameOf(item.toName),
+        businessName: bizName,
+        reviewLink: task.reviewLink || '',
+      });
+      const smsUrl = buildSmsUrl(item.to, text);
+      const body =
+        `Draft ready to send to ${item.toName || 'this customer'} (${item.to}). Nothing has been sent yet — tap Send now to open your texting app with this pre-filled, then tap Dismiss once you've sent it.\n\n"${text}"`;
+      try {
+        await agentInboxService.create(bizId, {
+          agent: meta.agent,
+          kind: 'suggestion',
+          title: meta.titleFor(item.toName),
+          body,
+          actionLabel: 'Send now',
+          actionUrl: smsUrl,
+          dedupeKey: item.dedupeKey,
+        });
+        logAutomationFired(item.ruleId, task.name, `Draft ready for ${item.toName || item.to}`);
+        bumpAutomationRun(item.ruleId);
+        handledThisTick.add(item.dedupeKey);
+        return true;
+      } catch {
+        return false; // offline — retry on a later poll
+      }
+    };
+
+    const gateFor = (ruleId: string) => isTaskFiring(taskById.get(ruleId), automationMasterOn);
+
+    // 1. Pending queue (held during quiet hours) — fire what is due.
+    if (state.pending.length > 0) {
+      const remaining: PendingFollowup[] = [];
+      for (const p of state.pending) {
+        if (!gateFor(p.ruleId)) continue; // rule turned off/paused — drop quietly
+        if (quiet) {
+          remaining.push(p);
+          continue;
+        }
+        const ok = await fire(p);
+        if (!ok) remaining.push(p);
+      }
+      if (remaining.length !== state.pending.length) {
+        state.pending = remaining;
+        changed = true;
+      }
+    }
+
+    // 2. Welcome: new customers (Clients tab + booking/onboarding requests),
+    // keyed by phone so the same person never gets two welcomes.
+    if (followupsClientsLoadedRef.current && followupsRequestsLoadedRef.current) {
+      const seenWelcome = new Set(state.seen.welcome);
+      const collectWelcome = (phone: string | undefined, name: string, statusOk: boolean) => {
+        if (!statusOk) return;
+        const digits = normalizePhone(phone);
+        if (!digits) return;
+        const key = `welcome:${digits}`;
+        if (seenWelcome.has(key)) return;
+        seenWelcome.add(key);
+        if (!state.primed.welcome) return; // baseline seed — handled below
+        welcomeCandidates.push({ ruleId: 'rule-welcome', dedupeKey: `followup:welcome:${digits}`, to: phone || '', toName: name });
+      };
+      const welcomeCandidates: Array<{ ruleId: FollowupRuleId; dedupeKey: string; to: string; toName: string }> = [];
+      for (const c of clients) collectWelcome(c.phone, c.name, true);
+      for (const r of customerRequests) {
+        collectWelcome(r.customerPhone, r.customerName, r.status === 'pending' || r.status === 'in_progress');
+      }
+      if (!state.primed.welcome) {
+        // First run with real data: seed the baseline, fire nothing.
+        state.seen.welcome = Array.from(seenWelcome);
+        state.primed.welcome = true;
+        changed = true;
+      } else {
+        for (const cand of welcomeCandidates) {
+          if (!gateFor(cand.ruleId)) {
+            if (!state.seen.welcome.includes(`welcome:${normalizePhone(cand.to)}`)) {
+              state.seen.welcome.push(`welcome:${normalizePhone(cand.to)}`);
+              changed = true;
+            }
+            continue;
+          }
+          if (quiet) {
+            state.pending.push({ ruleId: cand.ruleId, dedupeKey: cand.dedupeKey, to: cand.to, toName: cand.toName });
+            state.seen.welcome.push(`welcome:${normalizePhone(cand.to)}`);
+            changed = true;
+            continue;
+          }
+          const ok = await fire(cand);
+          if (ok) {
+            state.seen.welcome.push(`welcome:${normalizePhone(cand.to)}`);
+            changed = true;
+          }
+        }
+      }
+    }
+
+    // 3. Missed call: real carrier calls only (server list, isRealPstnCall).
+    // Simulator/test calls never reach the server, so they never fire this.
+    let serverCalls: any[] | null = null;
+    try {
+      serverCalls = await apiFetch<any[]>('/api/phone/calls');
+    } catch {
+      serverCalls = null;
+    }
+    if (Array.isArray(serverCalls)) {
+      const dayOf = (c: any): string => {
+        const parsed = new Date(c.timestamp || '');
+        return Number.isNaN(parsed.getTime()) ? new Date().toISOString().slice(0, 10) : parsed.toISOString().slice(0, 10);
+      };
+      const isRealMissed = (c: any) =>
+        c && c.isRealPstnCall === true && (c.type === 'missed' || c.status === 'missed') && !!c.callerNumber;
+      if (!state.primed.calls) {
+        for (const c of serverCalls) {
+          if (!isRealMissed(c)) continue;
+          const key = `missed:${normalizePhone(c.callerNumber)}:${dayOf(c)}`;
+          if (!state.seen.missed.includes(key)) state.seen.missed.push(key);
+        }
+        state.primed.calls = true;
+        changed = true;
+      } else {
+        for (const c of serverCalls) {
+          if (!isRealMissed(c)) continue;
+          const key = `missed:${normalizePhone(c.callerNumber)}:${dayOf(c)}`;
+          if (state.seen.missed.includes(key)) continue;
+          const cand = {
+            ruleId: 'rule-missed-call' as FollowupRuleId,
+            dedupeKey: `followup:missed:${normalizePhone(c.callerNumber)}:${dayOf(c)}`,
+            to: String(c.callerNumber),
+            toName: String(c.callerName || ''),
+          };
+          if (!gateFor(cand.ruleId)) {
+            state.seen.missed.push(key);
+            changed = true;
+            continue;
+          }
+          if (quiet) {
+            state.pending.push({ ruleId: cand.ruleId, dedupeKey: cand.dedupeKey, to: cand.to, toName: cand.toName });
+            state.seen.missed.push(key);
+            changed = true;
+            continue;
+          }
+          const ok = await fire(cand);
+          if (ok) {
+            state.seen.missed.push(key);
+            changed = true;
+          }
+        }
+      }
+    }
+
+    // 4. Review: newly completed jobs (one request per job).
+    if (followupsJobsLoadedRef.current) {
+      if (!state.primed.jobs) {
+        for (const j of jobs) {
+          if (j.status !== 'completed') continue;
+          const key = `review:${j.id}`;
+          if (!state.seen.review.includes(key)) state.seen.review.push(key);
+        }
+        state.primed.jobs = true;
+        changed = true;
+      } else {
+        for (const j of jobs) {
+          if (j.status !== 'completed') continue;
+          const digits = normalizePhone(j.clientPhone);
+          if (!digits) continue;
+          const key = `review:${j.id}`;
+          if (state.seen.review.includes(key)) continue;
+          const cand = {
+            ruleId: 'rule-review' as FollowupRuleId,
+            dedupeKey: `followup:review:${j.id}`,
+            to: j.clientPhone,
+            toName: j.clientName,
+          };
+          if (!gateFor(cand.ruleId)) {
+            state.seen.review.push(key);
+            changed = true;
+            continue;
+          }
+          if (quiet) {
+            state.pending.push({ ruleId: cand.ruleId, dedupeKey: cand.dedupeKey, to: cand.to, toName: cand.toName });
+            state.seen.review.push(key);
+            changed = true;
+            continue;
+          }
+          const ok = await fire(cand);
+          if (ok) {
+            state.seen.review.push(key);
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (changed) saveFollowupState(bizId, state);
+  }, [
+    businessAccount?.id,
+    businessAccount?.name,
+    clients,
+    customerRequests,
+    jobs,
+    automationTasks,
+    automationMasterOn,
+    conditionalLogicOn,
+    notifPreferences,
+    bumpAutomationRun,
+  ]);
+
   useSyncEngine(
     useCallback(async () => {
-      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting(), pollProactive()]);
-    }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting, pollProactive]),
+      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting(), pollProactive(), pollFollowups()]);
+    }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting, pollProactive, pollFollowups]),
     30000
   );
 
@@ -1081,6 +1331,14 @@ export default function App() {
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
               unreadInboxCount={agentMessages.filter((m) => m.status === 'unread').length}
+              followupsDraftedYesterday={(() => {
+                const y = new Date();
+                y.setDate(y.getDate() - 1);
+                const yStr = y.toDateString();
+                return agentMessages.filter(
+                  (m) => m.dedupeKey?.startsWith('followup:') && new Date(m.createdAt).toDateString() === yStr
+                ).length;
+              })()}
               businessId={activeBusiness.id}
               businessName={activeBusiness.name || 'Setup Company'}
               industryName={activeBusiness.industry || 'Field Operations'}
@@ -1245,6 +1503,12 @@ export default function App() {
               }}
               onResetAutomation={(taskId) => {
                 setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, runCount: 0, lastFiredAt: undefined } : t));
+              }}
+              onUpdateAutomationTemplate={(taskId, template) => {
+                setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, messageTemplate: template } : t));
+              }}
+              onUpdateAutomationReviewLink={(taskId, link) => {
+                setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, reviewLink: link } : t));
               }}
               automationMasterOn={automationMasterOn}
               onToggleMaster={setAutomationMasterOn}
