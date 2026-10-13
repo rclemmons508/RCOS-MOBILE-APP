@@ -204,6 +204,11 @@ app.use('/api', (req: Request, res: Response, next) => {
   if (req.method === 'POST' && req.path === '/public/demo-request') return next();
   // The voice-agent worker authenticates with VOICE_AGENT_SECRET, not a user token.
   if (req.path === '/voice/routing-log') return next();
+  // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
+  if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
+    const secret = process.env.VOICE_AGENT_SECRET;
+    if (secret && req.headers['x-voice-secret'] === secret) return next();
+  }
   return requireAuth(req, res, next);
 });
 
@@ -329,6 +334,66 @@ app.post('/api/voice/routing-log', (req: Request, res: Response) => {
 });
 app.get('/api/voice/routing-log', (_req: Request, res: Response) => {
   res.json(voiceRoutingLog);
+});
+
+// Proactive Agent Inbox ------------------------------------------------------
+// The AI team posts here when something needs the owner's eyes or a decision.
+// The voice-agent worker can create messages with VOICE_AGENT_SECRET (see the
+// auth gate above); everything else requires the normal user session.
+const AGENT_IDS = ['sales', 'operations', 'marketing', 'support', 'receptionist', 'system'];
+const AGENT_MESSAGE_KINDS = ['alert', 'suggestion', 'question'];
+
+app.get('/api/business/:id/agent-messages', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  res.json(db.getAgentMessages(req.params.id));
+});
+
+app.post('/api/business/:id/agent-messages', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const { agent, kind, title, body, actionLabel, actionTab, actionUrl, dedupeKey } = req.body || {};
+  if (!AGENT_IDS.includes(agent)) return res.status(400).json({ error: 'Invalid agent' });
+  if (!AGENT_MESSAGE_KINDS.includes(kind)) return res.status(400).json({ error: 'Invalid kind' });
+  if (!title || !body) return res.status(400).json({ error: 'Title and body are required' });
+  const msg = db.saveAgentMessage({
+    id: `amsg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    businessId: req.params.id,
+    agent,
+    kind,
+    title: String(title).slice(0, 160),
+    body: String(body).slice(0, 2000),
+    actionLabel: actionLabel ? String(actionLabel).slice(0, 40) : undefined,
+    actionTab,
+    actionUrl: actionUrl ? String(actionUrl).slice(0, 500) : undefined,
+    status: 'unread',
+    dedupeKey: dedupeKey ? String(dedupeKey).slice(0, 120) : undefined,
+    createdAt: new Date().toISOString(),
+  });
+  res.json(msg);
+});
+
+app.post('/api/business/:id/agent-messages/:msgId/read', (req: Request, res: Response) => {
+  const updated = db.updateAgentMessage(req.params.id, req.params.msgId, {
+    status: 'read',
+    readAt: new Date().toISOString(),
+  });
+  if (!updated) return res.status(404).json({ error: 'Message not found' });
+  res.json(updated);
+});
+
+app.post('/api/business/:id/agent-messages/:msgId/respond', (req: Request, res: Response) => {
+  const { action, text } = req.body || {};
+  if (!['answered', 'dismissed', 'snoozed'].includes(action)) {
+    return res.status(400).json({ error: 'Invalid action' });
+  }
+  const updated = db.updateAgentMessage(req.params.id, req.params.msgId, {
+    status: action,
+    responseText: text ? String(text).slice(0, 1000) : undefined,
+    readAt: new Date().toISOString(),
+  });
+  if (!updated) return res.status(404).json({ error: 'Message not found' });
+  res.json(updated);
 });
 
 // Businesses
