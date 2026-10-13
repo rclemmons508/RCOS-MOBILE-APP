@@ -9,6 +9,23 @@ import { Capacitor } from '@capacitor/core';
 const STORAGE_KEY_SESSION = 'rcos_active_session';
 const STORAGE_KEY_USERS = 'rcos_registered_users';
 
+/**
+ * SHA-256 hex digest of `salt:password`. Only the hash is ever stored —
+ * the password itself is never written to disk. Used to check the typed
+ * password at login and before sensitive actions (e.g. Delete Account).
+ */
+async function hashPassword(password: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${password}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function makeSalt(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const SEED_USERS: User[] = [];
 
 class AuthService {
@@ -105,40 +122,109 @@ class AuthService {
   }
 
   /**
-   * Sign In with Email and Password
+   * Sign In with Email and Password.
+   *
+   * The password IS checked (it used to be ignored) and unknown emails do
+   * NOT auto-create an account. Both old behaviors meant a deleted account
+   * came straight back the next time its email was typed — that is the
+   * bug this fixes. Accounts created before passwords were enforced have
+   * no stored hash: the first login WITH a password adopts it (one-time
+   * migration); after that, the password is enforced.
    */
-  async loginWithEmail(email: string, _password?: string): Promise<User> {
+  async loginWithEmail(email: string, password?: string): Promise<User> {
     const cleanEmail = (email || '').trim().toLowerCase();
     const users = this.getRegisteredUsers();
-    let existing = users.find(u => u.email.toLowerCase() === cleanEmail);
+    const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
 
     if (!existing) {
-      // Create user record if logging in with email for the first time
-      existing = {
-        id: `usr_${Date.now()}`,
-        email: cleanEmail,
-        fullName: cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        role: 'Operations Lead',
-        avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(cleanEmail)}`,
-        organization: '',
-        authenticated: true,
-        biometricsEnabled: true,
-        lastLogin: 'Just now',
-        preferences: userPreferencesService.getUserPreferences(cleanEmail)
-      };
-      this.upsertUser(existing);
-    } else {
-      existing = {
+      throw new Error('No account found for that email. Please check the email or create a new account.');
+    }
+
+    if (existing.passwordHash) {
+      if (!password || (await hashPassword(password, existing.passwordSalt || '')) !== existing.passwordHash) {
+        throw new Error('Wrong password. Please try again.');
+      }
+    } else if (password) {
+      // Legacy account: adopt the typed password from now on.
+      const salt = makeSalt();
+      const passwordHash = await hashPassword(password, salt);
+      const migrated: User = {
         ...existing,
+        passwordHash,
+        passwordSalt: salt,
         authenticated: true,
         lastLogin: 'Just now',
         preferences: userPreferencesService.getUserPreferences(existing.email)
       };
-      this.upsertUser(existing);
+      this.upsertUser(migrated);
+      this.saveActiveSession(migrated);
+      return migrated;
     }
 
-    this.saveActiveSession(existing);
-    return existing;
+    const loggedIn: User = {
+      ...existing,
+      authenticated: true,
+      lastLogin: 'Just now',
+      preferences: userPreferencesService.getUserPreferences(existing.email)
+    };
+    this.upsertUser(loggedIn);
+    this.saveActiveSession(loggedIn);
+    return loggedIn;
+  }
+
+  /**
+   * Strict password check for sensitive actions (e.g. Delete Account).
+   * True only when the account has a stored password hash and it matches.
+   * Legacy accounts with no hash return false — they must log in with
+   * their password once first (which migrates them), then retry.
+   */
+  async verifyPassword(email: string, password: string): Promise<boolean> {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const user = this.getRegisteredUsers().find(u => u.email.toLowerCase() === cleanEmail);
+    if (!user?.passwordHash) return false;
+    try {
+      return (await hashPassword(password, user.passwordSalt || '')) === user.passwordHash;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Remove one account's stored login record. Returns true only if the
+   * record is verified gone afterwards.
+   */
+  removeRegisteredUser(email: string): boolean {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    try {
+      const remaining = this.getRegisteredUsers().filter(u => u.email.toLowerCase() !== cleanEmail);
+      this.saveRegisteredUsers(remaining);
+      return !this.getRegisteredUsers().some(u => u.email.toLowerCase() !== cleanEmail && false)
+        && !this.getRegisteredUsers().some(u => u.email.toLowerCase() === cleanEmail);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Update a stored user's profile fields (name / picture) in both the
+   * registered-users list and the active session. Returns the updated
+   * user, or null when no record exists for the email.
+   */
+  updateStoredUser(email: string, patch: Partial<User>): User | null {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const users = this.getRegisteredUsers();
+    const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    if (idx < 0) return null;
+    const updated = { ...users[idx], ...patch };
+    users[idx] = updated;
+    this.saveRegisteredUsers(users);
+    try {
+      const session = this.getActiveSession();
+      if (session && session.email.toLowerCase() === cleanEmail) {
+        this.saveActiveSession(updated);
+      }
+    } catch { /* session already updated via the users list */ }
+    return updated;
   }
 
   /**
@@ -188,6 +274,14 @@ class AuthService {
     } else if (data.backupPin && /^\d{4}$/.test(data.backupPin)) {
       // PIN-only fallback even when biometrics are skipped
       biometricService.setOperatorPin(data.backupPin);
+    }
+
+    // Store only a salted hash of the password — never the password itself.
+    // Without this, login could never tell a right password from a wrong one.
+    if (data.password) {
+      const salt = makeSalt();
+      newUser.passwordHash = await hashPassword(data.password, salt);
+      newUser.passwordSalt = salt;
     }
 
     this.upsertUser(newUser);
