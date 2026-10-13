@@ -204,6 +204,15 @@ export function registerGmailOAuthPublic(app: Express) {
  * Returns a fresh access token for the business, refreshing it with Google
  * when it is expired (or about to expire). Used by the gated API route below.
  */
+/** Remove the stored Gmail tokens for one business (used by account deletion). */
+export function deleteGmailTokens(businessId: string): void {
+  const store = loadTokens();
+  if (businessId in store) {
+    delete store[businessId];
+    saveTokens(store);
+  }
+}
+
 export async function getGmailAccessToken(businessId: string): Promise<{ accessToken: string; email: string } | null> {
   const store = loadTokens();
   const rec = store[businessId];
