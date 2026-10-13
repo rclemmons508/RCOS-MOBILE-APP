@@ -6,9 +6,11 @@
  * (On Railway: deploy as a second service with the same environment variables.)
  *
  * What it does: joins the LiveKit room created by POST /api/voice/token,
- * greets the caller, listens, thinks with Gemini (Live API), speaks back,
- * and uses the route_to_representative tool to record which department
- * should handle the caller's issue.
+ * greets the caller, listens, thinks with Gemini (Live API), speaks back.
+ * The room metadata carries a persona ('receptionist' | 'sales' | 'operations' |
+ * 'marketing' | 'support'); the receptionist uses the route_to_representative
+ * tool to record which department should handle the caller's issue, while the
+ * four team agents are conversation-only (no tools).
  *
  * Needs in the environment:
  *   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (LiveKit Cloud — free tier works)
@@ -43,6 +45,76 @@ Your job on this call:
 Keep replies short and speak naturally — this is a phone call, not an email.
 Never invent prices, arrival times, or promises. If you do not know, say you will
 have the right person call them back.`;
+
+type VoicePersona = 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support';
+
+const PERSONAS: Record<VoicePersona, { instructions: string; greeting: string; useRoutingTool: boolean }> = {
+  receptionist: {
+    instructions: INSTRUCTIONS,
+    greeting: 'Greet the caller as the RC Solutions receptionist and ask how you can help.',
+    useRoutingTool: true,
+  },
+  sales: {
+    instructions: `You are the Sales agent for RC Solutions, a service business, talking
+with the business owner on a voice call. Help with quotes, pricing questions,
+and following up with leads. You can draft a quote for the owner to review, but
+never invent prices — if you do not know a price, say you will check and come
+back with it. Keep replies short and speak naturally — this is a phone call,
+not an email. Never invent prices, arrival times, or promises.`,
+    greeting: 'Greet the caller as the RC Solutions sales agent and ask what you are working on.',
+    useRoutingTool: false,
+  },
+  operations: {
+    instructions: `You are the Operations agent for RC Solutions, a service business,
+talking with the business owner on a voice call. Talk through today's jobs,
+scheduling, dispatching, and job status. Help the owner plan the day and sort
+out scheduling problems. Keep replies short and speak naturally — this is a
+phone call, not an email. Never invent arrival times, job details, or promises
+— if you do not know, say you will check.`,
+    greeting: 'Greet the caller as the RC Solutions operations agent and ask what you need to sort out.',
+    useRoutingTool: false,
+  },
+  marketing: {
+    instructions: `You are the Marketing agent for RC Solutions, a service business,
+talking with the business owner on a voice call. Help with promotions, review
+requests, customer outreach ideas, and social media posts. Anything you draft
+is for the owner to review before it goes out. Keep replies short and speak
+naturally — this is a phone call, not an email. Never invent offers, discounts,
+or promises.`,
+    greeting: 'Greet the caller as the RC Solutions marketing agent and ask what you want to promote.',
+    useRoutingTool: false,
+  },
+  support: {
+    instructions: `You are the Support agent for RC Solutions, a service business,
+talking with the business owner on a voice call. Help with customer issues,
+complaints, troubleshooting, and follow-ups. Stay calm and helpful, and work
+through the problem one step at a time. Escalate right away when something
+sounds like a safety issue — tell the owner plainly what happens next. Keep
+replies short and speak naturally — this is a phone call, not an email. Never
+invent fixes, arrival times, or promises — if you do not know, say you will
+check.`,
+    greeting: 'Greet the caller as the RC Solutions support agent and ask how you can help.',
+    useRoutingTool: false,
+  },
+};
+
+/** Persona comes from the room metadata set by POST /api/voice/token; anything unknown falls back to receptionist. */
+function personaFromMetadata(roomMetadata: unknown, jobMetadata: unknown): VoicePersona {
+  for (const raw of [roomMetadata, jobMetadata]) {
+    try {
+      const parsed = JSON.parse(typeof raw === 'string' ? raw : '{}') as { persona?: unknown };
+      if (
+        parsed.persona === 'sales' ||
+        parsed.persona === 'operations' ||
+        parsed.persona === 'marketing' ||
+        parsed.persona === 'support'
+      ) {
+        return parsed.persona;
+      }
+    } catch { /* not JSON — try the next source */ }
+  }
+  return 'receptionist';
+}
 
 const routeToRepresentative = tool({
   description:
@@ -98,26 +170,32 @@ export default defineAgent({
     // Greeting immediately can play to an empty room, so the caller hears silence.
     await ctx.waitForParticipant();
 
+    const persona = personaFromMetadata(
+      (ctx.room as unknown as { metadata?: unknown }).metadata,
+      (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
+    );
+    const config = PERSONAS[persona];
+
     const model = new realtime.RealtimeModel({
       apiKey: process.env.GEMINI_API_KEY,
       voice: 'Kore',
-      instructions: INSTRUCTIONS,
+      instructions: config.instructions,
     });
 
     const agent = new Agent({
-      instructions: INSTRUCTIONS,
-      tools: { route_to_representative: routeToRepresentative },
+      instructions: config.instructions,
+      ...(config.useRoutingTool ? { tools: { route_to_representative: routeToRepresentative } } : {}),
     });
 
     const session = new AgentSession({ llm: model });
     await session.start({ agent, room: ctx.room });
     await session.generateReply({
-      instructions: 'Greet the caller as the RC Solutions receptionist and ask how you can help.',
+      instructions: config.greeting,
     });
   },
 });
 
-// Receives the routed call's business id via the room metadata set in /api/voice/token.
+// Receives the routed call's business id + persona via the room metadata set in /api/voice/token.
 export function startWorker() {
   // cli.runApp() parses process.argv for a subcommand (start/dev/connect).
   // When launched via start.ts (`tsx start.ts`) there is no subcommand, so the
