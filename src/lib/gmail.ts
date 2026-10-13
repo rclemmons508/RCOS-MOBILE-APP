@@ -2,6 +2,8 @@ import { auth, gmailOAuthProvider, GMAIL_SCOPES } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
+import { apiFetch } from './api';
+import { getApiBaseUrl } from '../config/api';
 
 export interface GmailMessageSummary {
   id: string;
@@ -76,28 +78,57 @@ onAuthStateChanged(auth, (user) => {
 /**
  * Trigger Google Sign-in specifically for Gmail OAuth token
  */
-export async function authenticateGmail(): Promise<{ user: User; accessToken: string }> {
+/**
+ * Trigger Google Sign-in specifically for Gmail OAuth token.
+ * On Android this uses a real Google login in a system browser tab and
+ * returns the user straight back into the app — no separate window left behind.
+ */
+export async function authenticateGmail(businessId?: string): Promise<{ user: any; accessToken: string }> {
   if (Capacitor.isNativePlatform()) {
-    // In native Android APK, Google blocks WebViews with disallowed_useragent and popups fail.
-    // Try launching external system Chrome custom tab if desired:
-    try {
-      await Browser.open({ 
-        url: 'https://accounts.google.com/AccountChooser?service=mail' 
-      }).catch(() => {});
-    } catch {
-      // Browser open fallback
-    }
+    // Google does not allow logins inside an app's embedded browser, so we
+    // open Google's own login page in a proper system browser tab. When the
+    // login finishes, our server sends the user straight back into the RCOS
+    // app (deep link), and we close the tab.
+    const { App } = await import('@capacitor/app');
+    const biz = businessId || 'default';
+    const state = `g${Date.now()}${Math.floor(Math.random() * 1000000)}`;
+    const startUrl =
+      `${getApiBaseUrl()}/oauth/gmail/start?businessId=${encodeURIComponent(biz)}&state=${encodeURIComponent(state)}`;
 
-    const mobileToken = `mob_token_${Date.now()}`;
-    setCachedAccessToken(mobileToken);
-    localStorage.setItem('rcos_gmail_mobile_connected', 'true');
-    const mockUser: any = {
-      uid: 'usr_mobile_operator',
-      email: 'rcsoulutions@gmail.com',
-      displayName: 'RC Solutions Lead Operator',
-      photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-    };
-    return { user: mockUser, accessToken: mobileToken };
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const finish = async (ok: boolean, err?: unknown) => {
+        if (done) return;
+        done = true;
+        try { await listener.remove(); } catch { /* noop */ }
+        try { await Browser.close(); } catch { /* tab may already be gone */ }
+        if (!ok) {
+          reject(err instanceof Error ? err : new Error('Gmail login did not finish.'));
+          return;
+        }
+        try {
+          const tok = await apiFetch<{ accessToken: string; email: string }>(
+            `/api/business/${encodeURIComponent(biz)}/gmail-token`
+          );
+          setCachedAccessToken(tok.accessToken);
+          resolve({ user: { email: tok.email || '' } as any, accessToken: tok.accessToken });
+        } catch (e) {
+          reject(e);
+        }
+      };
+
+      let listener: { remove: () => Promise<void> } | null = null;
+      App.addListener('appUrlOpen', (data: any) => {
+        if (typeof data?.url === 'string' && data.url.startsWith('rcosmobile://gmail-connected')) {
+          finish(true);
+        }
+      }).then((h) => { listener = h; }).catch(() => { /* timeout below still guards */ });
+
+      // Give up after 5 minutes (e.g. the user closed the browser tab).
+      setTimeout(() => finish(false, new Error('Gmail login timed out. Please try again.')), 5 * 60 * 1000);
+
+      Browser.open({ url: startUrl }).catch((e) => finish(false, e));
+    });
   }
 
   try {
@@ -112,18 +143,8 @@ export async function authenticateGmail(): Promise<{ user: User; accessToken: st
     setCachedAccessToken(token);
     return { user: result.user, accessToken: token };
   } catch (err: any) {
-    console.warn('[GmailAuth] Popup authentication notice:', err?.code, err?.message);
-    // Fallback if environment blocks popups, unauthorized domain, iframe sandbox, or network:
-    const mobileToken = `workspace_token_${Date.now()}`;
-    setCachedAccessToken(mobileToken);
-    localStorage.setItem('rcos_gmail_mobile_connected', 'true');
-    const mockUser: any = {
-      uid: 'usr_mobile_operator',
-      email: 'rcsoulutions@gmail.com',
-      displayName: 'RC Solutions Lead Operator',
-      photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-    };
-    return { user: mockUser, accessToken: mobileToken };
+    console.warn('[GmailAuth] Popup authentication failed:', err?.code, err?.message);
+    throw err instanceof Error ? err : new Error('Google sign-in failed. Please try again.');
   }
 }
 
@@ -217,108 +238,41 @@ async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promi
     throw new Error('Not authenticated with Gmail. Please sign in with Google to connect your account.');
   }
 
-  // If running in mobile mode or with mobile token
-  if (token.startsWith('mob_token_')) {
-    if (endpoint.startsWith('/messages/send') || endpoint.startsWith('/drafts')) {
-      return { id: `msg_sent_${Date.now()}`, threadId: `th_${Date.now()}` };
-    }
-    if (endpoint === '/profile') {
-      return {
-        emailAddress: 'rcsoulutions@gmail.com',
-        messagesTotal: 38,
-        threadsTotal: 16,
-        historyId: 'hist_9941',
-      };
-    }
-    if (endpoint.startsWith('/labels')) {
-      return {
-        labels: [
-          { id: 'INBOX', name: 'INBOX', type: 'system', messagesUnread: 3, messagesTotal: 25 },
-          { id: 'STARRED', name: 'STARRED', type: 'system', messagesUnread: 0, messagesTotal: 4 },
-          { id: 'SENT', name: 'SENT', type: 'system', messagesUnread: 0, messagesTotal: 12 },
-          { id: 'DRAFT', name: 'DRAFT', type: 'system', messagesUnread: 0, messagesTotal: 2 },
-          { id: 'TRASH', name: 'TRASH', type: 'system', messagesUnread: 0, messagesTotal: 5 },
-        ]
-      };
-    }
-    if (endpoint.startsWith('/messages?')) {
-      return {
-        messages: INITIAL_PREVIEW_MESSAGES.map((m) => ({ id: m.id, threadId: m.threadId })),
-        nextPageToken: undefined,
-      };
-    }
-    if (endpoint.startsWith('/messages/')) {
-      const msgId = endpoint.split('/')[2]?.split('?')[0];
-      const found = INITIAL_PREVIEW_MESSAGES.find(m => m.id === msgId);
-      if (found) {
-        return {
-          id: found.id,
-          threadId: found.threadId,
-          internalDate: String(found.timestamp),
-          labelIds: found.labelIds,
-          snippet: found.snippet,
-          payload: {
-            mimeType: 'text/html',
-            headers: [
-              { name: 'Subject', value: found.subject },
-              { name: 'From', value: found.from },
-              { name: 'To', value: found.to },
-              { name: 'Date', value: found.date },
-            ],
-            body: {
-              data: btoa(unescape(encodeURIComponent(found.bodyHtml))),
-            }
-          }
-        };
-      }
-    }
-    return null;
-  }
-
   const headers = {
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
 
+  let res: Response;
   try {
-    const res = await fetch(`${GMAIL_BASE_URL}${endpoint}`, {
+    res = await fetch(`${GMAIL_BASE_URL}${endpoint}`, {
       ...options,
       headers,
     });
-
-    if (!res.ok) {
-      if (Capacitor.isNativePlatform()) {
-        // Fallback for native mobile
-        return fetchWithAuth(endpoint, { ...options, headers: { ...headers, Authorization: 'Bearer mob_token_fallback' } });
-      }
-      let errMessage = `Gmail API Error (${res.status} ${res.statusText})`;
-      try {
-        const errJson = await res.json();
-        if (errJson?.error?.message) {
-          errMessage = errJson.error.message;
-        }
-      } catch {
-        // ignore json parse error
-      }
-      throw new Error(errMessage);
-    }
-
-    // 204 No Content
-    if (res.status === 204) return null;
-
-    return res.json();
-  } catch (err: any) {
-    if (Capacitor.isNativePlatform()) {
-      return fetchWithAuth(endpoint, { ...options, headers: { ...headers, Authorization: 'Bearer mob_token_fallback' } });
-    }
-    throw err;
+  } catch {
+    throw new Error('Could not reach Gmail. Check your connection and try again.');
   }
+
+  if (!res.ok) {
+    let errMessage = `Gmail API Error (${res.status} ${res.statusText})`;
+    try {
+      const errJson = await res.json();
+      if (errJson?.error?.message) {
+        errMessage = errJson.error.message;
+      }
+    } catch {
+      // ignore json parse error
+    }
+    throw new Error(errMessage);
+  }
+
+  // 204 No Content
+  if (res.status === 204) return null;
+
+  return res.json();
 }
 
-/**
- * Fetch Current User's Gmail Profile
- */
 export async function getGmailProfile(): Promise<GmailProfile> {
   return await fetchWithAuth('/profile');
 }
