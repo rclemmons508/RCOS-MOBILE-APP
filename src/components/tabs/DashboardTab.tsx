@@ -22,7 +22,8 @@ import {
   Inbox,
   Activity,
   Share2,
-  Link2
+  Link2,
+  MessageSquare
 } from 'lucide-react';
 import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
@@ -375,6 +376,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <div className="min-w-0">
             <div className="text-xs font-bold text-white truncate">New Work Order</div>
             <div className="text-[10px] text-zinc-400 truncate">Create & dispatch job</div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleQuickAction(() => onNavigateTab('team-chat'))}
+          className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-lime-500/40 transition-all flex items-center gap-2.5 text-left active:scale-98 cursor-pointer"
+        >
+          <div className="w-8 h-8 rounded-xl bg-lime-500/20 text-lime-400 flex items-center justify-center shrink-0">
+            <MessageSquare className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-white truncate">Team Chat</div>
+            <div className="text-[10px] text-zinc-400 truncate">Message your team</div>
           </div>
         </button>
 
