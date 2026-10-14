@@ -1,159 +1,118 @@
 import React, { useState, useEffect } from 'react';
-import { TelephonyConfig } from '../../types';
 import { apiFetch } from '../../lib/api';
-import { 
-  Phone, 
-  Settings, 
-  X, 
-  CheckCircle2, 
-  AlertCircle, 
-  Radio, 
-  Copy, 
-  ExternalLink, 
-  PhoneCall, 
-  Sparkles, 
-  User, 
-  ShieldCheck, 
-  Clock, 
+import {
+  Phone,
+  Settings,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Radio,
+  ExternalLink,
   RefreshCw,
-  PhoneForwarded,
-  Sliders,
-  Send
+  Send,
+  MessageSquare
 } from 'lucide-react';
 
 interface RealPhoneSetupModalProps {
   isOpen: boolean;
   onClose: () => void;
-  config: TelephonyConfig | null;
-  onSaveConfig: (updated: Partial<TelephonyConfig>) => Promise<void>;
+  businessId: string;
   onTriggerNotification?: (title: string, message: string) => void;
 }
+
+// The exact text the test button sends. Short, and Vonage appends its own
+// "[FREE SMS DEMO, TEST MESSAGE]" tag on trial accounts.
+const TEST_MESSAGE = 'Test from RCOS Mobile: your Vonage SMS is working.';
+
+type TabId = 'status' | 'test_text' | 'instructions';
 
 export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
   isOpen,
   onClose,
-  config: initialConfig,
-  onSaveConfig,
+  businessId,
   onTriggerNotification
 }) => {
-  const [config, setConfig] = useState<Partial<TelephonyConfig>>(initialConfig || {});
-  const [activeTab, setActiveTab] = useState<'status' | 'routing' | 'test_call' | 'instructions'>('status');
-  
-  // Carrier test state
-  const [isTestingCarrier, setIsTestingCarrier] = useState(false);
-  const [carrierStatus, setCarrierStatus] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<TabId>('status');
 
-  // Real test call state
+  // Live server provider check (GET /api/firebase-config -> telephonyProvider).
+  const [provider, setProvider] = useState<string | null>(null);
+  const [providerChecked, setProviderChecked] = useState(false);
+  const [isCheckingProvider, setIsCheckingProvider] = useState(false);
+
+  // Test-text state.
   const [testPhoneNumber, setTestPhoneNumber] = useState('');
-  const [isPlacingCall, setIsPlacingCall] = useState(false);
-  const [testCallResult, setTestCallResult] = useState<any>(null);
+  const [isSendingText, setIsSendingText] = useState(false);
+  const [testTextResult, setTestTextResult] = useState<{ ok: boolean; message: string } | null>(null);
 
-  // Copy state
-  const [copiedWebhook, setCopiedWebhook] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const checkProvider = async () => {
+    setIsCheckingProvider(true);
+    try {
+      const data = await apiFetch<{ telephonyProvider?: string }>('/api/firebase-config');
+      setProvider((data?.telephonyProvider || '').toLowerCase() || null);
+    } catch {
+      setProvider(null);
+    } finally {
+      setProviderChecked(true);
+      setIsCheckingProvider(false);
+    }
+  };
 
   useEffect(() => {
-    if (initialConfig) {
-      setConfig(initialConfig);
+    if (isOpen) {
+      setProviderChecked(false);
+      checkProvider();
     }
-  }, [initialConfig]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleTestCarrier = async () => {
-    setIsTestingCarrier(true);
-    setCarrierStatus(null);
-    try {
-      const data = await apiFetch<any>('/api/twilio/test-carrier', { method: 'POST' });
-      setCarrierStatus(data);
-    } catch (err: any) {
-      setCarrierStatus({
-        success: false,
-        error: err?.message || 'Network connection failed'
+  const handleSendTestText = async () => {
+    if (!businessId) {
+      setTestTextResult({
+        ok: false,
+        message: 'Your business is not loaded — close this and reopen the app, then try again.'
       });
-    } finally {
-      setIsTestingCarrier(false);
+      return;
     }
-  };
-
-  const handlePlaceRealCall = async () => {
-    if (!testPhoneNumber) return;
-    setIsPlacingCall(true);
-    setTestCallResult(null);
+    const to = testPhoneNumber.trim();
+    if (!to) {
+      setTestTextResult({ ok: false, message: 'Enter the phone number to text.' });
+      return;
+    }
+    setIsSendingText(true);
+    setTestTextResult(null);
     try {
-      const data = await apiFetch<any>('/api/twilio/voice/outbound-call', {
-        method: 'POST',
-        body: JSON.stringify({ toPhone: testPhoneNumber })
-      });
-      setTestCallResult(data);
-      if (data?.success && onTriggerNotification) {
-        onTriggerNotification(
-          'Outbound Call Dispatched',
-          `Calling ${testPhoneNumber} from carrier line ${config?.phoneNumber || ''}`
-        );
+      const result = await apiFetch<{ configured?: boolean; sent?: boolean; duplicate?: boolean; error?: string }>(
+        `/api/business/${encodeURIComponent(businessId)}/sms/send`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ to, text: TEST_MESSAGE, dedupeKey: `modal-test-${Date.now()}` })
+        }
+      );
+      if (result?.sent) {
+        setTestTextResult({
+          ok: true,
+          message: result.duplicate
+            ? 'Already sent — Vonage skipped the duplicate.'
+            : `Sent to ${to}. Check your phone — Vonage adds [FREE SMS DEMO, TEST MESSAGE] to every trial text.`
+        });
+        if (onTriggerNotification) {
+          onTriggerNotification('Test Text Sent', `Vonage test text sent to ${to}.`);
+        }
+      } else {
+        setTestTextResult({
+          ok: false,
+          message: result?.error || 'The text did not send. Check the Setup Guide, then try again.'
+        });
       }
     } catch (err: any) {
-      setTestCallResult({
-        success: false,
-        error: err?.message || 'Failed to place call'
-      });
+      setTestTextResult({ ok: false, message: err?.message || 'Could not reach the server.' });
     } finally {
-      setIsPlacingCall(false);
+      setIsSendingText(false);
     }
   };
 
-  const handleSimulateCall = async () => {
-    if (!testPhoneNumber) return;
-    setIsPlacingCall(true);
-    setTestCallResult(null);
-    try {
-      const data = await apiFetch<any>('/api/twilio/voice/outbound-call', {
-        method: 'POST',
-        body: JSON.stringify({ 
-          toPhone: testPhoneNumber,
-          simulateFallback: true
-        })
-      });
-      setTestCallResult(data);
-      if (data?.success && onTriggerNotification) {
-        onTriggerNotification(
-          'Simulated Call Initiated',
-          `Voice AI test session opened for ${testPhoneNumber}`
-        );
-      }
-    } catch (err: any) {
-      setTestCallResult({
-        success: false,
-        error: err?.message || 'Failed to simulate call'
-      });
-    } finally {
-      setIsPlacingCall(false);
-    }
-  };
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await onSaveConfig(config);
-      if (onTriggerNotification) {
-        onTriggerNotification('PBX Settings Saved', 'Carrier routing rules and phone numbers updated.');
-      }
-      onClose();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleCopyWebhook = () => {
-    const url = config.webhookUrl || `${window.location.origin}/api/twilio/voice/incoming`;
-    navigator.clipboard.writeText(url);
-    setCopiedWebhook(true);
-    setTimeout(() => setCopiedWebhook(false), 2000);
-  };
-
-  const webhookUrl = config.webhookUrl || `${window.location.origin}/api/twilio/voice/incoming`;
+  const vonageLive = provider === 'vonage';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
@@ -166,12 +125,12 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Real Telecom PBX Configuration
+                Phone Setup
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-zinc-900 text-lime-400 border border-zinc-800">
-                  Twilio PSTN
+                  Vonage SMS • LiveKit Voice
                 </span>
               </h2>
-              <p className="text-xs text-zinc-400">Carrier Phone Line, AI Voice Receptionist & Live Transfers</p>
+              <p className="text-xs text-zinc-400">Texting runs on Vonage. Voice calls run inside the app. No carrier phone line connected.</p>
             </div>
           </div>
           <button
@@ -189,47 +148,34 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
             type="button"
             onClick={() => setActiveTab('status')}
             className={`flex-1 py-1.5 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'status' 
-                ? 'bg-lime-500 text-black shadow-md' 
+              activeTab === 'status'
+                ? 'bg-lime-500 text-black shadow-md'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
-            <span>Carrier Line</span>
+            <span>How It Works</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('routing')}
+            onClick={() => setActiveTab('test_text')}
             className={`flex-1 py-1.5 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'routing' 
-                ? 'bg-lime-500 text-black shadow-md' 
+              activeTab === 'test_text'
+                ? 'bg-lime-500 text-black shadow-md'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            <PhoneForwarded className="w-3.5 h-3.5" />
-            <span>Transfers & Depts</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('test_call')}
-            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'test_call' 
-                ? 'bg-lime-500 text-black shadow-md' 
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            <PhoneCall className="w-3.5 h-3.5" />
-            <span>Test Real Phone</span>
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Send Test Text</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('instructions')}
             className={`flex-1 py-1.5 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'instructions' 
-                ? 'bg-lime-500 text-black shadow-md' 
+              activeTab === 'instructions'
+                ? 'bg-lime-500 text-black shadow-md'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -238,422 +184,178 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
           </button>
         </div>
 
-        {/* Tab 1: Carrier Line & Webhook */}
+        {/* Tab 1: How it works + live provider status */}
         {activeTab === 'status' && (
           <div className="space-y-3">
-            {/* Live Webhook Card */}
-            <div className="p-3.5 rounded-2xl bg-black border border-lime-500/30 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-mono font-bold text-lime-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Incoming Voice Webhook URL (Public PSTN Endpoint)</span>
-                </span>
-                <span className="text-[10px] text-zinc-400 font-mono">HTTP POST</span>
+            <div className="p-3.5 rounded-2xl bg-black border border-lime-500/30 space-y-2.5">
+              <div className="text-xs font-bold text-white">How your phone system works</div>
+              <div className="space-y-2 text-[11px] text-zinc-400 leading-relaxed font-sans">
+                <p>
+                  <strong className="text-zinc-100">Texting — Vonage (trial).</strong>{' '}
+                  Follow-up texts and test texts send through Vonage. Vonage adds{' '}
+                  <strong className="text-zinc-200">[FREE SMS DEMO, TEST MESSAGE]</strong> to every trial text.
+                </p>
+                <p>
+                  <strong className="text-zinc-100">Voice — LiveKit in-app calling.</strong>{' '}
+                  The AI receptionist and push-to-talk happen inside the app over the internet.
+                </p>
+                <p>
+                  <strong className="text-zinc-100">No PSTN carrier.</strong>{' '}
+                  No carrier phone line is connected, so the app cannot receive or dial regular phone calls.
+                  Twilio is not connected.
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={webhookUrl}
-                  className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-lime-300 font-mono select-all focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleCopyWebhook}
-                  className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0"
-                >
-                  {copiedWebhook ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedWebhook ? 'Copied!' : 'Copy'}</span>
-                </button>
-              </div>
-              <p className="text-[11px] text-zinc-400 leading-relaxed font-sans">
-                Paste this URL into your Twilio Console under: 
-                <strong className="text-zinc-200"> Phone Numbers → Active Numbers → Voice & Fax → "A Call Comes In" → Webhook</strong>.
-              </p>
             </div>
 
-            {/* Carrier Credentials Status */}
             <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white">Twilio Carrier Connection</span>
+                <span className="text-xs font-bold text-white">Server provider check</span>
                 <button
                   type="button"
-                  onClick={handleTestCarrier}
-                  disabled={isTestingCarrier}
+                  onClick={checkProvider}
+                  disabled={isCheckingProvider}
                   className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-lime-400 text-xs font-mono font-bold flex items-center gap-1 transition cursor-pointer"
                 >
-                  <RefreshCw className={`w-3 h-3 ${isTestingCarrier ? 'animate-spin' : ''}`} />
-                  <span>{isTestingCarrier ? 'Testing...' : 'Test Connection'}</span>
+                  <RefreshCw className={`w-3 h-3 ${isCheckingProvider ? 'animate-spin' : ''}`} />
+                  <span>{isCheckingProvider ? 'Checking...' : 'Recheck'}</span>
                 </button>
               </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <div className="p-2 rounded-xl bg-black border border-zinc-800">
-                  <div className="text-[10px] text-zinc-400">Account SID:</div>
-                  <div className="font-bold text-white flex items-center gap-1 mt-0.5">
-                    {config.accountSidConfigured ? (
-                      <span className="text-lime-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Configured
-                      </span>
-                    ) : (
-                      <span className="text-amber-400 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5" /> Needs Env Secret
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-2 rounded-xl bg-black border border-zinc-800">
-                  <div className="text-[10px] text-zinc-400">Auth Token:</div>
-                  <div className="font-bold text-white flex items-center gap-1 mt-0.5">
-                    {config.authTokenConfigured ? (
-                      <span className="text-lime-400 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Verified
-                      </span>
-                    ) : (
-                      <span className="text-amber-400 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5" /> Needs Env Secret
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {carrierStatus && (
-                <div className={`p-3 rounded-xl text-xs font-mono border ${
-                  carrierStatus.success 
-                    ? 'bg-lime-500/10 border-lime-500/30 text-lime-300' 
-                    : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                }`}>
-                  <div className="font-bold">{carrierStatus.message || carrierStatus.error}</div>
-                  {carrierStatus.accountFriendlyName && (
-                    <div className="text-[10.5px] mt-1 text-zinc-400">
-                      Account: {carrierStatus.accountFriendlyName} ({carrierStatus.accountStatus})
-                    </div>
-                  )}
-                </div>
+              {!providerChecked ? (
+                <p className="text-xs text-zinc-400 font-mono">Checking the server…</p>
+              ) : vonageLive ? (
+                <p className="text-xs font-mono text-lime-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>Vonage SMS is connected (server provider: vonage).</span>
+                </p>
+              ) : provider ? (
+                <p className="text-xs font-mono text-amber-300 flex items-start gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    Server provider is &lsquo;{provider}&rsquo; — Vonage is not connected. Set TELEPHONY_PROVIDER=vonage
+                    in Railway Variables (see Setup Guide).
+                  </span>
+                </p>
+              ) : (
+                <p className="text-xs font-mono text-amber-300 flex items-start gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>Couldn&rsquo;t reach the server to check. Try Recheck.</span>
+                </p>
               )}
             </div>
 
-            {/* Business Carrier Number */}
-            <div>
-              <label className="text-[11px] font-mono font-semibold text-zinc-400 block mb-1">
-                RC Solutions Public Carrier Phone Number (Caller ID)
-              </label>
-              <input
-                type="text"
-                value={config.phoneNumber || ''}
-                onChange={(e) => setConfig({ ...config, phoneNumber: e.target.value })}
-                placeholder="+1 (800) 555-7267 or Twilio DID"
-                className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 font-mono"
-              />
-              <p className="text-[10px] text-zinc-500 mt-1">
-                This is the real telephone number your customers dial from standard cellular or landline phones.
-              </p>
+            <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-1.5">
+              <div className="text-xs font-bold text-white">Vonage trial limits</div>
+              <ul className="text-[11px] text-zinc-400 leading-relaxed font-sans list-disc pl-4 space-y-1">
+                <li>Texts only go to your registered number plus up to 4 verified numbers.</li>
+                <li>Every text gets [FREE SMS DEMO, TEST MESSAGE] added at the end.</li>
+                <li>Trial credit can&rsquo;t buy a phone number — a Vonage number on the account is required as the sender (VONAGE_FROM_NUMBER).</li>
+              </ul>
             </div>
           </div>
         )}
 
-        {/* Tab 2: Routing Strategy & Real Forwarding Numbers */}
-        {activeTab === 'routing' && (
-          <div className="space-y-3.5">
-            {/* Answering Strategy Selector */}
-            <div>
-              <label className="text-xs font-bold text-white block mb-1.5">
-                Incoming Call Answering Strategy
-              </label>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setConfig({ ...config, answeringStrategy: 'ai_first' })}
-                  className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col gap-1 ${
-                    config.answeringStrategy === 'ai_first'
-                      ? 'bg-purple-600/15 border-purple-500 text-white shadow-md'
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                      AI Receptionist First
-                    </span>
-                    {config.answeringStrategy === 'ai_first' && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
-                    )}
-                  </div>
-                  <p className="text-[10px] text-zinc-400 leading-tight">
-                    Voice Concierge (Kore) answers immediately. Screens calls, answers questions, takes messages, and transfers when requested.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setConfig({ ...config, answeringStrategy: 'human_first' })}
-                  className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col gap-1 ${
-                    config.answeringStrategy === 'human_first'
-                      ? 'bg-blue-600/15 border-blue-500 text-white shadow-md'
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-blue-400" />
-                      Human Operator First
-                    </span>
-                    {config.answeringStrategy === 'human_first' && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
-                    )}
-                  </div>
-                  <p className="text-[10px] text-zinc-400 leading-tight">
-                    Rings your real mobile phone for 15 seconds. If busy or unanswered, AI Voice Receptionist picks up so you never lose a job.
-                  </p>
-                </button>
-              </div>
-            </div>
-
-            {/* Operator Forwarding Phone */}
-            <div>
-              <label className="text-[11px] font-mono font-semibold text-zinc-300 block mb-1">
-                Human Operator / Main Mobile Forwarding Line
-              </label>
-              <input
-                type="text"
-                value={config.operatorForwardingPhone || ''}
-                onChange={(e) => setConfig({ ...config, operatorForwardingPhone: e.target.value })}
-                placeholder="+1 (555) 019-4820"
-                className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 font-mono"
-              />
-              <p className="text-[10px] text-zinc-500 mt-0.5">
-                The real phone number that rings when callers say "let me speak to a human" or during human-first mode.
-              </p>
-            </div>
-
-            {/* Department Real Forwarding Numbers */}
-            <div className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <PhoneForwarded className="w-3.5 h-3.5 text-lime-400" />
-                  <span>Real Department Transfer Numbers (PSTN Routing)</span>
-                </span>
-                <span className="text-[10px] text-zinc-400 font-mono">TwiML &lt;Dial&gt;</span>
-              </div>
-              <p className="text-[10.5px] text-zinc-400">
-                When a caller asks to be transferred, the AI Receptionist dials these real phone lines:
-              </p>
-
-              <div className="space-y-2 text-xs font-mono">
-                <div className="flex items-center gap-2">
-                  <span className="w-28 text-zinc-400 shrink-0">Dispatch (Ext 101):</span>
-                  <input
-                    type="text"
-                    value={config.departmentForwardingNumbers?.dispatch || ''}
-                    onChange={(e) => setConfig({
-                      ...config,
-                      departmentForwardingNumbers: {
-                        ...(config.departmentForwardingNumbers as any),
-                        dispatch: e.target.value
-                      }
-                    })}
-                    className="flex-1 bg-black border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-lime-500"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="w-28 text-zinc-400 shrink-0">Billing (Ext 102):</span>
-                  <input
-                    type="text"
-                    value={config.departmentForwardingNumbers?.billing || ''}
-                    onChange={(e) => setConfig({
-                      ...config,
-                      departmentForwardingNumbers: {
-                        ...(config.departmentForwardingNumbers as any),
-                        billing: e.target.value
-                      }
-                    })}
-                    className="flex-1 bg-black border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-lime-500"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="w-28 text-zinc-400 shrink-0">Emergency (103):</span>
-                  <input
-                    type="text"
-                    value={config.departmentForwardingNumbers?.emergency || ''}
-                    onChange={(e) => setConfig({
-                      ...config,
-                      departmentForwardingNumbers: {
-                        ...(config.departmentForwardingNumbers as any),
-                        emergency: e.target.value
-                      }
-                    })}
-                    className="flex-1 bg-black border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-lime-500"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="w-28 text-zinc-400 shrink-0">Sales (Ext 104):</span>
-                  <input
-                    type="text"
-                    value={config.departmentForwardingNumbers?.sales || ''}
-                    onChange={(e) => setConfig({
-                      ...config,
-                      departmentForwardingNumbers: {
-                        ...(config.departmentForwardingNumbers as any),
-                        sales: e.target.value
-                      }
-                    })}
-                    className="flex-1 bg-black border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-lime-500"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 3: Place Real Test Call to User's Phone */}
-        {activeTab === 'test_call' && (
+        {/* Tab 2: Send a real test text via Vonage */}
+        {activeTab === 'test_text' && (
           <div className="space-y-3.5">
             <div className="p-3.5 rounded-2xl bg-zinc-900 border border-lime-500/30 space-y-2">
               <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
-                <PhoneCall className="w-4 h-4 text-lime-400" />
-                <span>Place a Real Live Telephone Call</span>
+                <MessageSquare className="w-4 h-4 text-lime-400" />
+                <span>Send a Real Test Text</span>
               </h3>
               <p className="text-[11px] text-zinc-400 leading-relaxed font-sans">
-                Enter your actual personal cell phone number below. When you click 
-                <strong className="text-white"> "Call My Phone"</strong>, the carrier will dial your physical phone!
-                When you answer, the Voice Receptionist (Kore) will greet you live over the phone line.
+                Sends one real text through Vonage to the number you enter. On trial, that number must be
+                your registered number or a verified test number. Vonage adds its demo tag to the end.
               </p>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-black border border-zinc-800">
+              <div className="text-[10px] text-zinc-400 font-mono mb-1">Message that will be sent:</div>
+              <p className="text-xs text-zinc-200 font-sans">{TEST_MESSAGE}</p>
             </div>
 
             <div>
               <label className="text-[11px] font-mono font-semibold text-zinc-400 block mb-1">
-                Your Real Cell Phone Number (E.164 Format)
+                Your Mobile Number (digits only is fine)
               </label>
               <div className="flex items-center gap-2">
                 <input
-                  type="text"
+                  type="tel"
                   value={testPhoneNumber}
                   onChange={(e) => setTestPhoneNumber(e.target.value)}
-                  placeholder="+14155552671"
+                  placeholder="+14707832596"
                   className="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 font-mono"
                 />
                 <button
                   type="button"
-                  onClick={handlePlaceRealCall}
-                  disabled={isPlacingCall || !testPhoneNumber}
+                  onClick={handleSendTestText}
+                  disabled={isSendingText || !businessId}
                   className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isPlacingCall ? 'Dialing...' : 'Call My Phone'}</span>
+                  <span>{isSendingText ? 'Sending...' : 'Send Test Text'}</span>
                 </button>
               </div>
-              <p className="text-[10px] text-zinc-500 mt-1">
-                Include country code, e.g. <strong className="text-zinc-400">+1</strong> for US/Canada.
-              </p>
+              {!businessId && (
+                <p className="text-[10px] text-amber-300 mt-1">
+                  Your business isn&rsquo;t loaded — close this and reopen the app, then try again.
+                </p>
+              )}
             </div>
 
-            {testCallResult && (
-              testCallResult.isTrialRestriction ? (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-mono space-y-2.5">
-                  <div className="font-bold flex items-center gap-1.5 text-amber-400">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>Twilio Trial Account Notice</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-300 font-sans leading-relaxed">
-                    Twilio free trial accounts require outbound test numbers to be registered in your Twilio Console under Verified Caller IDs.
-                  </p>
-                  <div className="p-2.5 rounded-xl bg-black/60 border border-zinc-800 space-y-1 text-[11px] font-sans">
-                    <div className="text-zinc-400 text-[10px] uppercase tracking-wider font-mono">To place real calls:</div>
-                    <div className="text-zinc-200">
-                      1. Open{' '}
-                      <a
-                        href={testCallResult.verificationUrl || 'https://console.twilio.com/us1/develop/phone-numbers/manage/verified'}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-lime-400 underline inline-flex items-center gap-0.5 font-bold"
-                      >
-                        Twilio Verified Caller IDs <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                    <div className="text-zinc-200">
-                      2. Add and verify your phone number: <strong className="text-white font-mono">{testCallResult.to || testPhoneNumber}</strong>
-                    </div>
-                  </div>
-                  <div className="pt-1 flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={handleSimulateCall}
-                      disabled={isPlacingCall}
-                      className="px-3 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-                    >
-                      <PhoneCall className="w-3.5 h-3.5" />
-                      <span>Simulate In-App Voice Test Call</span>
-                    </button>
-                    <a
-                      href="https://console.twilio.com/us1/develop/phone-numbers/manage/verified"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-bold transition inline-flex items-center gap-1"
-                    >
-                      <span>Verify in Twilio</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
+            {testTextResult && (
+              <div className={`p-3 rounded-2xl text-xs font-mono border ${
+                testTextResult.ok
+                  ? 'bg-lime-500/10 border-lime-500/30 text-lime-300'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+              }`}>
+                <div className="font-bold flex items-start gap-1.5">
+                  {testTextResult.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                  <span>{testTextResult.message}</span>
                 </div>
-              ) : (
-                <div className={`p-3 rounded-2xl text-xs font-mono border ${
-                  testCallResult.success
-                    ? 'bg-lime-500/10 border-lime-500/30 text-lime-300'
-                    : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                }`}>
-                  <div className="font-bold flex items-center gap-1.5">
-                    {testCallResult.success ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                    <span>{testCallResult.message || testCallResult.error}</span>
-                  </div>
-                  {testCallResult.callSid && (
-                    <div className="text-[10.5px] mt-1 text-zinc-400">
-                      Twilio Call SID: <span className="text-white">{testCallResult.callSid}</span>
-                    </div>
-                  )}
-                </div>
-              )
+              </div>
             )}
           </div>
         )}
 
-        {/* Tab 4: Step-by-Step Twilio Setup Guide */}
+        {/* Tab 3: Vonage setup guide */}
         {activeTab === 'instructions' && (
           <div className="space-y-3 text-xs text-zinc-300 font-sans leading-relaxed max-h-72 overflow-y-auto pr-1">
             <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
               <div className="font-bold text-white flex items-center gap-1.5">
                 <span className="w-5 h-5 rounded-full bg-lime-500/20 text-lime-400 text-[11px] font-mono flex items-center justify-center font-bold">1</span>
-                <span>Get a Phone Number on Twilio</span>
+                <span>Create a Vonage API account</span>
               </div>
               <p className="text-[11px] text-zinc-400 pl-6.5">
-                Go to <a href="https://console.twilio.com" target="_blank" rel="noreferrer" className="text-lime-400 underline inline-flex items-center gap-0.5">Twilio Console <ExternalLink className="w-2.5 h-2.5" /></a>, buy or select an active US/International phone number capable of Voice and SMS.
+                Go to <a href="https://dashboard.nexmo.com" target="_blank" rel="noreferrer" className="text-lime-400 underline inline-flex items-center gap-0.5">Vonage Dashboard <ExternalLink className="w-2.5 h-2.5" /></a> and sign up.
+                Verify your email and your phone number — that number becomes your trial&rsquo;s registered number.
               </p>
             </div>
 
             <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
               <div className="font-bold text-white flex items-center gap-1.5">
                 <span className="w-5 h-5 rounded-full bg-lime-500/20 text-lime-400 text-[11px] font-mono flex items-center justify-center font-bold">2</span>
-                <span>Configure the Voice Webhook</span>
+                <span>Put the keys in Railway Variables (never in the app)</span>
               </div>
               <p className="text-[11px] text-zinc-400 pl-6.5">
-                In Twilio Phone Number settings under <strong>Voice Configuration</strong>:
-                <br />- Set <strong>"A Call Comes In"</strong> to <strong>Webhook</strong>
-                <br />- URL: <code className="text-lime-300 font-mono bg-black px-1 rounded">{webhookUrl}</code>
-                <br />- Method: <strong>HTTP POST</strong>
+                In the Vonage dashboard, find your API Key and API Secret. In Railway → your app service → Variables, set:{' '}
+                <code className="text-zinc-200 font-mono">TELEPHONY_PROVIDER=vonage</code>,{' '}
+                <code className="text-zinc-200 font-mono">VONAGE_API_KEY</code>,{' '}
+                <code className="text-zinc-200 font-mono">VONAGE_API_SECRET</code>, and{' '}
+                <code className="text-zinc-200 font-mono">VONAGE_FROM_NUMBER</code> (your Vonage number, digits only, no +).
+                Never type keys into the app.
               </p>
             </div>
 
             <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
               <div className="font-bold text-white flex items-center gap-1.5">
                 <span className="w-5 h-5 rounded-full bg-lime-500/20 text-lime-400 text-[11px] font-mono flex items-center justify-center font-bold">3</span>
-                <span>Set Secrets in AI Studio</span>
+                <span>Know the trial limits</span>
               </div>
               <p className="text-[11px] text-zinc-400 pl-6.5">
-                Add <code className="text-zinc-200 font-mono">TWILIO_ACCOUNT_SID</code>, <code className="text-zinc-200 font-mono">TWILIO_AUTH_TOKEN</code>, and <code className="text-zinc-200 font-mono">TWILIO_PHONE_NUMBER</code> into your environment secrets.
+                Trial texts only go to your registered number plus up to 4 verified numbers, and every text gets
+                [FREE SMS DEMO, TEST MESSAGE] added. Trial credit can&rsquo;t buy a number, so you need a Vonage
+                number on the account for the sender line. Voice needs no setup — calls happen inside the app
+                over the internet (LiveKit).
               </p>
             </div>
           </div>
@@ -663,7 +365,7 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
         <div className="pt-2 border-t border-zinc-900 flex items-center justify-between">
           <div className="text-[11px] text-zinc-500 font-mono flex items-center gap-1">
             <Radio className="w-3.5 h-3.5 text-lime-400" />
-            <span>PSTN Telephony Gateway Active</span>
+            <span>Vonage SMS • LiveKit Voice • No PSTN carrier</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -673,15 +375,6 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
               className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 text-xs font-semibold cursor-pointer"
             >
               Close
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-lime-500/20"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{isSaving ? 'Saving...' : 'Save Configuration'}</span>
             </button>
           </div>
         </div>
