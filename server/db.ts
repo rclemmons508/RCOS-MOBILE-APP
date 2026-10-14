@@ -9,7 +9,10 @@ import {
   VoicemailRecord,
   TelephonyConfig,
   PhoneCall,
-  AgentInboxMessage
+  AgentInboxMessage,
+  TeamMessage,
+  TeamInvite,
+  BusinessMember
 } from '../src/types';
 import { INDUSTRY_PRESETS } from '../src/data/presets';
 
@@ -29,6 +32,8 @@ interface DatabaseSchema {
   telephonyConfig?: TelephonyConfig;
   calls?: PhoneCall[];
   agentMessages?: AgentInboxMessage[];
+  teamMessages?: TeamMessage[];
+  teamInvites?: TeamInvite[];
 }
 
 export function getDefaultTelephonyConfig(): TelephonyConfig {
@@ -77,7 +82,9 @@ function ensureDb(): DatabaseSchema {
       actions: [],
       chatMessages: [],
       jobPacks: initialJobPacks,
-      voicemails: []
+      voicemails: [],
+      teamMessages: [],
+      teamInvites: []
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(emptyDb, null, 2), 'utf-8');
     return emptyDb;
@@ -87,6 +94,8 @@ function ensureDb(): DatabaseSchema {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed.voicemails) parsed.voicemails = [];
+    if (!parsed.teamMessages) parsed.teamMessages = [];
+    if (!parsed.teamInvites) parsed.teamInvites = [];
     return parsed;
   } catch (err) {
     console.error('Failed to read db file, initializing clean DB', err);
@@ -96,7 +105,9 @@ function ensureDb(): DatabaseSchema {
       actions: [],
       chatMessages: [],
       jobPacks: [],
-      voicemails: []
+      voicemails: [],
+      teamMessages: [],
+      teamInvites: []
     };
     return fallbackDb;
   }
@@ -144,6 +155,8 @@ export const db = {
     data.requests = data.requests.filter(r => r.businessId !== id);
     data.actions = data.actions.filter(a => a.businessId !== id);
     data.chatMessages = data.chatMessages.filter(m => m.businessId !== id);
+    if (data.teamMessages) data.teamMessages = data.teamMessages.filter(m => m.businessId !== id);
+    if (data.teamInvites) data.teamInvites = data.teamInvites.filter(i => i.businessId !== id);
     saveDb(data);
     return data.businesses.length < initLen;
   },
@@ -167,6 +180,12 @@ export const db = {
     data.chatMessages = data.chatMessages.filter(m => !targets.has(m.businessId ?? ''));
     if (data.agentMessages) {
       data.agentMessages = data.agentMessages.filter(m => !targets.has(m.businessId));
+    }
+    if (data.teamMessages) {
+      data.teamMessages = data.teamMessages.filter(m => !targets.has(m.businessId));
+    }
+    if (data.teamInvites) {
+      data.teamInvites = data.teamInvites.filter(i => !targets.has(i.businessId));
     }
     // Unattributed records: only safe to clear when nothing remains.
     if (data.businesses.length === 0) {
@@ -381,5 +400,87 @@ export const db = {
     Object.assign(msg, patch);
     saveDb(data);
     return msg;
+  },
+
+  // ---- Team (human-to-human) ----
+
+  // Team chat messages. Capped per business so the chat can never grow
+  // the database without bound — oldest messages drop off first.
+  getTeamMessages(businessId: string): TeamMessage[] {
+    const data = ensureDb();
+    return (data.teamMessages || [])
+      .filter(m => m.businessId === businessId)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  },
+
+  saveTeamMessage(msg: TeamMessage): TeamMessage {
+    const data = ensureDb();
+    if (!data.teamMessages) data.teamMessages = [];
+    data.teamMessages.push(msg);
+    const MAX_PER_BUSINESS = 500;
+    const forBiz = data.teamMessages.filter(m => m.businessId === msg.businessId);
+    if (forBiz.length > MAX_PER_BUSINESS) {
+      const keep = new Set(forBiz.slice(forBiz.length - MAX_PER_BUSINESS).map(m => m.id));
+      data.teamMessages = data.teamMessages.filter(m => m.businessId !== msg.businessId || keep.has(m.id));
+    }
+    saveDb(data);
+    return msg;
+  },
+
+  // Team invites. Kept in their own store (NOT on the business record) so
+  // the codes are never exposed by the plain business fetch.
+  getTeamInvites(businessId: string): TeamInvite[] {
+    const data = ensureDb();
+    return (data.teamInvites || [])
+      .filter(i => i.businessId === businessId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getTeamInviteByCode(code: string): TeamInvite | undefined {
+    const data = ensureDb();
+    return (data.teamInvites || []).find(i => i.code === code);
+  },
+
+  saveTeamInvite(invite: TeamInvite): TeamInvite {
+    const data = ensureDb();
+    if (!data.teamInvites) data.teamInvites = [];
+    const idx = data.teamInvites.findIndex(i => i.code === invite.code);
+    if (idx >= 0) data.teamInvites[idx] = invite;
+    else data.teamInvites.push(invite);
+    saveDb(data);
+    return invite;
+  },
+
+  // Add or refresh one team member (matched by email — the stable identity
+  // across devices). Returns the business, or undefined when not found.
+  addBusinessMember(businessId: string, member: BusinessMember): BusinessAccount | undefined {
+    const data = ensureDb();
+    const biz = data.businesses.find(b => b.id === businessId);
+    if (!biz) return undefined;
+    if (!biz.members) biz.members = [];
+    const email = member.email.toLowerCase();
+    const idx = biz.members.findIndex(m => m.email.toLowerCase() === email);
+    if (idx >= 0) {
+      biz.members[idx] = { ...biz.members[idx], ...member, email: biz.members[idx].email };
+    } else {
+      biz.members.push(member);
+    }
+    biz.updatedAt = new Date().toISOString();
+    saveDb(data);
+    return biz;
+  },
+
+  // Remove one team member by email. Historical chat messages stay, with
+  // the removed person's name on them. Returns true when someone was removed.
+  removeBusinessMember(businessId: string, email: string): boolean {
+    const data = ensureDb();
+    const biz = data.businesses.find(b => b.id === businessId);
+    if (!biz || !biz.members) return false;
+    const before = biz.members.length;
+    biz.members = biz.members.filter(m => m.email.toLowerCase() !== email.toLowerCase());
+    if (biz.members.length === before) return false;
+    biz.updatedAt = new Date().toISOString();
+    saveDb(data);
+    return true;
   }
 };
