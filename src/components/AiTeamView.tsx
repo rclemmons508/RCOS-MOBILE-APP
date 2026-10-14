@@ -59,6 +59,10 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   business,
   onUpdateBusiness
 }) => {
+  // activeEmployees may be missing on a stripped/restored business record
+  // (e.g. the localStorage copy drops it) - default to all-active
+  // instead of crashing on the first employee read.
+  const activeEmployees = business?.activeEmployees ?? {};
   const [employees, setEmployees] = useState<CustomAIEmployee[]>(() => 
     employeeCustomizationService.getEmployees()
   );
@@ -99,7 +103,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
 
   // Customization Form Local State
   const selectedEmployee = industryEmployees.find(e => e.id === selectedEmployeeId) || industryEmployees[0] || employees[0];
-  const isActive = business.activeEmployees[selectedEmployee.id] !== false;
+  const isActive = activeEmployees[selectedEmployee.id] !== false;
 
   const [editName, setEditName] = useState(selectedEmployee.name);
   const [editRoleTitle, setEditRoleTitle] = useState(selectedEmployee.roleTitle);
@@ -143,8 +147,8 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   // Toggle active employee
   const handleToggleEmployee = async (empId: string) => {
     await haptic.selection();
-    const currentStatus = business.activeEmployees[empId] !== false;
-    const updatedEmployees = { ...business.activeEmployees, [empId]: !currentStatus };
+    const currentStatus = activeEmployees[empId] !== false;
+    const updatedEmployees = { ...activeEmployees, [empId]: !currentStatus };
     const updatedBiz = { ...business, activeEmployees: updatedEmployees };
 
     try {
@@ -270,7 +274,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               <span>AI Assistants for {activePreset.name}</span>
             </h2>
             <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-bold">
-              {industryEmployees.filter(e => business.activeEmployees[e.id] !== false).length} Active
+              {industryEmployees.filter(e => activeEmployees[e.id] !== false).length} Active
             </span>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
@@ -298,7 +302,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
         <div className="lg:col-span-5 space-y-2 max-h-[660px] overflow-y-auto pr-1">
           {industryEmployees.map((emp) => {
             const isSelected = emp.id === selectedEmployeeId;
-            const empActive = business.activeEmployees[emp.id] !== false;
+            const empActive = activeEmployees[emp.id] !== false;
 
             return (
               <div
