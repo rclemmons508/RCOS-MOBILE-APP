@@ -1,4 +1,5 @@
 import { apiFetch } from '../lib/api';
+import { BusinessAccount } from '../types';
 import { firestoreService } from './firestoreService';
 import { biometricService } from './biometricService';
 import { authService } from './authService';
@@ -9,6 +10,8 @@ import { setCachedAccessToken } from '../lib/gmail';
 export interface DeleteAccountResult {
   deletedBusinessIds: string[];
   alreadyDeleted: boolean;
+  /** True when the deleter was a team member: they left the team instead of wiping the company. */
+  leftTeam?: boolean;
 }
 
 /** True when Firebase refused because the sign-in is too old. */
@@ -17,7 +20,10 @@ export function isReauthRequired(err: unknown): boolean {
 }
 
 /**
- * Delete the owner's account and all data, in this order:
+ * Delete the owner's account and all data, in this order.
+ * Team members get a different path: deleting THEIR account removes them
+ * from the team + deletes their login, but the company's business and
+ * its data stay — they belong to the company, not the member.
  *   0. Password confirmation — the typed password must match the saved
  *      login password (local email/password accounts), or Firebase is
  *      re-authenticated with it (Firebase email/password accounts).
@@ -87,10 +93,39 @@ export async function deleteAccount(
   }
   // Google-only Firebase accounts need no password; step 3 deletes the Firebase user directly.
 
+  // Membership check: a team member deletes THEIR account, not the whole
+  // company. Decided here from the server's roster (not from local state,
+  // which could be stale) so a member can never wipe the business by
+  // reaching the owner path below.
+  let isTeamMember = false;
+  if (businessId) {
+    try {
+      const biz = await apiFetch<BusinessAccount>(`/api/business/${encodeURIComponent(businessId)}`);
+      const members = biz?.members || [];
+      if (members.length > 0) {
+        const me = members.find(m => m.email.toLowerCase() === email.toLowerCase());
+        isTeamMember = !!me && me.role === 'member';
+      }
+    } catch {
+      // Business fetch failed (offline / already gone). Fall through to
+      // the owner path, which treats a missing business as already deleted.
+    }
+  }
+
   // 1. Server first. Throws on failure — nothing local is touched.
   let deletedBusinessIds: string[] = [];
   let alreadyDeleted = false;
-  if (businessId) {
+  let leftTeam = false;
+  if (isTeamMember) {
+    // Leave the team — the business and its data stay for the company.
+    await apiFetch(`/api/business/${encodeURIComponent(businessId)}/team/leave`, {
+      method: 'POST',
+      headers: { 'X-User-Email': email },
+      body: JSON.stringify({ requesterEmail: email })
+    });
+    leftTeam = true;
+    alreadyDeleted = true; // nothing business-side left to remove for this account
+  } else if (businessId) {
     const res = await apiFetch<{ ok: boolean; deletedBusinessIds?: string[]; alreadyDeleted?: boolean }>(
       `/api/business/${encodeURIComponent(businessId)}/delete-account`,
       { method: 'POST', body: JSON.stringify({ confirm: 'DELETE' }) }
@@ -108,7 +143,8 @@ export async function deleteAccount(
   // Always include the requested business id (not just the ids the server
   // reported) so a retry after a Firestore failure still removes the rest.
   const firestoreTargets = Array.from(new Set([businessId, ...deletedBusinessIds].filter(Boolean)));
-  for (const id of firestoreTargets) {
+  // Members never touch the company's Firestore records.
+  for (const id of leftTeam ? [] : firestoreTargets) {
     try {
       await firestoreService.deleteBusinessData(id);
     } catch (e) {
@@ -141,7 +177,7 @@ export async function deleteAccount(
   // 5. Local data — only now that every step is verified.
   wipeLocalData();
 
-  return { deletedBusinessIds, alreadyDeleted };
+  return { deletedBusinessIds, alreadyDeleted, leftTeam };
 }
 
 /** Remove biometrics, cached tokens, and ALL local/session storage. */
