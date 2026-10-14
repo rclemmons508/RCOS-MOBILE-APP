@@ -1536,6 +1536,7 @@ export default function App() {
               onSimulateCall={handleSimulateInboundCall}
               messages={messages}
               currentUser={currentUser}
+              businessId={businessAccount?.id ?? ''}
               onSendMessage={(text) => {
                 const newMessage = {
                   id: 'msg-' + Date.now(),
