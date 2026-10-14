@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion, BusinessAccount } from '../../types';
+import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion, BusinessAccount, BusinessMember, TeamInvite } from '../../types';
 import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
@@ -11,6 +11,8 @@ import { employeeCustomizationService, CustomAIEmployee } from '../../services/e
 import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
 import { haptic } from '../../utils/haptics';
 import { deleteAccount, isReauthRequired } from '../../services/accountDeletionService';
+import { teamService } from '../../services/teamService';
+import { apiFetch } from '../../lib/api';
 import { auth } from '../../lib/firebase';
 import { biometricService } from '../../services/biometricService';
 import { DEFAULT_PROFILE_PICTURES, defaultPictureDataUrl, downscaleImageFile, resolveProfilePicture } from '../../utils/profilePicture';
@@ -49,6 +51,9 @@ import {
   ArrowRight,
   X,
   History,
+  MessageSquare,
+  Copy,
+  UserPlus,
 } from 'lucide-react';
 
  /** Values from the Settings → My Profile editor. */
@@ -95,6 +100,10 @@ interface SettingsTabProps {
   proactiveSuggestion?: IndustryOptimizationSuggestion | null;
   onReviewSuggestion?: () => void;
   onDismissSuggestion?: () => void;
+  /** Open the Team Chat screen. */
+  onOpenTeamChat?: () => void;
+  /** Leave the team (members only) — the app signs the user out after. */
+  onLeaveTeam?: () => Promise<void>;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -133,6 +142,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   proactiveSuggestion,
   onReviewSuggestion,
   onDismissSuggestion,
+  onOpenTeamChat,
+  onLeaveTeam,
 }) => {
   // Navigation: 3 clean client-facing sections
   const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>('user');
@@ -264,6 +275,116 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteDeleting, setDeleteDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // ---- Team (people on this company account) ----
+  const [teamMembers, setTeamMembers] = useState<BusinessMember[]>([]);
+  const [teamInvites, setTeamInvites] = useState<TeamInvite[]>([]);
+  const [teamIsOwner, setTeamIsOwner] = useState(true);
+  const [teamError, setTeamError] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteCreated, setInviteCreated] = useState<TeamInvite | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<string | null>(null);
+  const [leavingTeam, setLeavingTeam] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+  const teamBackfilledRef = useRef(false);
+
+  const loadTeam = async () => {
+    if (!businessId || !currentUser?.email) return;
+    try {
+      const roster = await teamService.getTeam(businessId, currentUser.email);
+      setTeamMembers(roster.members || []);
+      setTeamInvites(roster.invites || []);
+      setTeamIsOwner(roster.isOwner);
+      // A company created before teams existed has no member list yet.
+      // The first time its owner opens Team, record them as the owner so
+      // invites work. Members always arrive with a list, so this only
+      // ever runs for the creator.
+      if ((roster.members || []).length === 0 && !teamBackfilledRef.current) {
+        teamBackfilledRef.current = true;
+        const ownerMember: BusinessMember = {
+          userId: currentUser.id,
+          email: currentUser.email,
+          name: currentUser.fullName,
+          role: 'owner',
+          avatar: currentUser.avatar,
+          joinedAt: new Date().toISOString()
+        };
+        await apiFetch(`/api/business/${businessId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ members: [ownerMember] })
+        }).catch(() => null);
+        setTeamMembers([ownerMember]);
+        setTeamIsOwner(true);
+      }
+    } catch (e: any) {
+      setTeamError(e?.message || 'Could not load the team.');
+    }
+  };
+
+  useEffect(() => {
+    loadTeam();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
+
+  const handleCreateInvite = async () => {
+    if (!businessId || !currentUser?.email) return;
+    setInviteBusy(true);
+    setTeamError(null);
+    setInviteCreated(null);
+    setCopiedCode(false);
+    try {
+      const invite = await teamService.createInvite(businessId, currentUser.email, inviteEmail.trim());
+      setInviteCreated(invite);
+      setInviteEmail('');
+      await loadTeam();
+    } catch (e: any) {
+      setTeamError(e?.message || 'Could not create that invite.');
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const handleCopyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(true);
+    } catch { /* clipboard unavailable — the code is shown on screen */ }
+  };
+
+  const handleRevokeInvite = async (code: string) => {
+    if (!businessId || !currentUser?.email) return;
+    try {
+      await teamService.revokeInvite(businessId, currentUser.email, code);
+      await loadTeam();
+    } catch (e: any) {
+      setTeamError(e?.message || 'Could not cancel that invite.');
+    }
+  };
+
+  const handleRemoveMember = async (memberEmail: string) => {
+    if (!businessId || !currentUser?.email) return;
+    try {
+      await teamService.removeMember(businessId, currentUser.email, memberEmail);
+      setRemoveTarget(null);
+      await loadTeam();
+    } catch (e: any) {
+      setTeamError(e?.message || 'Could not remove that person.');
+    }
+  };
+
+  const handleLeaveTeam = async () => {
+    if (!onLeaveTeam) return;
+    setLeavingTeam(true);
+    setLeaveError(null);
+    try {
+      await onLeaveTeam();
+    } catch (e: any) {
+      setLeaveError(e?.message || 'Could not leave the team.');
+      setLeavingTeam(false);
+    }
+  };
   // Google-only sign-ins have no password, so no password field is shown for them.
   // Everyone else must type their account password — it is checked before
   // anything is deleted, so a deleted account can never come back.
@@ -700,6 +821,161 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 />
               </label>
             </div>
+          </div>
+
+          {/* Team — people on this company account */}
+          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-lime-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Your Team</h3>
+              </div>
+              {onOpenTeamChat && businessId && (
+                <button
+                  type="button"
+                  onClick={onOpenTeamChat}
+                  className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Open Team Chat</span>
+                </button>
+              )}
+            </div>
+
+            {!businessId && (
+              <p className="text-xs text-zinc-400">Finish setting up your company first, then you can invite your team.</p>
+            )}
+            {teamError && (
+              <p className="text-xs text-red-300">{teamError}</p>
+            )}
+
+            {/* Member list */}
+            {teamMembers.length > 0 && (
+              <div className="space-y-1.5">
+                {teamMembers.map(m => {
+                  const isMe = m.email.toLowerCase() === (currentUser?.email || '').toLowerCase();
+                  return (
+                    <div key={m.email.toLowerCase()} className="flex items-center gap-2.5 p-2 rounded-xl bg-zinc-900/60 border border-zinc-800">
+                      <div className="w-8 h-8 rounded-full bg-lime-500/20 text-lime-300 border border-lime-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+                        {(m.name || m.email || '?').trim().charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-white truncate">
+                          {m.name} {isMe && <span className="text-lime-400">(You)</span>}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 truncate">{m.email}</div>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border shrink-0 ${m.role === 'owner' ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}`}>
+                        {m.role === 'owner' ? 'Owner' : 'Team member'}
+                      </span>
+                      {teamIsOwner && !isMe && m.role !== 'owner' && (
+                        removeTarget === m.email.toLowerCase() ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMember(m.email)}
+                            className="px-2 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                          >
+                            Remove?
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setRemoveTarget(m.email.toLowerCase())}
+                            className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 text-[11px] font-bold shrink-0 cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Owner: invite form */}
+            {teamIsOwner && businessId && (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5 text-lime-400" />
+                  <span>Invite someone to your team</span>
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="Their email (optional — leave empty for anyone with the code)"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white placeholder:text-zinc-500 outline-none focus:border-lime-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateInvite}
+                    disabled={inviteBusy}
+                    className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-bold text-white transition cursor-pointer shrink-0"
+                  >
+                    {inviteBusy ? 'Making…' : 'Make invite code'}
+                  </button>
+                </div>
+                {inviteCreated && (
+                  <div className="p-3 rounded-xl bg-lime-500/10 border border-lime-500/30 space-y-1.5">
+                    <p className="text-xs text-zinc-300">Share this code with your team member. They enter it on the Join a Company screen.</p>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-extrabold text-lg tracking-[0.25em] text-lime-300">{inviteCreated.code}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCode(inviteCreated.code)}
+                        className="px-2 py-1 rounded-lg bg-zinc-800 text-xs font-bold text-white flex items-center gap-1 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedCode ? 'Copied!' : 'Copy'}</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-zinc-400">
+                      {inviteCreated.email ? `Only ${inviteCreated.email} can use it. ` : ''}It works for 7 days and can only be used once.
+                    </p>
+                  </div>
+                )}
+                {teamInvites.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-bold text-zinc-400">Waiting invites</p>
+                    {teamInvites.map(inv => (
+                      <div key={inv.code} className="flex items-center gap-2 p-2 rounded-xl bg-zinc-900/60 border border-zinc-800">
+                        <span className="font-mono font-bold text-xs text-white tracking-widest">{inv.code}</span>
+                        <span className="text-[11px] text-zinc-400 flex-1 truncate">{inv.email || 'Anyone with the code'}</span>
+                        <span className="text-[10px] text-zinc-500 shrink-0">Expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRevokeInvite(inv.code)}
+                          className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 text-[11px] font-bold shrink-0 cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Member: leave the team */}
+            {!teamIsOwner && businessId && onLeaveTeam && (
+              <div className="pt-1 space-y-2">
+                <p className="text-xs text-zinc-400">You are on this team as a team member. Leaving removes you from the company and signs you out.</p>
+                {leaveError && <p className="text-xs text-red-300">{leaveError}</p>}
+                <button
+                  type="button"
+                  onClick={handleLeaveTeam}
+                  disabled={leavingTeam}
+                  className="px-3 py-2 rounded-xl bg-transparent hover:bg-red-500/10 border border-red-800 text-xs font-bold text-red-400 transition cursor-pointer"
+                >
+                  {leavingTeam ? 'Leaving…' : 'Leave team'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Biometric Access & Device Keystore */}
@@ -1447,19 +1723,34 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         {deleteStep === 'warn' && (
           <>
             <p className="text-sm text-white font-bold">This will permanently delete:</p>
-            <ul className="text-xs text-zinc-300 list-disc pl-5 space-y-1">
-              <li>Your login and profile</li>
-              <li>Your business profile</li>
-              <li>Your customers and customer requests</li>
-              <li>Your jobs, quotes, invoices, and approvals</li>
-              <li>Your chat history and Agent Inbox messages</li>
-              <li>Your voicemails and call history</li>
-              <li>Your Gmail connection</li>
-              <li>Your saved settings, including fingerprint login</li>
-            </ul>
-            <p className="text-xs text-red-300 font-semibold">
-              This cannot be undone. Once you delete your account, everything above is gone for good.
-            </p>
+            {teamIsOwner ? (
+              <>
+                <ul className="text-xs text-zinc-300 list-disc pl-5 space-y-1">
+                  <li>Your login and profile</li>
+                  <li>Your business profile</li>
+                  <li>Your customers and customer requests</li>
+                  <li>Your jobs, quotes, invoices, and approvals</li>
+                  <li>Your chat history and Agent Inbox messages</li>
+                  <li>Your voicemails and call history</li>
+                  <li>Your Gmail connection</li>
+                  <li>Your saved settings, including fingerprint login</li>
+                </ul>
+                <p className="text-xs text-red-300 font-semibold">
+                  This cannot be undone. Once you delete your account, everything above is gone for good.
+                </p>
+              </>
+            ) : (
+              <>
+                <ul className="text-xs text-zinc-300 list-disc pl-5 space-y-1">
+                  <li>Your login and profile</li>
+                  <li>Your spot on this team — you will be removed from the company</li>
+                  <li>Your saved settings, including fingerprint login</li>
+                </ul>
+                <p className="text-xs text-red-300 font-semibold">
+                  This cannot be undone. The company's jobs, customers, and other data stay — they belong to the company.
+                </p>
+              </>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"
