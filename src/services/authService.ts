@@ -254,6 +254,7 @@ class AuthService {
     backupPin?: string;
     preferences?: Partial<UserPreferences>;
     enableBiometrics?: boolean;
+    businessId?: string;
   }): Promise<User> {
     const cleanEmail = (data.email || '').trim().toLowerCase();
     if (!cleanEmail) throw new Error('Email is required.');
@@ -272,6 +273,7 @@ class AuthService {
       role: data.role || 'Operations Lead',
       avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(cleanEmail)}`,
       organization: data.organization?.trim() || '',
+      businessId: data.businessId,
       authenticated: true,
       biometricsEnabled: data.enableBiometrics ?? true,
       lastLogin: 'Just now',
