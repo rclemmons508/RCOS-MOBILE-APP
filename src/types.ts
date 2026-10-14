@@ -363,6 +363,23 @@ export interface TeamMessage {
   timestamp: string;
 }
 
+/**
+ * A website demo-request that arrived while NO business existed yet.
+ * Queued instead of lost (the old code answered 503 and dropped the lead);
+ * flushed into Customer Requests as soon as a business is created.
+ */
+export interface PendingIntake {
+  id: string;
+  name: string;
+  company: string;
+  industry: string;
+  message: string;
+  phone: string;
+  email: string;
+  source: 'website';
+  createdAt: string;
+}
+
 export interface AutomationTask {
   id: string;
   name: string;
