@@ -61,7 +61,7 @@ app.use((req: Request, res: Response, next) => {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-User-Email');
   } else if (!origin) {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
@@ -71,7 +71,7 @@ app.use((req: Request, res: Response, next) => {
   if (req.path.startsWith('/api/public/')) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With, X-User-Email');
   }
 
   if (req.method === 'OPTIONS') {
