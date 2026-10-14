@@ -17,7 +17,8 @@ import {
   VoicemailRecord,
   BusinessMember,
   TeamInvite,
-  TeamMessage
+  TeamMessage,
+  PendingIntake
 } from './src/types';
 import { INDUSTRY_PRESETS } from './src/data/presets';
 import { AI_EMPLOYEES } from './src/data/employees';
@@ -294,6 +295,38 @@ app.get('/api/public/business/:id', (req: Request, res: Response) => {
   });
 });
 
+// Build the CustomerRequest a website demo submission becomes. Shared by the
+// live demo-request handler and the pending-intake flush so both produce the
+// exact same record shape (Demo Request, SLA badge, description lines).
+function demoSubmissionToRequest(businessId: string, f: {
+  name: string; company: string; industry: string; message: string;
+  phone: string; email: string; createdAt: string;
+}): CustomerRequest {
+  const lines = ['Demo request from the RC Solutions website.'];
+  if (f.company) lines.push('Company: ' + f.company);
+  if (f.industry) lines.push('Industry: ' + f.industry);
+  if (f.message) lines.push('What they want to automate: ' + f.message);
+  return {
+    id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    businessId,
+    customerName: f.name,
+    customerPhone: f.phone,
+    customerEmail: f.email,
+    preferredContact: 'phone',
+    serviceLocation: 'Website demo request',
+    serviceType: 'Demo Request',
+    description: lines.join('\n').slice(0, 2000),
+    urgency: 'routine',
+    preferredDateTime: 'Flexible / Next Available',
+    flexibility: 'Standard business hours',
+    specialInstructions: '',
+    stage: 'Intake',
+    status: 'in_progress',
+    createdAt: f.createdAt,
+    updatedAt: new Date().toISOString()
+  };
+}
+
 // Public demo-request intake for the RC Solutions website.
 // Gate-exempt + CORS-open by design (no account needed to ask for a demo).
 // Saved as a CustomerRequest on the operator's first business, so it shows up in
@@ -305,46 +338,41 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
   if (typeof b.website === 'string' && b.website.trim().length > 0) {
     return res.status(201).json({ ok: true });
   }
-  const name = (b.name || '').toString().trim();
+  const name = (b.name || '').toString().trim().slice(0, 100);
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
-
-  const businesses = db.getAllBusinesses();
-  if (businesses.length === 0) {
-    return res.status(503).json({ error: 'Service not ready yet — please call 470-783-2596.' });
-  }
-  const business = businesses[0];
-
   const company = (b.businessName || '').toString().trim().slice(0, 120);
   const industry = (b.industry || '').toString().trim().slice(0, 80);
   const message = (b.message || '').toString().trim().slice(0, 2000);
-  const lines = ['Demo request from the RC Solutions website.'];
-  if (company) lines.push('Company: ' + company);
-  if (industry) lines.push('Industry: ' + industry);
-  if (message) lines.push('What they want to automate: ' + message);
+  const phone = (b.phone || '').toString().slice(0, 30);
+  const email = (b.email || '').toString().slice(0, 100);
 
-  const newRequest: CustomerRequest = {
-    id: `req_${Date.now()}`,
-    businessId: business.id,
-    customerName: name.slice(0, 100),
-    customerPhone: (b.phone || '').toString().slice(0, 30),
-    customerEmail: (b.email || '').toString().slice(0, 100),
-    preferredContact: 'phone',
-    serviceLocation: 'Website demo request',
-    serviceType: 'Demo Request',
-    description: lines.join('\n').slice(0, 2000),
-    urgency: 'routine',
-    preferredDateTime: 'Flexible / Next Available',
-    flexibility: 'Standard business hours',
-    specialInstructions: '',
-    stage: 'Intake',
-    status: 'in_progress',
+  const businesses = db.getAllBusinesses();
+  if (businesses.length === 0) {
+    // No business exists yet (e.g. right after an account reset) — queue the
+    // lead instead of losing it. It flushes into Customer Requests as soon as
+    // a business is created, and the website still shows its success page.
+    const pending: PendingIntake = {
+      id: `pend_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      company,
+      industry,
+      message,
+      phone,
+      email,
+      source: 'website',
+      createdAt: new Date().toISOString(),
+    };
+    const queued = db.savePendingIntake(pending);
+    return res.status(201).json({ ok: true, id: queued.id });
+  }
+  const business = businesses[0];
+
+  const saved = db.saveRequest(demoSubmissionToRequest(business.id, {
+    name, company, industry, message, phone, email,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  const saved = db.saveRequest(newRequest);
+  }));
   res.status(201).json({ ok: true, id: saved.id });
 });
 
@@ -514,6 +542,22 @@ app.post('/api/businesses', (req: Request, res: Response) => {
   };
 
   const saved = db.saveBusiness(newBusiness);
+
+  // Flush any demo leads that arrived while no business existed. They were
+  // queued instead of lost; they now become Customer Requests on this business.
+  const pending = db.takePendingIntake();
+  for (const p of pending) {
+    db.saveRequest(demoSubmissionToRequest(saved.id, {
+      name: p.name,
+      company: p.company,
+      industry: p.industry,
+      message: p.message,
+      phone: p.phone,
+      email: p.email,
+      createdAt: p.createdAt,
+    }));
+  }
+
   res.status(201).json(saved);
 });
 
