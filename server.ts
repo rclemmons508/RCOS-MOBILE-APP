@@ -14,7 +14,10 @@ import {
   ChatMessage, 
   JobPack,
   StarterDraft,
-  VoicemailRecord
+  VoicemailRecord,
+  BusinessMember,
+  TeamInvite,
+  TeamMessage
 } from './src/types';
 import { INDUSTRY_PRESETS } from './src/data/presets';
 import { AI_EMPLOYEES } from './src/data/employees';
@@ -207,6 +210,11 @@ app.use('/api', (req: Request, res: Response, next) => {
   if (req.method === 'POST' && /^\/business\/[^/]+\/requests$/.test(req.path)) return next();
   if (req.method === 'GET' && /^\/public\/business\/[^/]+$/.test(req.path)) return next();
   if (req.method === 'POST' && req.path === '/public/demo-request') return next();
+  // Joining a company happens BEFORE sign-in (the joiner has no account
+  // yet), so it is public by design like the demo form. The invite code
+  // itself is the credential — and an invite locked to an email only
+  // works for that email.
+  if (req.method === 'POST' && req.path === '/team/join') return next();
   // The voice-agent worker authenticates with VOICE_AGENT_SECRET, not a user token.
   if (req.path === '/voice/routing-log') return next();
   // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
@@ -470,6 +478,12 @@ app.post('/api/businesses', (req: Request, res: Response) => {
   const data = req.body;
   const newBusiness: BusinessAccount = {
     id: data.id || `biz_${Date.now()}`,
+    ownerId: typeof data.ownerId === 'string' ? data.ownerId : undefined,
+    members: Array.isArray(data.members) ? data.members : undefined,
+    contactName: typeof data.contactName === 'string' ? data.contactName : undefined,
+    contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : undefined,
+    contactEmail: typeof data.contactEmail === 'string' ? data.contactEmail : undefined,
+    profilePicture: typeof data.profilePicture === 'string' ? data.profilePicture : undefined,
     name: data.name || 'My Business',
     industry: data.industry || 'general_small_business',
     size: data.size || 'Solo Operator (1)',
@@ -524,6 +538,233 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
 app.delete('/api/business/:id', (req: Request, res: Response) => {
   const deleted = db.deleteBusiness(req.params.id);
   res.json({ success: deleted });
+});
+
+// ---- Team (human-to-human) ----
+// Who is asking? When the Firebase login gate is ON, req.user comes from
+// the verified token. While the gate is OFF (current state), the app
+// sends its login email in the X-User-Email header — the same trust
+// level as every other /api route until the gate is fixed.
+function teamRequesterEmail(req: Request): string {
+  const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
+  const fromToken = (caller?.email || '').trim().toLowerCase();
+  if (fromToken) return fromToken;
+  const fromHeader = String(req.headers['x-user-email'] || '').trim().toLowerCase();
+  if (fromHeader) return fromHeader;
+  const fromBody = String(((req.body as any)?.requesterEmail || '') as string).trim().toLowerCase();
+  return fromBody;
+}
+
+function teamMemberFor(business: BusinessAccount, email: string): BusinessMember | undefined {
+  const clean = (email || '').toLowerCase();
+  if (!clean) return undefined;
+  return (business.members || []).find(m => m.email.toLowerCase() === clean);
+}
+
+function teamIsOwner(business: BusinessAccount, email: string): boolean {
+  return teamMemberFor(business, email)?.role === 'owner';
+}
+
+// Invite codes: 8 characters, letters + digits, with the easily
+// confused 0/O/1/l/I left out so a code read off a screen still works.
+const INVITE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function makeInviteCode(): string {
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += INVITE_ALPHABET[Math.floor(Math.random() * INVITE_ALPHABET.length)];
+  }
+  return code;
+}
+
+const teamInviteLimiter = createRateLimiter(10, 60000); // 10 invite/join attempts / min per IP
+
+// Team roster for this business. Members see the roster; only the owner
+// also sees pending invites (the codes stay hidden from members).
+app.get('/api/business/:id/team', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found.' });
+  const email = teamRequesterEmail(req);
+  const me = teamMemberFor(business, email);
+  const hasMembers = (business.members || []).length > 0;
+  if (hasMembers && !me) {
+    return res.status(403).json({ error: 'Only people on this team can see the roster.' });
+  }
+  const owner = teamIsOwner(business, email) || !hasMembers;
+  const invites = owner
+    ? db.getTeamInvites(business.id).filter(i => !i.used && !i.revoked && new Date(i.expiresAt).getTime() > Date.now())
+    : [];
+  res.json({ businessId: business.id, businessName: business.name, members: business.members || [], invites, isOwner: owner });
+});
+
+// Owner creates an invite. `email` is optional: when set, only that
+// email can use the code; when empty, anyone with the code can join.
+app.post('/api/business/:id/team/invites', teamInviteLimiter, (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found.' });
+  const email = teamRequesterEmail(req);
+  const hasMembers = (business.members || []).length > 0;
+  if (hasMembers && !teamIsOwner(business, email)) {
+    return res.status(403).json({ error: 'Only the owner can invite people to the team.' });
+  }
+  const inviteEmail = String((req.body as any)?.email || '').trim().toLowerCase();
+  if (inviteEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail)) {
+    return res.status(400).json({ error: 'That invite email does not look like an email address.' });
+  }
+  let code = makeInviteCode();
+  for (let tries = 0; tries < 10 && db.getTeamInviteByCode(code); tries++) code = makeInviteCode();
+  const invite: TeamInvite = {
+    code,
+    businessId: business.id,
+    businessName: business.name,
+    email: inviteEmail || undefined,
+    role: 'member',
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    used: false,
+    revoked: false
+  };
+  db.saveTeamInvite(invite);
+  res.status(201).json({ invite });
+});
+
+// Owner cancels a pending invite.
+app.delete('/api/business/:id/team/invites/:code', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found.' });
+  const email = teamRequesterEmail(req);
+  const hasMembers = (business.members || []).length > 0;
+  if (hasMembers && !teamIsOwner(business, email)) {
+    return res.status(403).json({ error: 'Only the owner can cancel invites.' });
+  }
+  const invite = db.getTeamInviteByCode(req.params.code);
+  if (!invite || invite.businessId !== business.id) {
+    return res.status(404).json({ error: 'Invite not found.' });
+  }
+  db.saveTeamInvite({ ...invite, revoked: true });
+  res.json({ ok: true });
+});
+
+// Owner removes a member. The owner's own seat cannot be removed here —
+// the owner deletes the business instead. The removed person's old
+// chat messages stay, with their name on them.
+app.delete('/api/business/:id/team/members/:email', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found.' });
+  const email = teamRequesterEmail(req);
+  const hasMembers = (business.members || []).length > 0;
+  if (hasMembers && !teamIsOwner(business, email)) {
+    return res.status(403).json({ error: 'Only the owner can remove team members.' });
+  }
+  const target = decodeURIComponent(req.params.email).toLowerCase();
+  const targetMember = teamMemberFor(business, target);
+  if (!targetMember) return res.status(404).json({ error: 'That person is not on this team.' });
+  if (targetMember.role === 'owner') {
+    return res.status(400).json({ error: 'The owner cannot be removed. Delete the business instead.' });
+  }
+  db.removeBusinessMember(business.id, target);
+  res.json({ ok: true });
+});
+
+// A member leaves the team. The owner cannot leave their own business.
+app.post('/api/business/:id/team/leave', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found.' });
+  const email = teamRequesterEmail(req);
+  const me = teamMemberFor(business, email);
+  if (!me) return res.status(403).json({ error: 'You are not on this team.' });
+  if (me.role === 'owner') {
+    return res.status(400).json({ error: 'The owner cannot leave. Delete the business instead.' });
+  }
+  db.removeBusinessMember(business.id, email);
+  res.json({ ok: true });
+});
+
+// Join a company with an invite code. Public (gate-exempt) because the
+// joiner has no account yet. The server never sees passwords — the app
+// creates the local login itself after this succeeds.
+app.post('/api/team/join', teamInviteLimiter, (req: Request, res: Response) => {
+  const code = String((req.body as any)?.code || '').trim().toUpperCase();
+  const fullName = String((req.body as any)?.fullName || '').trim();
+  const email = String((req.body as any)?.email || '').trim().toLowerCase();
+  if (!code || !fullName || !email) {
+    return res.status(400).json({ error: 'Please enter the invite code, your name, and your email.' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'That email does not look like an email address.' });
+  }
+  const invite = db.getTeamInviteByCode(code);
+  if (!invite || invite.revoked || invite.used) {
+    return res.status(400).json({ error: 'That invite code is not valid. Ask the owner for a new one.' });
+  }
+  if (new Date(invite.expiresAt).getTime() <= Date.now()) {
+    return res.status(400).json({ error: 'That invite code has expired. Ask the owner for a new one.' });
+  }
+  if (invite.email && invite.email.toLowerCase() !== email) {
+    return res.status(400).json({ error: 'That invite was made for a different email address.' });
+  }
+  const business = db.getBusiness(invite.businessId);
+  if (!business) {
+    return res.status(404).json({ error: 'That company no longer exists.' });
+  }
+  const already = teamMemberFor(business, email);
+  if (already) {
+    return res.json({ business, alreadyMember: true });
+  }
+  db.saveTeamInvite({ ...invite, used: true, usedByEmail: email });
+  const updated = db.addBusinessMember(business.id, {
+    userId: `usr_${Date.now()}`,
+    email,
+    name: fullName,
+    role: invite.role,
+    joinedAt: new Date().toISOString()
+  });
+  if (!updated) {
+    return res.status(500).json({ error: 'Could not join that company. Please try again.' });
+  }
+  res.json({ business: updated, alreadyMember: false });
+});
+
+// Team chat history for this business (human-to-human only — the
+// AI-employee chat lives at /api/business/:id/chat and is untouched).
+app.get('/api/business/:id/team-messages', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found.' });
+  const email = teamRequesterEmail(req);
+  const hasMembers = (business.members || []).length > 0;
+  if (hasMembers && !teamMemberFor(business, email)) {
+    return res.status(403).json({ error: 'Only people on this team can read the team chat.' });
+  }
+  res.json(db.getTeamMessages(business.id));
+});
+
+// Send one team chat message.
+app.post('/api/business/:id/team-messages', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found.' });
+  const email = teamRequesterEmail(req);
+  const me = teamMemberFor(business, email);
+  const hasMembers = (business.members || []).length > 0;
+  if (hasMembers && !me) {
+    return res.status(403).json({ error: 'Only people on this team can send team messages.' });
+  }
+  const text = String((req.body as any)?.text || '').trim();
+  if (!text) return res.status(400).json({ error: 'Please type a message first.' });
+  if (text.length > 2000) {
+    return res.status(400).json({ error: 'That message is too long (2,000 characters max).' });
+  }
+  const senderName = String((req.body as any)?.senderName || me?.name || email || 'Team member').trim() || 'Team member';
+  const senderAvatar = typeof (req.body as any)?.senderAvatar === 'string' ? (req.body as any).senderAvatar : me?.avatar;
+  const msg: TeamMessage = {
+    id: `tm_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+    businessId: business.id,
+    senderId: me?.userId || `usr_${email}`,
+    senderEmail: email || me?.email || '',
+    senderName,
+    senderAvatar,
+    text,
+    timestamp: new Date().toISOString()
+  };
+  res.status(201).json(db.saveTeamMessage(msg));
 });
 
 // Helper to intelligently match industry from keywords locally
