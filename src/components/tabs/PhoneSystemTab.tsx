@@ -825,12 +825,11 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
         />
       )}
 
-      {/* Real Phone Setup & Carrier PBX Modal */}
+      {/* Phone Setup Modal (Vonage SMS + LiveKit voice) */}
       <RealPhoneSetupModal
         isOpen={isPbxModalOpen}
         onClose={() => setIsPbxModalOpen(false)}
-        config={telephonyConfig}
-        onSaveConfig={handleSaveTelephonyConfig}
+        businessId={currentUser?.businessId ?? ''}
         onTriggerNotification={onTriggerNotification}
       />
     </div>
