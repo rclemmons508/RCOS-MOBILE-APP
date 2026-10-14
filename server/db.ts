@@ -12,7 +12,8 @@ import {
   AgentInboxMessage,
   TeamMessage,
   TeamInvite,
-  BusinessMember
+  BusinessMember,
+  PendingIntake
 } from '../src/types';
 import { INDUSTRY_PRESETS } from '../src/data/presets';
 
@@ -34,6 +35,7 @@ interface DatabaseSchema {
   agentMessages?: AgentInboxMessage[];
   teamMessages?: TeamMessage[];
   teamInvites?: TeamInvite[];
+  pendingIntake?: PendingIntake[];
 }
 
 export function getDefaultTelephonyConfig(): TelephonyConfig {
@@ -84,7 +86,8 @@ function ensureDb(): DatabaseSchema {
       jobPacks: initialJobPacks,
       voicemails: [],
       teamMessages: [],
-      teamInvites: []
+      teamInvites: [],
+      pendingIntake: []
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(emptyDb, null, 2), 'utf-8');
     return emptyDb;
@@ -107,7 +110,8 @@ function ensureDb(): DatabaseSchema {
       jobPacks: [],
       voicemails: [],
       teamMessages: [],
-      teamInvites: []
+      teamInvites: [],
+      pendingIntake: []
     };
     return fallbackDb;
   }
@@ -219,6 +223,28 @@ export const db = {
     }
     saveDb(data);
     return idx >= 0 ? data.requests[idx] : req;
+  },
+
+  // Pending demo-lead intake — website submissions that arrived while no
+  // business existed yet. Queued instead of lost; flushed into Customer
+  // Requests when a business is created.
+  savePendingIntake(entry: PendingIntake): PendingIntake {
+    const data = ensureDb();
+    if (!data.pendingIntake) data.pendingIntake = [];
+    data.pendingIntake.push(entry);
+    saveDb(data);
+    return entry;
+  },
+
+  // Read + clear all queued intake records (flush). Returns what was queued.
+  takePendingIntake(): PendingIntake[] {
+    const data = ensureDb();
+    const pending = data.pendingIntake || [];
+    if (pending.length > 0) {
+      data.pendingIntake = [];
+      saveDb(data);
+    }
+    return pending;
   },
 
   // Actions
