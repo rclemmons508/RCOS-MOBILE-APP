@@ -1,10 +1,16 @@
 /**
- * Automatic follow-ups (Phase A) — helpers.
+ * Automatic follow-ups — helpers.
  *
- * There is NO SMS/email provider connected, so the app NEVER claims a message
- * was sent. A follow-up rule only drafts the exact text and hands it to the
- * owner in the Agent Inbox with Send now (opens the phone's SMS app with the
- * number + text pre-filled via an `sms:` URI), Edit, and Dismiss.
+ * Phase A (manual): with no SMS provider configured, a follow-up rule only
+ * drafts the exact text and hands it to the owner in the Agent Inbox with
+ * Send now (opens the phone's SMS app with the number + text pre-filled via
+ * an `sms:` URI), Edit, and Dismiss. The app NEVER claims a message was sent.
+ *
+ * Phase B (auto-send): when Vonage is configured on the server
+ * (TELEPHONY_PROVIDER=vonage + VONAGE_API_KEY/VONAGE_API_SECRET), App.tsx
+ * fire() sends the text for real via POST /api/business/:id/sms/send and the
+ * inbox message records the send with no Send-now button. Any send failure
+ * falls back to the Phase A draft, unchanged.
  *
  * The draft travels inside the server's whitelisted inbox fields (the server
  * drops any extra field): the drafted text lives in `body`, and the Send-now
