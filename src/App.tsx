@@ -414,7 +414,9 @@ export default function App() {
   useEffect(() => {
     const biz = businessAccount;
     if (!biz?.id) return;
-    if (!biz.activeEmployees) return; // stripped localStorage copy — wait for the full one
+    // Do NOT skip a stripped copy (localStorage drops activeEmployees): the server
+    // fills activeEmployees with defaults on POST, and a restored record beats
+    // an empty server. Employee toggles default to on; the user can re-toggle them.
     if (businessSyncRef.current.has(biz.id)) return;
     businessSyncRef.current.add(biz.id);
     (async () => {
