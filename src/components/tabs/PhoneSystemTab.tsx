@@ -39,6 +39,7 @@ interface PhoneSystemTabProps {
   onSimulateCall: () => void;
   messages: ChatMessage[];
   currentUser: User | null;
+  businessId: string;
   onSendMessage: (text: string) => void;
   onNavigateTab?: (tab: any) => void;
   onTriggerNotification?: (title: string, message: string) => void;
@@ -116,7 +117,8 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   calls: propCalls, 
   onSimulateCall, 
   messages, 
-  currentUser, 
+  currentUser,
+  businessId, 
   onSendMessage,
   onNavigateTab,
   onTriggerNotification
@@ -837,7 +839,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
       <RealPhoneSetupModal
         isOpen={isPbxModalOpen}
         onClose={() => setIsPbxModalOpen(false)}
-        businessId={currentUser?.businessId ?? ''}
+        businessId={businessId || currentUser?.businessId || ''}
         onTriggerNotification={onTriggerNotification}
       />
     </div>
