@@ -29,6 +29,8 @@ import { PhoneSystemTab } from './components/tabs/PhoneSystemTab';
 import { JobsTab } from './components/tabs/JobsTab';
 import { ClientsTab } from './components/tabs/ClientsTab';
 import { SettingsTab, ProfileUpdate } from './components/tabs/SettingsTab';
+import { TeamChatView } from './components/tabs/TeamChatView';
+import { teamService } from './services/teamService';
 import { GmailTab } from './components/tabs/GmailTab';
 import { GeminiChatView } from './components/GeminiChatView';
 import { AiTeamView } from './components/AiTeamView';
@@ -97,6 +99,32 @@ const BLANK_BUSINESS: BusinessAccount = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 };
+
+/**
+ * Find the company a signed-in operator belongs to, from the server.
+ * A member who signed in on a new phone has no local company yet —
+ * match by their login email against each company's member list (or by
+ * the business id saved on their login). Returns null when nothing
+ * matches, and the caller keeps whatever company is already loaded.
+ */
+async function resolveBusinessForUser(user: User): Promise<BusinessAccount | null> {
+  try {
+    const businesses = await apiFetch<BusinessAccount[]>('/api/businesses');
+    if (!Array.isArray(businesses) || businesses.length === 0) return null;
+    const email = (user.email || '').toLowerCase();
+    if (user.businessId) {
+      const byId = businesses.find(b => b.id === user.businessId);
+      if (byId) return byId;
+    }
+    if (email) {
+      const byMember = businesses.find(b => (b.members || []).some(m => (m.email || '').toLowerCase() === email));
+      if (byMember) return byMember;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -336,11 +364,33 @@ export default function App() {
     setIsSuggestionModalOpen(false);
   };
 
-  // Sync business account with server database on startup
+  // Sync business account with server database on startup.
+  // Prefer the company the signed-in operator belongs to (by saved
+  // business id, then by team membership) over the first company on
+  // file — with several companies on the server, businesses[0] is
+  // somebody else's company. Legacy single-company accounts without a
+  // member list keep the old businesses[0] behavior.
   useEffect(() => {
+    const sessionUser = authService.getActiveSession();
     apiFetch<BusinessAccount[]>('/api/businesses')
       .then((businesses) => {
-        if (Array.isArray(businesses) && businesses.length > 0) {
+        if (!Array.isArray(businesses) || businesses.length === 0) return;
+        const email = (sessionUser?.email || '').toLowerCase();
+        const byId = sessionUser?.businessId
+          ? businesses.find(b => b.id === sessionUser.businessId)
+          : undefined;
+        const byMember = email
+          ? businesses.find(b => (b.members || []).some(m => (m.email || '').toLowerCase() === email))
+          : undefined;
+        const target = byId || byMember;
+        if (target) {
+          setBusinessAccount(target);
+          try {
+            localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(target)));
+          } catch { /* storage unavailable */ }
+          return;
+        }
+        if (!businessAccount) {
           const biz = businesses[0];
           if (biz.id && biz.id !== 'biz_rc_solutions' && biz.id !== 'biz_1790297242341') {
             setBusinessAccount(biz);
@@ -348,6 +398,7 @@ export default function App() {
         }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Real-time Firestore synchronization for jobs, clients, and business profile
@@ -1247,9 +1298,22 @@ export default function App() {
     setCurrentUser(user);
     setIsAuthModalOpen(false);
 
+    // Load the company this operator belongs to. A team member signing in
+    // on a new phone has no local company yet — find theirs on the server
+    // by membership instead of opening company setup (which would make a
+    // second, separate company).
+    const resolvedBiz = await resolveBusinessForUser(user);
+    if (resolvedBiz) {
+      setBusinessAccount(resolvedBiz);
+      try {
+        localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(resolvedBiz)));
+      } catch { /* storage unavailable */ }
+      localStorage.setItem('rcos_onboarding_completed', 'true');
+    }
+
     // If onboarding not yet completed for user, open it
     const completed = localStorage.getItem('rcos_onboarding_completed');
-    if (completed !== 'true') {
+    if (completed !== 'true' && !resolvedBiz) {
       setIsOnboardingOpen(true);
     }
 
@@ -1318,6 +1382,26 @@ export default function App() {
       priority: 'low',
       module: 'Core',
     });
+  };
+
+  // Settings → Team → Leave team (members only). Removes the membership
+  // on the server, then signs out so the operator can join or create
+  // another company from the login screen.
+  const handleLeaveTeam = async () => {
+    const email = currentUser?.email;
+    if (!email || !activeBusiness.id) {
+      throw new Error('No team to leave.');
+    }
+    await teamService.leaveTeam(activeBusiness.id, email);
+    try {
+      authService.updateStoredUser(email, { businessId: undefined });
+    } catch { /* login record already gone */ }
+    localStorage.removeItem('rcos_configured_business');
+    localStorage.removeItem('rcos_onboarding_completed');
+    setBusinessAccount(null);
+    await authService.logout();
+    unenrollBiometrics();
+    setCurrentUser(null);
   };
 
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
@@ -1525,6 +1609,15 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'team-chat' && (
+            <TeamChatView
+              businessId={activeBusiness.id}
+              business={activeBusiness}
+              currentUser={currentUser}
+              onBack={() => setActiveTab('dashboard')}
+            />
+          )}
+
           {activeTab === 'settings' && (
             <SettingsTab
               currentUser={currentUser}
@@ -1589,6 +1682,8 @@ export default function App() {
               proactiveSuggestion={proactiveSuggestion}
               onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
               onDismissSuggestion={handleDismissSuggestion}
+              onOpenTeamChat={() => setActiveTab('team-chat')}
+              onLeaveTeam={handleLeaveTeam}
             />
           )}
         </main>
@@ -1710,9 +1805,38 @@ export default function App() {
             initialBusiness={businessAccount}
             onCancel={() => setIsOnboardingOpen(false)}
             onComplete={(configuredBiz) => {
-              setBusinessAccount(configuredBiz);
-              firestoreService.saveBusiness(configuredBiz).catch(() => {});
-              setIndustryProfile(configuredBiz.industry);
+              // Record the creator as the company's owner so invites and
+              // the team roster work. Existing member lists (re-opened
+              // setup) are kept as-is.
+              const ownerMember = currentUser
+                ? {
+                    userId: currentUser.id,
+                    email: currentUser.email,
+                    name: currentUser.fullName,
+                    role: 'owner' as const,
+                    avatar: currentUser.avatar,
+                    joinedAt: new Date().toISOString()
+                  }
+                : undefined;
+              const withOwner: BusinessAccount = {
+                ...configuredBiz,
+                ownerId: configuredBiz.ownerId || currentUser?.id,
+                members: configuredBiz.members && configuredBiz.members.length > 0
+                  ? configuredBiz.members
+                  : ownerMember
+                    ? [ownerMember]
+                    : []
+              };
+              setBusinessAccount(withOwner);
+              try {
+                localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(withOwner)));
+              } catch { /* storage unavailable */ }
+              apiFetch(`/api/business/${withOwner.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(withOwner)
+              }).catch(() => null);
+              firestoreService.saveBusiness(withOwner).catch(() => {});
+              setIndustryProfile(withOwner.industry);
               setIsOnboardingOpen(false);
               localStorage.setItem('rcos_onboarding_completed', 'true');
               sendPushNotification({
