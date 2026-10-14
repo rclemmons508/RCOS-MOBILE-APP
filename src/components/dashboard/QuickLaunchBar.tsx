@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, ClipboardCheck, Phone, Briefcase, Users, Settings as SettingsIcon } from 'lucide-react';
+import { Bot, ClipboardCheck, Phone, Briefcase, Users, Settings as SettingsIcon, MessageSquare } from 'lucide-react';
 import { TabType } from '../../types';
 
 interface QuickLaunchItem {
@@ -15,6 +15,7 @@ interface QuickLaunchItem {
 export const QuickLaunchBar: React.FC<{ onNavigate: (tab: TabType) => void }> = ({ onNavigate }) => {
   const items: QuickLaunchItem[] = [
     { label: 'AI Team', icon: <Bot className="w-4 h-4 text-lime-400" />, tab: 'team' },
+    { label: 'Team Chat', icon: <MessageSquare className="w-4 h-4 text-lime-400" />, tab: 'team-chat' },
     { label: 'Approvals', icon: <ClipboardCheck className="w-4 h-4 text-lime-400" />, tab: 'approvals' },
     { label: 'Phone', icon: <Phone className="w-4 h-4 text-lime-400" />, tab: 'phone' },
     { label: 'Jobs', icon: <Briefcase className="w-4 h-4 text-lime-400" />, tab: 'jobs' },
