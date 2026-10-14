@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserPreferences } from '../../types';
 import { authService, SEED_USERS } from '../../services/authService';
+import { teamService } from '../../services/teamService';
 import { useBiometrics } from '../../context/BiometricContext';
 import { RCLogo } from '../RCLogo';
 import { BiometricSetupModal } from '../biometrics/BiometricSetupModal';
@@ -34,7 +35,7 @@ interface LoginViewProps {
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const { isEnrolled, enrolledInfo, biometryType, biometryLabel } = useBiometrics();
   
-  const [tab, setTab] = useState<'signin' | 'register'>('signin');
+  const [tab, setTab] = useState<'signin' | 'register' | 'join'>('signin');
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -64,6 +65,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [regAutoDispatch, setRegAutoDispatch] = useState<'all' | 'critical' | 'manual'>('all');
   const [regRingerMode, setRegRingerMode] = useState<'sound' | 'vibrate' | 'silent'>('sound');
   const [regEnableBiometrics, setRegEnableBiometrics] = useState(true);
+
+// Join a Company — invite code from the team owner + this person's details.
+// The server never sees the password: it only checks the invite code and
+// adds this email to the company's team. The app creates the local login.
+const [joinCode, setJoinCode] = useState('');
+const [joinFullName, setJoinFullName] = useState('');
+const [joinEmail, setJoinEmail] = useState('');
+const [joinPassword, setJoinPassword] = useState('');
+const [joinPin, setJoinPin] = useState('');
 
   const handleIndustryChange = (presetId: string) => {
     setRegIndustryId(presetId);
@@ -181,6 +191,74 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       onLoginSuccess(user);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Registration failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Join a Company Handler — invite code first, then local login.
+  const handleJoinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = joinCode.trim().toUpperCase();
+    if (!code) {
+      setErrorMsg('Please enter the invite code from your team owner.');
+      return;
+    }
+    if (!joinFullName.trim()) {
+      setErrorMsg('Please enter your full name.');
+      return;
+    }
+    if (!joinEmail.trim()) {
+      setErrorMsg('Please enter an email address.');
+      return;
+    }
+    if (!joinPassword) {
+      setErrorMsg('Please create a password.');
+      return;
+    }
+    if (joinPin && !/^\d{4}$/.test(joinPin)) {
+      setErrorMsg('Backup PIN must be exactly 4 digits.');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const { business } = await teamService.joinCompany({
+        code,
+        fullName: joinFullName.trim(),
+        email: joinEmail.trim()
+      });
+      const existing = authService
+        .getRegisteredUsers()
+        .find((u) => u.email.toLowerCase() === joinEmail.trim().toLowerCase());
+      if (existing) {
+        // This phone already has a login for that email — joining only
+        // attached the company to it. Sign in with the existing account.
+        setErrorMsg(`You're on the ${business.name} team now. Sign in with your existing account to open it.`);
+        setTab('signin');
+        setLoginEmail(joinEmail.trim());
+        return;
+      }
+      const user = await authService.registerUser({
+        fullName: joinFullName.trim(),
+        email: joinEmail.trim(),
+        password: joinPassword,
+        role: 'Team Member',
+        organization: business.name,
+        backupPin: joinPin || undefined,
+        enableBiometrics: false,
+        businessId: business.id
+      });
+
+      // Point this phone at the joined company and skip company setup —
+      // the company already exists, and onboarding would make a second one.
+      localStorage.setItem('rcos_configured_business', JSON.stringify(business));
+      localStorage.setItem('rcos_onboarding_completed', 'true');
+      await haptic.success();
+      onLoginSuccess(user);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not join that company.');
     } finally {
       setIsLoading(false);
     }
@@ -325,7 +403,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
         {/* PRIMARY AUTH OPTION 3: EMAIL SIGN-IN & REGISTRATION */}
         <div className="p-4 sm:p-5 rounded-3xl bg-zinc-950 border border-zinc-800/80 shadow-xl space-y-4">
           {/* Segmented Tab Toggle: Sign In vs Register */}
-          <div className="grid grid-cols-2 p-1 rounded-2xl bg-zinc-900 border border-zinc-800 text-xs font-bold">
+          <div className="grid grid-cols-3 p-1 rounded-2xl bg-zinc-900 border border-zinc-800 text-xs font-bold">
             <button
               type="button"
               onClick={() => {
@@ -353,6 +431,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               }`}
             >
               Register Account
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTab('join');
+                setErrorMsg(null);
+              }}
+              className={`py-2 rounded-xl transition cursor-pointer ${
+                tab === 'join'
+                  ? 'bg-zinc-800 text-white shadow'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Join Company
             </button>
           </div>
 
@@ -628,6 +720,111 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 ) : (
                   <>
                     <span>Register & Open Dashboard</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* TAB 3: JOIN A COMPANY */}
+          {tab === 'join' && (
+            <form onSubmit={handleJoinSubmit} autoComplete="off" className="space-y-3.5">
+              <p className="text-[11px] text-zinc-400">
+                Got an invite code from your team owner? Enter it below to join their company instead of creating a new one.
+              </p>
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400">Invite Code:</label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  placeholder="e.g. K7Q2X9MZ"
+                  maxLength={8}
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono tracking-[0.25em] text-center"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400">Full Name:</label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="off"
+                  autoCapitalize="words"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={joinFullName}
+                  onChange={(e) => setJoinFullName(e.target.value)}
+                  placeholder="e.g. Alex Morgan"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400">Work Email:</label>
+                <input
+                  type="email"
+                  required
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={joinEmail}
+                  onChange={(e) => setJoinEmail(e.target.value)}
+                  placeholder="you@yourcompany.com"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400">Create Password:</label>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  value={joinPassword}
+                  onChange={(e) => setJoinPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono text-zinc-400">Backup PIN (optional):</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  autoComplete="new-password"
+                  value={joinPin}
+                  onChange={(e) => setJoinPin(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="4 digits"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono text-center tracking-[0.3em]"
+                />
+              </div>
+              <p className="-mt-1 text-[10px] text-zinc-500">
+                Your backup PIN unlocks the app if your fingerprint or face ever fails. Only you know it.
+              </p>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 rounded-2xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-lime-500/20 transition active:scale-98 cursor-pointer"
+              >
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Joining Company...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Join Company & Open Dashboard</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
