@@ -363,9 +363,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   };
 
   const unreviewedVoicemailCount = voicemails.filter(v => !v.reviewed).length;
-  // No carrier line is connected (Twilio parked) — this is the placeholder
-  // number this bar has always shown. See Phone Setup for the real system.
-  const carrierPhoneNumber = '+1 (800) 555-7267';
+  // No carrier line is connected (Twilio parked), so no carrier number is shown.
 
   return (
     <div className="flex flex-col w-full max-w-full overflow-hidden">
@@ -430,20 +428,17 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
             />
           ) : (
             <>
-              {/* Real Telecom PSTN Live Carrier Bar */}
-              <div className="p-3 rounded-2xl bg-zinc-950 border border-lime-500/30 flex items-center justify-between gap-2 flex-wrap">
+              {/* Phone status bar — no carrier line is connected; calls run in-app. */}
+              <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2.5">
-                  <div className="relative">
-                    <div className="w-2.5 h-2.5 rounded-full bg-lime-400 animate-ping absolute inset-0" />
-                    <div className="w-2.5 h-2.5 rounded-full bg-lime-400 relative" />
-                  </div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-zinc-500" />
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-mono font-bold text-white">
-                        Carrier Line: <span className="text-lime-400">{carrierPhoneNumber}</span>
+                        No carrier line connected
                       </span>
                       <span className="text-[9px] px-2 py-0.2 rounded-full font-mono font-bold uppercase bg-zinc-800 text-zinc-300 border border-zinc-700">
-                        Carrier Gateway Ready
+                        In-app calling only
                       </span>
                     </div>
                     <div className="text-[10px] text-zinc-400 font-mono">
