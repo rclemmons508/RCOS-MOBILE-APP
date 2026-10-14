@@ -401,6 +401,33 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
+  // Server re-sync: the server store is wiped on redeploy (persistence
+  // unverified). Once per app start, restore the server's copy of this
+  // business — including the members list Team Chat needs — by upserting
+  // the full business the app holds. Only the full copy is synced: the
+  // localStorage copy is stripped of activeEmployees, so wait for the
+  // Firestore listener to deliver the full record. Skips when the server
+  // already has the record; fails silently when offline. Never blocks
+  // login or any screen.
+  const businessSyncRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const biz = businessAccount;
+    if (!biz?.id) return;
+    if (!biz.activeEmployees) return; // stripped localStorage copy — wait for the full one
+    if (businessSyncRef.current.has(biz.id)) return;
+    businessSyncRef.current.add(biz.id);
+    (async () => {
+      try {
+        const businesses = await apiFetch<BusinessAccount[]>('/api/businesses');
+        if (Array.isArray(businesses) && businesses.some((b) => b.id === biz.id)) return;
+        await apiFetch('/api/businesses', { method: 'POST', body: JSON.stringify(biz) });
+      } catch {
+        // Offline / server down: fail silently; retry next app start.
+      }
+    })();
+  }, [businessAccount]);
+
   // Real-time Firestore synchronization for jobs, clients, and business profile
   useEffect(() => {
     if (!businessAccount?.id) return;
