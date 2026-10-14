@@ -234,6 +234,13 @@ export interface BusinessAccount {
   brandTone: string;
   painPoints: string[];
   autonomyMode: AutonomyMode;
+  /**
+   * Who answers incoming calls inside the app: 'ai' = the AI Receptionist
+   * answers automatically after a short ring; 'manual' = calls ring for a
+   * human to pick up. Stored on the business record (not in the parked
+   * Twilio telephony config). Defaults to 'ai' when unset.
+   */
+  answeringMode?: 'ai' | 'manual';
   dollarThreshold: number;
   activeEmployees: Record<string, boolean>;
   onboardingCompleted: boolean;
