@@ -24,6 +24,7 @@ import { INDUSTRY_PRESETS } from './src/data/presets';
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
+import { sendVonageSms } from './server/vonage';
 import { initAuth, requireAuth } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 
@@ -109,6 +110,7 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
 const aiRateLimiter = createRateLimiter(60, 60000); // 60 req / min
 const publicIntakeRateLimiter = createRateLimiter(30, 60000); // 30 req / min
 const deleteAccountLimiter = createRateLimiter(3, 10 * 60 * 1000); // 3 delete tries / 10 min
+  const smsSendLimiter = createRateLimiter(30, 60000); // 30 follow-up sends / min per IP
 
 // Telephony provider: 'twilio' mounts the Twilio PSTN router. Anything else parks it —
 // testing/review builds use the in-app WebRTC voice call instead (see /api/voice/token).
@@ -494,6 +496,28 @@ app.post('/api/business/:id/agent-messages/:msgId/respond', (req: Request, res: 
   });
   if (!updated) return res.status(404).json({ error: 'Message not found' });
   res.json(updated);
+});
+
+// Vonage SMS auto-send -------------------------------------------------
+// Sends one real follow-up text via Vonage when TELEPHONY_PROVIDER=vonage
+// and VONAGE_API_KEY/VONAGE_API_SECRET are set. Anything else returns
+// { sent: false, configured: false } and the app falls back to its manual
+// Send-now draft — no behavior change when Vonage is not configured.
+// Twilio is untouched: this route is independent of the Twilio router.
+app.post('/api/business/:id/sms/send', smsSendLimiter, async (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const { to, text, dedupeKey } = req.body || {};
+  if (typeof to !== 'string' || typeof text !== 'string') {
+    return res.status(400).json({ error: 'to and text are required' });
+  }
+  const result = await sendVonageSms({
+    businessId: req.params.id,
+    dedupeKey: typeof dedupeKey === 'string' ? dedupeKey : undefined,
+    to,
+    text,
+  });
+  res.json(result);
 });
 
 // Businesses
