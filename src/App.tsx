@@ -690,20 +690,39 @@ export default function App() {
         businessName: bizName,
         reviewLink: task.reviewLink || '',
       });
+      // Real auto-send: when Vonage is configured on the server, send the
+      // follow-up text for real. Any failure — or Vonage not configured —
+      // falls through to the unchanged manual draft below.
+      let sentViaVonage = false;
+      let vonageError = '';
+      try {
+        const sendRes = await apiFetch<{ sent: boolean; configured?: boolean; error?: string }>(
+          `/api/business/${bizId}/sms/send`,
+          { method: 'POST', body: JSON.stringify({ to: item.to, text, dedupeKey: item.dedupeKey }) }
+        );
+        sentViaVonage = !!sendRes?.sent;
+        if (!sentViaVonage && sendRes?.configured) vonageError = sendRes?.error || '';
+      } catch {
+        sentViaVonage = false; // offline — draft fallback below, retry on a later poll
+      }
       const smsUrl = buildSmsUrl(item.to, text);
-      const body =
+      const draftBody =
         `Draft ready to send to ${item.toName || 'this customer'} (${item.to}). Nothing has been sent yet — tap Send now to open your texting app with this pre-filled, then tap Dismiss once you've sent it.\n\n"${text}"`;
+      const body = sentViaVonage
+        ? `Sent via Vonage to ${item.toName || 'this customer'} (${item.to}).\n\n"${text}"`
+        : vonageError
+          ? `Auto-send didn't go through (Vonage: ${vonageError}) — draft ready to send manually. Tap Send now to open your texting app with this pre-filled, then tap Dismiss once you've sent it.\n\n"${text}"`
+          : draftBody;
       try {
         await agentInboxService.create(bizId, {
           agent: meta.agent,
           kind: 'suggestion',
-          title: meta.titleFor(item.toName),
+          title: sentViaVonage ? meta.titleFor(item.toName).replace('ready', 'sent') : meta.titleFor(item.toName),
           body,
-          actionLabel: 'Send now',
-          actionUrl: smsUrl,
+          ...(sentViaVonage ? {} : { actionLabel: 'Send now', actionUrl: smsUrl }),
           dedupeKey: item.dedupeKey,
         });
-        logAutomationFired(item.ruleId, task.name, `Draft ready for ${item.toName || item.to}`);
+        logAutomationFired(item.ruleId, task.name, sentViaVonage ? `Sent via Vonage to ${item.toName || item.to}` : `Draft ready for ${item.toName || item.to}`);
         bumpAutomationRun(item.ruleId);
         handledThisTick.add(item.dedupeKey);
         return true;
