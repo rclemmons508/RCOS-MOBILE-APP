@@ -445,6 +445,47 @@ app.get('/api/voice/routing-log', (_req: Request, res: Response) => {
 const AGENT_IDS = ['sales', 'operations', 'marketing', 'support', 'receptionist', 'system'];
 const AGENT_MESSAGE_KINDS = ['alert', 'suggestion', 'question'];
 
+
+// Self-heal: the server store is wiped on redeploy (persistence unverified).
+// When the app posts a follow-up or SMS for a business the server no longer
+// knows, re-create a minimal record instead of 404ing, so the app's own
+// follow-ups keep working. The app's real business details are re-synced
+// from the client on its next full save; this stub only unblocks delivery.
+function getOrCreateBusiness(id: string): BusinessAccount {
+  const existing = db.getBusiness(id);
+  if (existing) return existing;
+  return db.saveBusiness({
+    id,
+    name: 'My Business',
+    industry: 'general_small_business',
+    size: 'Solo Operator (1)',
+    services: ['General Service Call'],
+    pricingApproach: 'Flat-rate standard pricing',
+    brandTone: 'Professional, friendly, and reliable',
+    painPoints: [],
+    autonomyMode: 'autonomous',
+    dollarThreshold: 250,
+    activeEmployees: {
+      executive_assistant: true,
+      automation_specialist: true,
+      project_manager: true,
+      finance: true,
+      hr: true,
+      operations: true,
+      sales: true,
+      customer_service: true,
+      technician: true,
+      marketing: true,
+      admin: true,
+      business_analyst: true,
+    },
+    onboardingCompleted: false,
+    starterDrafts: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 app.get('/api/business/:id/agent-messages', (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) return res.status(404).json({ error: 'Business not found' });
@@ -452,8 +493,7 @@ app.get('/api/business/:id/agent-messages', (req: Request, res: Response) => {
 });
 
 app.post('/api/business/:id/agent-messages', (req: Request, res: Response) => {
-  const business = db.getBusiness(req.params.id);
-  if (!business) return res.status(404).json({ error: 'Business not found' });
+  getOrCreateBusiness(req.params.id); // self-heal: re-create if a redeploy wiped the store
   const { agent, kind, title, body, actionLabel, actionTab, actionUrl, dedupeKey } = req.body || {};
   if (!AGENT_IDS.includes(agent)) return res.status(400).json({ error: 'Invalid agent' });
   if (!AGENT_MESSAGE_KINDS.includes(kind)) return res.status(400).json({ error: 'Invalid kind' });
@@ -505,8 +545,7 @@ app.post('/api/business/:id/agent-messages/:msgId/respond', (req: Request, res: 
 // Send-now draft — no behavior change when Vonage is not configured.
 // Twilio is untouched: this route is independent of the Twilio router.
 app.post('/api/business/:id/sms/send', smsSendLimiter, async (req: Request, res: Response) => {
-  const business = db.getBusiness(req.params.id);
-  if (!business) return res.status(404).json({ error: 'Business not found' });
+  getOrCreateBusiness(req.params.id); // self-heal: re-create if a redeploy wiped the store
   const { to, text, dedupeKey } = req.body || {};
   if (typeof to !== 'string' || typeof text !== 'string') {
     return res.status(400).json({ error: 'to and text are required' });
