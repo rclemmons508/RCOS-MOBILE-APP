@@ -583,6 +583,7 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     brandTone: data.brandTone || 'Professional, friendly, and reliable',
     painPoints: Array.isArray(data.painPoints) ? data.painPoints : [],
     autonomyMode: data.autonomyMode || 'autonomous',
+    answeringMode: data.answeringMode === 'manual' ? 'manual' : 'ai',
     dollarThreshold: typeof data.dollarThreshold === 'number' ? data.dollarThreshold : 250,
     activeEmployees: data.activeEmployees || {
       executive_assistant: true,
