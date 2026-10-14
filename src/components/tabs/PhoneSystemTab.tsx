@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PhoneCall, ChatMessage, User, VoicemailRecord, TelephonyConfig } from '../../types';
+import { PhoneCall, ChatMessage, User, VoicemailRecord, BusinessAccount } from '../../types';
 import { 
   Phone, 
   PhoneCall as PhoneIcon, 
@@ -32,6 +32,7 @@ import { VoicemailsView } from '../phone/VoicemailsView';
 import { RealPhoneSetupModal } from '../phone/RealPhoneSetupModal';
 import { VoiceCallButton } from '../phone/VoiceCallButton';
 import { apiFetch } from '../../lib/api';
+import { firestoreService } from '../../services/firestoreService';
 
 interface PhoneSystemTabProps {
   calls: PhoneCall[];
@@ -122,12 +123,12 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'phone' | 'voicemails' | 'comms'>('phone');
   const [answeringMode, setAnsweringMode] = useState<'ai' | 'manual'>('ai');
+  const [isSavingMode, setIsSavingMode] = useState(false);
   const [callsList, setCallsList] = useState<PhoneCall[]>(propCalls);
   const [voicemails, setVoicemails] = useState<VoicemailRecord[]>(DEFAULT_VOICEMAILS);
   const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
 
-  // PBX & Real Phone System state
-  const [telephonyConfig, setTelephonyConfig] = useState<TelephonyConfig | null>(null);
+  // Real Phone System state (no carrier line connected — Twilio parked)
   const [carrierLive, setCarrierLive] = useState(false);
   const [isPbxModalOpen, setIsPbxModalOpen] = useState(false);
 
@@ -148,22 +149,23 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   const [customTopic, setCustomTopic] = useState('HVAC & Electrical Maintenance');
   const [customSpeech, setCustomSpeech] = useState('');
 
-  // Fetch telephony configuration on mount
+  // Load the saved answering mode from the business record on mount.
+  // (The old code read it from the parked Twilio telephony config, which
+  // 503s — so the saved mode was never loaded.)
   useEffect(() => {
     apiFetch<{ telephonyProvider?: string }>('/api/firebase-config')
       .then(cfg => { if (cfg?.telephonyProvider === 'twilio') setCarrierLive(true); })
       .catch(() => {});
-    apiFetch<TelephonyConfig>('/api/twilio/config')
+    const businessId = currentUser?.businessId;
+    if (!businessId) return;
+    apiFetch<BusinessAccount>(`/api/business/${businessId}`)
       .then(data => {
-        if (data) {
-          setTelephonyConfig(data);
-          if (data.answeringStrategy === 'human_first') {
-            setAnsweringMode('manual');
-          }
+        if (data?.answeringMode === 'manual') {
+          setAnsweringMode('manual');
         }
       })
       .catch(() => {});
-  }, []);
+  }, [currentUser?.businessId]);
 
   // Fetch voicemails & calls on mount + poll periodically for real PSTN calls
   useEffect(() => {
@@ -215,19 +217,41 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     authenticated: true
   };
 
-  // Save Telephony Configuration
-  const handleSaveTelephonyConfig = async (updated: Partial<TelephonyConfig>) => {
-    const data = await apiFetch<{ config: TelephonyConfig }>('/api/twilio/config', {
-      method: 'POST',
-      body: JSON.stringify(updated)
-    }).catch(() => null);
-    if (data?.config) {
-      setTelephonyConfig(data.config);
-      if (data.config.answeringStrategy === 'human_first') {
-        setAnsweringMode('manual');
-      } else {
-        setAnsweringMode('ai');
-      }
+  // Save the answering mode to the business record — the real store for
+  // this preference now (the parked Twilio telephony config never saved
+  // it). Every tap saves and confirms; a failed save reverts the toggle
+  // so the UI never claims a mode that isn't stored.
+  const handleSetAnsweringMode = async (mode: 'ai' | 'manual') => {
+    if (isSavingMode || mode === answeringMode) return;
+    const businessId = currentUser?.businessId;
+    if (!businessId) {
+      onTriggerNotification?.('Could not save answering mode', 'No business is loaded, so the change was not saved.');
+      return;
+    }
+    const previous = answeringMode;
+    setAnsweringMode(mode);
+    setIsSavingMode(true);
+    try {
+      const saved = await apiFetch<BusinessAccount>(`/api/business/${businessId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ answeringMode: mode })
+      });
+      if (!saved) throw new Error('Empty response');
+      setAnsweringMode(saved.answeringMode === 'manual' ? 'manual' : 'ai');
+      // Mirror to Firestore so the mode survives a server-store wipe
+      // (the startup re-sync restores the business from Firestore).
+      firestoreService.saveBusiness(saved).catch(() => {});
+      onTriggerNotification?.(
+        'Answering mode saved',
+        mode === 'ai'
+          ? 'AI Receptionist answers calls automatically.'
+          : 'Calls ring for a human to answer.'
+      );
+    } catch {
+      setAnsweringMode(previous);
+      onTriggerNotification?.('Could not save answering mode', 'Your change was not saved. Please try again.');
+    } finally {
+      setIsSavingMode(false);
     }
   };
 
@@ -339,8 +363,9 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   };
 
   const unreviewedVoicemailCount = voicemails.filter(v => !v.reviewed).length;
-  const carrierPhoneNumber = telephonyConfig?.phoneNumber || '+1 (800) 555-7267';
-  const hasRealTwilio = telephonyConfig?.accountSidConfigured && telephonyConfig?.authTokenConfigured;
+  // No carrier line is connected (Twilio parked) — this is the placeholder
+  // number this bar has always shown. See Phone Setup for the real system.
+  const carrierPhoneNumber = '+1 (800) 555-7267';
 
   return (
     <div className="flex flex-col w-full max-w-full overflow-hidden">
@@ -417,16 +442,12 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                       <span className="text-xs font-mono font-bold text-white">
                         Carrier Line: <span className="text-lime-400">{carrierPhoneNumber}</span>
                       </span>
-                      <span className={`text-[9px] px-2 py-0.2 rounded-full font-mono font-bold uppercase ${
-                        hasRealTwilio 
-                          ? 'bg-lime-500/20 text-lime-300 border border-lime-500/40' 
-                          : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
-                      }`}>
-                        {hasRealTwilio ? 'Twilio PSTN Live' : 'Carrier Gateway Ready'}
+                      <span className="text-[9px] px-2 py-0.2 rounded-full font-mono font-bold uppercase bg-zinc-800 text-zinc-300 border border-zinc-700">
+                        Carrier Gateway Ready
                       </span>
                     </div>
                     <div className="text-[10px] text-zinc-400 font-mono">
-                      Routing: <strong className="text-zinc-200">{telephonyConfig?.answeringStrategy === 'human_first' ? 'Human First (15s Failover)' : 'AI Receptionist First (24/7)'}</strong>
+                      Routing: <strong className="text-zinc-200">{answeringMode === 'manual' ? 'Rings for a human to answer' : 'AI Receptionist answers automatically'}</strong>
                     </div>
                   </div>
                 </div>
@@ -478,12 +499,8 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                   <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 rounded-xl text-[10px] font-mono">
                     <button
                       type="button"
-                      onClick={() => {
-                        setAnsweringMode('ai');
-                        if (telephonyConfig) {
-                          handleSaveTelephonyConfig({ answeringStrategy: 'ai_first' });
-                        }
-                      }}
+                      onClick={() => handleSetAnsweringMode('ai')}
+                      disabled={isSavingMode}
                       className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 ${
                         answeringMode === 'ai' 
                           ? 'bg-purple-600 text-white shadow-sm' 
@@ -495,12 +512,8 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setAnsweringMode('manual');
-                        if (telephonyConfig) {
-                          handleSaveTelephonyConfig({ answeringStrategy: 'human_first' });
-                        }
-                      }}
+                      onClick={() => handleSetAnsweringMode('manual')}
+                      disabled={isSavingMode}
                       className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 ${
                         answeringMode === 'manual' 
                           ? 'bg-blue-600 text-white shadow-sm' 
