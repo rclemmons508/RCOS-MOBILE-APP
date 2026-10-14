@@ -207,6 +207,12 @@ export interface StarterDraft {
 export interface BusinessAccount {
   id: string;
   ownerId?: string;
+  /**
+   * People on this company account. The creator is the `owner`; everyone
+   * who joins with an invite is a `member`. Empty on businesses created
+   * before teams existed — the creator is treated as the owner then.
+   */
+  members?: BusinessMember[];
   name: string;
   /**
    * Owner's public contact profile, editable in Settings → My Profile.
@@ -291,7 +297,8 @@ export type TabType =
   | 'gmail'
   | 'settings'
   | 'approvals'
-  | 'team';
+  | 'team'
+  | 'team-chat';
 
 export interface ChatMessage {
   id: string;
@@ -307,6 +314,53 @@ export interface ChatMessage {
   roleId?: string;
   businessId?: string;
   employeeId?: string;
+}
+
+// ---- Team (human-to-human) ----
+
+export type TeamRole = 'owner' | 'member';
+
+/** One person on a company account. Matched by email across devices. */
+export interface BusinessMember {
+  userId: string;
+  email: string;
+  name: string;
+  role: TeamRole;
+  avatar?: string;
+  joinedAt: string;
+}
+
+/**
+ * An invite to join a company. The code is shown once to the owner, who
+ * shares it with the new team member. `email` is optional: when set, only
+ * that email can use the code; when empty, anyone with the code can join.
+ */
+export interface TeamInvite {
+  code: string;
+  businessId: string;
+  businessName: string;
+  email?: string;
+  role: TeamRole;
+  createdAt: string;
+  expiresAt: string;
+  used: boolean;
+  usedByEmail?: string;
+  revoked: boolean;
+}
+
+/**
+ * One human-to-human team chat message. Lives in its own store, separate
+ * from the AI-employee chat (ChatMessage) — these go to real people.
+ */
+export interface TeamMessage {
+  id: string;
+  businessId: string;
+  senderId: string;
+  senderEmail: string;
+  senderName: string;
+  senderAvatar?: string;
+  text: string;
+  timestamp: string;
 }
 
 export interface AutomationTask {
@@ -426,6 +480,11 @@ export interface User {
   passwordHash?: string;
   passwordSalt?: string;
   organization: string;
+  /**
+   * The company this login belongs to (owner or joined team member).
+   * The app loads this business on sign-in instead of guessing.
+   */
+  businessId?: string;
   authenticated: boolean;
   biometricsEnabled?: boolean;
   biometricsEnrolledAt?: string;
