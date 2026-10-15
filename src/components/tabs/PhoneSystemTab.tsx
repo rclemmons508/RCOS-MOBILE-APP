@@ -158,16 +158,16 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     apiFetch<{ telephonyProvider?: string }>('/api/firebase-config')
       .then(cfg => { if (cfg?.telephonyProvider === 'twilio') setCarrierLive(true); })
       .catch(() => {});
-    const businessId = currentUser?.businessId;
-    if (!businessId) return;
-    apiFetch<BusinessAccount>(`/api/business/${businessId}`)
+    const effectiveBusinessId = businessId || currentUser?.businessId;
+    if (!effectiveBusinessId) return;
+    apiFetch<BusinessAccount>(`/api/business/${effectiveBusinessId}`)
       .then(data => {
         if (data?.answeringMode === 'manual') {
           setAnsweringMode('manual');
         }
       })
       .catch(() => {});
-  }, [currentUser?.businessId]);
+  }, [businessId, currentUser?.businessId]);
 
   // Fetch voicemails & calls on mount + poll periodically for real PSTN calls
   useEffect(() => {
@@ -225,8 +225,8 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   // so the UI never claims a mode that isn't stored.
   const handleSetAnsweringMode = async (mode: 'ai' | 'manual') => {
     if (isSavingMode || mode === answeringMode) return;
-    const businessId = currentUser?.businessId;
-    if (!businessId) {
+    const effectiveBusinessId = businessId || currentUser?.businessId;
+    if (!effectiveBusinessId) {
       onTriggerNotification?.('Could not save answering mode', 'No business is loaded, so the change was not saved.');
       return;
     }
@@ -234,7 +234,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     setAnsweringMode(mode);
     setIsSavingMode(true);
     try {
-      const saved = await apiFetch<BusinessAccount>(`/api/business/${businessId}`, {
+      const saved = await apiFetch<BusinessAccount>(`/api/business/${effectiveBusinessId}`, {
         method: 'PUT',
         body: JSON.stringify({ answeringMode: mode })
       });
