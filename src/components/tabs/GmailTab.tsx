@@ -27,8 +27,6 @@ import {
   SendEmailParams,
   listGmailMessages, 
   getGmailMessage, 
-  sendGmailMessage, 
-  createGmailDraft, 
   trashGmailMessage, 
   deleteGmailMessage,
   markMessageRead,
@@ -40,6 +38,7 @@ import {
   authenticateGmail,
   INITIAL_PREVIEW_MESSAGES
 } from '../../lib/gmail';
+import { apiFetch } from '../../lib/api';
 import { GmailComposeModal } from '../gmail/GmailComposeModal';
 import { GmailMessageDetailModal } from '../gmail/GmailMessageDetailModal';
 import { GmailConfirmModal, GmailActionType } from '../gmail/GmailConfirmModal';
@@ -230,59 +229,36 @@ export const GmailTab: React.FC<GmailTabProps> = ({
   };
 
   const handleSendEmail = async (params: SendEmailParams) => {
-    if (isLiveConnected && token) {
-      await sendGmailMessage(params);
-      setStatusNotice(`Email successfully sent to ${params.to}`);
-      await loadLiveMailbox(token);
-    } else {
-      // Preview Simulation
-      const simulatedMsg: GmailMessageDetail = {
-        id: `sim_sent_${Date.now()}`,
-        threadId: params.threadId || `th_sim_${Date.now()}`,
-        from: currentUser?.email || 'rcsoulutions@gmail.com',
-        to: params.to,
-        cc: params.cc,
-        bcc: params.bcc,
-        subject: params.subject,
-        date: 'Just now',
-        timestamp: Date.now(),
-        snippet: params.body.slice(0, 120),
-        bodyHtml: `<p style="white-space: pre-wrap;">${params.body}</p>`,
-        bodyText: params.body,
-        labelIds: ['SENT'],
-        isUnread: false,
-        isStarred: false,
-      };
-      setMessages((prev) => [simulatedMsg, ...prev]);
-      setStatusNotice(`[Preview Mode] Email dispatched to ${params.to}`);
+    // Real send via the server — the Gmail token stays server-side.
+    // The old preview simulation (fake "sent" message) is gone: if Gmail
+    // is not connected the server says so and the modal shows the error.
+    if (!businessId) {
+      throw new Error('Business is not loaded. Close this and reopen the app, then try again.');
+    }
+    await apiFetch<{ success: boolean; id: string }>(
+      `/api/business/${encodeURIComponent(businessId)}/gmail/send`,
+      { method: 'POST', body: JSON.stringify(params) }
+    );
+    setStatusNotice(`Email successfully sent to ${params.to}`);
+    if (token) {
+      try { await loadLiveMailbox(token); } catch { /* sent already; refresh is best-effort */ }
     }
     setTimeout(() => setStatusNotice(null), 4000);
   };
 
   const handleSaveDraft = async (params: SendEmailParams) => {
-    if (isLiveConnected && token) {
-      await createGmailDraft(params);
-      setStatusNotice(`Draft saved to Gmail.`);
-      await loadLiveMailbox(token);
-    } else {
-      // Preview Simulation
-      const simulatedDraft: GmailMessageDetail = {
-        id: `sim_draft_${Date.now()}`,
-        threadId: params.threadId || `th_sim_${Date.now()}`,
-        from: currentUser?.email || 'rcsoulutions@gmail.com',
-        to: params.to,
-        subject: params.subject,
-        date: 'Just now',
-        timestamp: Date.now(),
-        snippet: params.body.slice(0, 120),
-        bodyHtml: `<p style="white-space: pre-wrap;">${params.body}</p>`,
-        bodyText: params.body,
-        labelIds: ['DRAFT'],
-        isUnread: false,
-        isStarred: false,
-      };
-      setMessages((prev) => [simulatedDraft, ...prev]);
-      setStatusNotice(`[Preview Mode] Draft saved in memory.`);
+    // Real draft via the server (token stays server-side). No simulation:
+    // if Gmail is not connected the server says so and the modal shows it.
+    if (!businessId) {
+      throw new Error('Business is not loaded. Close this and reopen the app, then try again.');
+    }
+    await apiFetch<{ success: boolean; id: string }>(
+      `/api/business/${encodeURIComponent(businessId)}/gmail/drafts`,
+      { method: 'POST', body: JSON.stringify(params) }
+    );
+    setStatusNotice('Draft saved to Gmail.');
+    if (token) {
+      try { await loadLiveMailbox(token); } catch { /* saved already; refresh is best-effort */ }
     }
     setTimeout(() => setStatusNotice(null), 4000);
   };
