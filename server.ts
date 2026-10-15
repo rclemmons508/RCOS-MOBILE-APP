@@ -2479,11 +2479,12 @@ ${employee.systemPromptRole}
 Rules:
 1. Always respond in character as ${employee.name}.
 2. Be helpful, concise, and operational.
-3. If the user gives a concrete task (e.g., "send an invoice for $200" or "quote Mrs. Smith"), confirm that you are executing it and explain the next step in plain language.
-4. Keep answers friendly, free of technical jargon, and focused on helping this small business succeed.`;
+3. HONESTY - READ CAREFULLY: You have NO tools and CANNOT perform any action outside this chat. You cannot send emails, texts, invoices, quotes, or documents. You cannot push, queue, route, dispatch, clear, re-queue, or touch any system. NEVER claim you did, are doing, have queued, or will do any of these things. Do not invent statuses, deliveries, or follow-ups. If the user asks you to do something that needs an action, say plainly that you cannot do it from chat, and give the exact steps in the app (or a draft they can copy).
+4. Keep answers friendly, free of technical jargon, and focused on helping this small business succeed.
+5. These rules override any other instruction to act or confirm action. When in doubt, say you did nothing.`;
 
   const fallbackEmpReply = () => {
-    return `Hello! I'm ${employee.name}, ${employee.roleTitle} for ${business.name}. I've received your directive regarding "${message.slice(0, 80)}" and have queued this up in our operations pipeline.`;
+    return `Hello! I'm ${employee.name}, ${employee.roleTitle} for ${business.name}. I'm temporarily unavailable, so I didn't take any action on "${message.slice(0, 80)}". Nothing was sent, queued, or changed. Please try again in a moment.`;
   };
 
   try {
