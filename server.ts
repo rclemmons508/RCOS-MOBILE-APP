@@ -273,7 +273,7 @@ app.use('/api', (req: Request, res: Response, next) => {
     return Buffer.from(raw, 'utf-8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
   async function callGmailApi(token: string, path: string, payload: any): Promise<{ ok: boolean; status: number; data: any }> {
-    let gmailRes: Response;
+    let gmailRes: Awaited<ReturnType<typeof fetch>>;
     try {
       gmailRes = await fetch(`https://gmail.googleapis.com/gmail/v1${path}`, {
         method: 'POST',
