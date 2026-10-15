@@ -242,7 +242,6 @@ function createRouteToRepresentativeTool() {
     },
   });
 }
-});
 
 export default defineAgent({
   entry: async (ctx) => {
