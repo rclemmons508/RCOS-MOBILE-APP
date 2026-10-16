@@ -4,6 +4,7 @@ import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
 import { timeAgoShort, describeFollowupWindow } from '../../utils/automation';
+import { asText, asScore, asStringList } from '../../utils/safeRender';
 import { FOLLOWUP_META, isFollowupRuleId } from '../../utils/followups';
 import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
 import { TrainingChecklist } from '../training/TrainingChecklist';
@@ -762,7 +763,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1 pt-0.5">
-                  {(businessServices && businessServices.length > 0 ? businessServices : ['General Commercial Services']).map((svc, idx) => (
+                  {(asStringList(businessServices).length > 0 ? asStringList(businessServices) : ['General Commercial Services']).map((svc, idx) => (
                     <span key={idx} className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-mono">
                       {svc}
                     </span>
@@ -783,11 +784,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                               AI Monitor Optimization Available
                             </span>
                             <span className="text-[9px] px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-400 font-mono font-bold">
-                              {Math.round((proactiveSuggestion.confidence || 0.95) * 100)}% Match
+                              {Math.round(asScore(proactiveSuggestion.confidence) || 95)}% Match
                             </span>
                           </div>
                           <p className="text-[10px] text-zinc-300 mt-0.5 leading-snug">
-                            Services indicate specialized <strong className="text-lime-300">{proactiveSuggestion.suggestedPresetName}</strong> workflows rather than current profile.
+                            Services indicate specialized <strong className="text-lime-300">{asText(proactiveSuggestion.suggestedPresetName)}</strong> workflows rather than current profile.
                           </p>
                         </div>
                       </div>
