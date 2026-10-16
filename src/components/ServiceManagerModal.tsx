@@ -13,6 +13,7 @@ import {
 import { BusinessAccount, IndustryPreset } from '../types';
 import { INDUSTRY_PRESETS } from '../data/presets';
 import { haptic } from '../utils/haptics';
+import { asText, asStringList } from '../utils/safeRender';
 
 interface ServiceManagerModalProps {
   isOpen: boolean;
@@ -29,7 +30,9 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
   onUpdateServices,
   onRequestAISuggestionCheck
 }) => {
-  const [services, setServices] = useState<string[]>(business.services || []);
+  // Services come from the server/Firestore record, so coerce to strings:
+  // a service stored as an object would crash React (#310) when rendered.
+  const [services, setServices] = useState<string[]>(asStringList(business.services));
   const [newServiceName, setNewServiceName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -128,7 +131,7 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
                 Business Services Catalog
               </h3>
               <p className="text-[11px] text-zinc-400">
-                {business.name} • {currentPreset?.name || business.industry}
+                {asText(business.name)} • {currentPreset?.name || asText(business.industry)}
               </p>
             </div>
           </div>
