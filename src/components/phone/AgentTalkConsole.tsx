@@ -188,6 +188,26 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
         room.on(RoomEvent.Disconnected, () => {
           if (!closedRef.current) endCall();
         });
+        room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+          if (participant.isLocal) return;
+          // The agent left the room — say so instead of sitting on a
+          // fake "connected" screen in silence. Don't disconnect here:
+          // disconnecting would fire RoomEvent.Disconnected and close
+          // the console before the user sees this message. Cleanup
+          // happens when the user taps Close/End or the console unmounts.
+          stopTimer();
+          if (agentTimeoutRef.current) window.clearTimeout(agentTimeoutRef.current);
+          agentTimeoutRef.current = null;
+          if (audioElRef.current) {
+            audioElRef.current.remove();
+            audioElRef.current = null;
+          }
+          setAgentSpeaking(false);
+          setPhase('error');
+          setError(
+            `The ${info.name} agent left the call. Tap Close to end this conversation.`
+          );
+        });
 
         // Route call audio to the earpiece before any audio plays.
         await enableEarpieceForCall();
