@@ -15,7 +15,8 @@ import {
   IndustryOptimizationSuggestion,
   ChatMessage,
   AgentInboxMessage,
-  InvoicePrefill
+  InvoicePrefill,
+  EditedAmounts
 } from './types';
 import {
   INITIAL_NOTIFICATION_PREFERENCES,
@@ -1217,11 +1218,74 @@ export default function App() {
     }
   };
 
+  // Local mirror of the server's edited-amounts application (Bug 3): when
+  // the decide call fails and we fall back to a local update, the edited
+  // amounts still land on the card instead of being silently dropped.
+  const withEditedAmounts = (act: ActionRecord, edited: EditedAmounts): ActionRecord => {
+    if (!act.result) return act;
+    const items = edited.items.map((item) => ({
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      total: (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
+    }));
+    if (edited.kind === 'quote') {
+      const prev = act.result.quoteDetails;
+      return {
+        ...act,
+        dollarAmount: edited.totalAmount,
+        financialAmount: edited.totalAmount,
+        result: {
+          ...act.result,
+          quoteDetails: {
+            clientName: edited.clientName || prev?.clientName || 'Valued Client',
+            items,
+            totalAmount: edited.totalAmount,
+            validDays: prev?.validDays ?? 30,
+            ...(edited.terms !== undefined
+              ? { terms: edited.terms }
+              : prev?.terms !== undefined
+                ? { terms: prev.terms }
+                : {}),
+          },
+        },
+      };
+    }
+    const prev = act.result.invoiceDetails;
+    return {
+      ...act,
+      dollarAmount: edited.totalAmount,
+      financialAmount: edited.totalAmount,
+      result: {
+        ...act.result,
+        invoiceDetails: {
+          clientName: edited.clientName || prev?.clientName || 'Valued Client',
+          invoiceNumber: edited.invoiceNumber || prev?.invoiceNumber || `INV-${Date.now().toString().slice(-4)}`,
+          amount: edited.totalAmount,
+          totalAmount: edited.totalAmount,
+          items: items.map((item) => ({ ...item, amount: item.total })),
+          dueDate: edited.dueDate ?? prev?.dueDate ?? 'Net 15 days',
+          ...(edited.paymentInstructions !== undefined
+            ? { paymentInstructions: edited.paymentInstructions }
+            : prev?.paymentInstructions !== undefined
+              ? { paymentInstructions: prev.paymentInstructions }
+              : {}),
+          ...(edited.notes !== undefined
+            ? { notes: edited.notes }
+            : prev?.notes !== undefined
+              ? { notes: prev.notes }
+              : {}),
+        },
+      },
+    };
+  };
+
   const handleApprovalDecision = async (
     actionId: string,
     decision: 'approved' | 'rejected' | 'edited',
     editedContent?: string,
-    note?: string
+    note?: string,
+    editedAmounts?: EditedAmounts
   ) => {
     const target = actions.find((x) => x.id === actionId);
     // Server-owned actions go through the API; local emergency escalations are handled on-device.
@@ -1231,7 +1295,7 @@ export default function App() {
           `/api/business/${businessAccount.id}/actions/${actionId}/decide`,
           {
             method: 'POST',
-            body: JSON.stringify({ decision, editedContent, reviewerNote: note }),
+            body: JSON.stringify({ decision, editedContent, editedAmounts, reviewerNote: note }),
           }
         );
         setActions((prev) => prev.map((x) => (x.id === actionId ? updated : x)));
@@ -1241,23 +1305,24 @@ export default function App() {
       }
     }
     setActions((prev) =>
-      prev.map((act) =>
-        act.id === actionId
-          ? {
-              ...act,
-              status: decision === 'rejected' ? 'rejected' : 'approved',
-              reviewedAt: new Date().toISOString(),
-              reviewerNote: note,
-              approvalDecision: {
-                decision,
-                decidedAt: new Date().toISOString(),
-                reviewerNote: note,
-                ...(editedContent ? { editedContent } : {}),
-              },
-              ...(editedContent ? { currentDraftContent: editedContent } : {}),
-            }
-          : act
-      )
+      prev.map((act) => {
+        if (act.id !== actionId) return act;
+        const edited = decision === 'edited' && editedAmounts ? withEditedAmounts(act, editedAmounts) : act;
+        return {
+          ...edited,
+          status: decision === 'rejected' ? 'rejected' : 'approved',
+          reviewedAt: new Date().toISOString(),
+          reviewerNote: note,
+          approvalDecision: {
+            decision,
+            decidedAt: new Date().toISOString(),
+            reviewerNote: note,
+            ...(editedContent ? { editedContent } : {}),
+            ...(editedAmounts ? { editedAmounts } : {}),
+          },
+          ...(editedContent ? { currentDraftContent: editedContent } : {}),
+        };
+      })
     );
   };
 

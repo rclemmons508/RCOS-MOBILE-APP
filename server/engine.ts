@@ -5,6 +5,7 @@ import {
   RiskCategory, 
   TraceStep, 
   ActionResult,
+  EditedAmounts,
   PipelineStage
 } from '../src/types';
 import { executeGeminiWithFallback, FAST_MODEL, PRIMARY_MODEL } from './gemini';
@@ -20,6 +21,41 @@ interface RoutingClassification {
   isSafetyIssue: boolean;
   isComplexMultiStep: boolean;
   plainStepSummary: string;
+}
+
+const toNonNegativeNumber = (value: unknown, fallback: number): number => {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+
+/**
+ * Sanitize owner-edited amounts (Bug 3): recompute each item total as
+ * quantity × unitPrice. The owner's typed `totalAmount` wins when valid;
+ * otherwise the sum of item totals is used.
+ */
+function sanitizeEditedAmounts(edited: EditedAmounts): EditedAmounts {
+  const items = (Array.isArray(edited.items) ? edited.items : []).map((item) => {
+    const quantity = toNonNegativeNumber(item?.quantity, 1);
+    const unitPrice = toNonNegativeNumber(item?.unitPrice, 0);
+    return {
+      description: String(item?.description ?? ''),
+      quantity,
+      unitPrice,
+      total: quantity * unitPrice,
+    };
+  });
+  const summed = items.reduce((sum, item) => sum + item.total, 0);
+  return {
+    kind: edited.kind,
+    clientName: String(edited.clientName ?? '').trim(),
+    items,
+    totalAmount: toNonNegativeNumber(edited.totalAmount, summed),
+    ...(edited.terms !== undefined ? { terms: String(edited.terms) } : {}),
+    ...(edited.invoiceNumber !== undefined ? { invoiceNumber: String(edited.invoiceNumber) } : {}),
+    ...(edited.dueDate !== undefined ? { dueDate: String(edited.dueDate) } : {}),
+    ...(edited.paymentInstructions !== undefined ? { paymentInstructions: String(edited.paymentInstructions) } : {}),
+    ...(edited.notes !== undefined ? { notes: String(edited.notes) } : {}),
+  };
 }
 
 export class RcosEngine {
@@ -260,10 +296,11 @@ Format your response as valid JSON matching this schema:
     "invoiceDetails": {
       "invoiceNumber": "INV-2026-001",
       "clientName": "Client Name",
-      "items": [
-        { "description": "Service item description", "amount": 120 }
-      ],
+      "amount": 120,
       "totalAmount": 120,
+      "items": [
+        { "description": "Service item description", "quantity": 1, "unitPrice": 120, "total": 120, "amount": 120 }
+      ],
       "dueDate": "Net 15 days",
       "paymentInstructions": "Payable via bank transfer or credit card"
     },
@@ -333,10 +370,11 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
           invoiceDetails: isInvoice ? {
             invoiceNumber: `INV-${Date.now().toString().slice(-4)}`,
             clientName: 'Valued Client',
-            items: [
-              { description: `${business.services[0] || 'Professional Service'} Delivered`, amount: action.dollarAmount || 250 }
-            ],
+            amount: action.dollarAmount || 250,
             totalAmount: action.dollarAmount || 250,
+            items: [
+              { description: `${business.services[0] || 'Professional Service'} Delivered`, quantity: 1, unitPrice: action.dollarAmount || 250, total: action.dollarAmount || 250, amount: action.dollarAmount || 250 }
+            ],
             dueDate: 'Net 15 days',
             paymentInstructions: 'ACH or Corporate Card'
           } : undefined,
@@ -459,26 +497,54 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
   }
 
   /**
-   * Handle owner approval decisions (Approve, Edit & Approve, or Reject)
+   * Handle owner approval decisions (Approve, Edit & Approve, or Reject).
+   * On 'edited', `editedAmounts` carries the structured amounts the owner
+   * changed in Review edit mode (Bug 3) and is applied to quoteDetails /
+   * invoiceDetails with dollarAmount / financialAmount kept in sync, so the
+   * header badge, money pipeline, and mark-paid all see the edited total.
+   * The money_movement approval requirement is unchanged: edits still go
+   * through owner approval, they just actually take effect now.
    */
   static async handleApprovalDecision(
     business: BusinessAccount,
     actionId: string,
     decision: 'approved' | 'rejected' | 'edited',
     editedContent?: string,
-    reviewerNote?: string
+    reviewerNote?: string,
+    editedAmounts?: EditedAmounts
   ): Promise<ActionRecord | null> {
     const action = db.getAction(actionId);
     if (!action) return null;
 
     if (!action.fullTrace) action.fullTrace = [];
 
+    // Tolerate structured edits arriving inside `editedContent` (e.g. a
+    // caller that forwards the whole request body as one field): treat an
+    // object shaped like EditedAmounts as the edit payload, not draft text.
+    let structuredEdits = editedAmounts;
+    let textEdit = editedContent;
+    const maybeStructured = editedContent as unknown as EditedAmounts | undefined;
+    if (
+      !structuredEdits &&
+      maybeStructured &&
+      typeof maybeStructured === 'object' &&
+      (maybeStructured.kind === 'quote' || maybeStructured.kind === 'invoice') &&
+      Array.isArray(maybeStructured.items)
+    ) {
+      structuredEdits = maybeStructured;
+      textEdit = undefined;
+    }
+    const cleanEdits = decision === 'edited' && structuredEdits
+      ? sanitizeEditedAmounts(structuredEdits)
+      : undefined;
+
     action.approvalDecision = {
       decision,
-      editedContent,
+      editedContent: textEdit,
       decidedAt: new Date().toISOString(),
       decidedBy: 'owner',
-      reviewerNote
+      reviewerNote,
+      ...(cleanEdits ? { editedAmounts: cleanEdits } : {}),
     };
 
     if (decision === 'rejected') {
@@ -497,9 +563,53 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
       action.status = 'completed';
       action.completedAt = new Date().toISOString();
       action.stepSummary = decision === 'edited' ? 'Approved with owner modifications' : 'Approved and completed';
-      if (editedContent && action.result) {
-        action.result.text = editedContent;
-        if (action.result.messageDetails) action.result.messageDetails.message = editedContent;
+      if (textEdit && action.result) {
+        action.result.text = textEdit;
+        if (action.result.messageDetails) action.result.messageDetails.message = textEdit;
+      }
+      // Apply the owner's structured amount edits (Bug 3). Totals stay
+      // consistent everywhere: details block, header badge (dollarAmount /
+      // financialAmount), money pipeline, and mark-paid (which reads
+      // invoiceDetails.totalAmount, falling back to dollarAmount).
+      if (cleanEdits && action.result) {
+        if (cleanEdits.kind === 'quote') {
+          const prev = action.result.quoteDetails;
+          action.result.quoteDetails = {
+            clientName: cleanEdits.clientName || prev?.clientName || 'Valued Client',
+            items: cleanEdits.items,
+            totalAmount: cleanEdits.totalAmount,
+            validDays: prev?.validDays ?? 30,
+            ...(cleanEdits.terms !== undefined
+              ? { terms: cleanEdits.terms }
+              : prev?.terms !== undefined
+                ? { terms: prev.terms }
+                : {}),
+          };
+          action.dollarAmount = cleanEdits.totalAmount;
+          action.financialAmount = cleanEdits.totalAmount;
+        } else {
+          const prev = action.result.invoiceDetails;
+          action.result.invoiceDetails = {
+            clientName: cleanEdits.clientName || prev?.clientName || 'Valued Client',
+            invoiceNumber: cleanEdits.invoiceNumber || prev?.invoiceNumber || `INV-${Date.now().toString().slice(-4)}`,
+            amount: cleanEdits.totalAmount,
+            totalAmount: cleanEdits.totalAmount,
+            items: cleanEdits.items.map((item) => ({ ...item, amount: item.total })),
+            dueDate: cleanEdits.dueDate ?? prev?.dueDate ?? 'Net 15 days',
+            ...(cleanEdits.paymentInstructions !== undefined
+              ? { paymentInstructions: cleanEdits.paymentInstructions }
+              : prev?.paymentInstructions !== undefined
+                ? { paymentInstructions: prev.paymentInstructions }
+                : {}),
+            ...(cleanEdits.notes !== undefined
+              ? { notes: cleanEdits.notes }
+              : prev?.notes !== undefined
+                ? { notes: prev.notes }
+                : {}),
+          };
+          action.dollarAmount = cleanEdits.totalAmount;
+          action.financialAmount = cleanEdits.totalAmount;
+        }
       }
       action.fullTrace.push({
         stepNumber: action.fullTrace.length + 1,
@@ -507,7 +617,9 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
         action: decision === 'edited' ? 'Owner modified and approved' : 'Owner approved execution',
         checked: 'Owner authorization confirmed',
         ruleApplied: 'Owner override: Approved',
-        dataUsed: reviewerNote || 'Direct owner sign-off',
+        dataUsed: cleanEdits
+          ? `Owner-edited total: $${cleanEdits.totalAmount}. ${reviewerNote || 'Direct owner sign-off'}`
+          : reviewerNote || 'Direct owner sign-off',
         timestamp: new Date().toISOString()
       });
 
