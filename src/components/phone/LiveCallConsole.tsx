@@ -243,6 +243,30 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
         }
       }
 
+      // The AI sometimes SAYS it is transferring the caller ("please hold
+      // while I transfer you…") without firing the transfer_call action.
+      // Left alone, the caller sits on a phantom hold forever (Oct 16,
+      // 2026: Ryan waited 5+ minutes). Never leave a hold unanswered:
+      // say plainly that this practice console connects no live call.
+      if (
+        data.actionTriggered?.type !== 'transfer_call' &&
+        /hold|connecting you|transferring you|putting you through/i.test(aiTurn.text)
+      ) {
+        const holdNote: CallTranscriptEntry = {
+          speaker: 'System',
+          text: 'The AI said it is transferring you, but this is a practice console — no live call is connected, so no transfer happens. Use Simulate Transfer below to practice one, or keep talking.',
+          time: formatTimer(callDurationSeconds + 1),
+        };
+        setTranscript(prev => [...prev, holdNote]);
+        setCallStatus('Transfer noted (simulation — no live transfer)');
+        if (onTriggerNotification) {
+          onTriggerNotification(
+            'Transfer noted (simulation)',
+            'The AI said it is transferring you, but no live call is connected in this practice console — no transfer happens here.'
+          );
+        }
+      }
+
       // Play audio if available and answered by AI
       if (data.audioBase64 && !isMuted && answeredBy === 'ai_receptionist') {
         setIsSpeaking(true);
