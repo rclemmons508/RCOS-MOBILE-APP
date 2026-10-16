@@ -110,7 +110,14 @@ export async function deleteAccount(
   // Proof = the signed-in email matches an owner identity on the
   // business record (owner roster email, contact email, owner email),
   // OR the business's recorded owner id matches the signed-in user.
-  let isTeamMember = false;
+  // Ownership: a FULL wipe happens ONLY on positive proof that the
+  // signed-in user owns an existing business. The default is the member
+  // path (targeted wipe). A missing businessId means there is no
+  // business to wipe — the account is just a login — so the member path
+  // runs. The old code defaulted to the owner path, so deleting a test
+  // account with no business linked did a FULL device wipe. That is the
+  // hole that kept wiping the whole phone.
+  let isOwner = false;
   if (businessId) {
     try {
       const biz = await apiFetch<BusinessAccount>(`/api/business/${encodeURIComponent(businessId)}`);
@@ -121,45 +128,52 @@ export async function deleteAccount(
         (biz?.contactEmail || '').toLowerCase(),
         ((biz as unknown as { ownerEmail?: string })?.ownerEmail || '').toLowerCase(),
       ].filter(Boolean)));
-      const matchedOwner = ownerEmails.includes(me)
+      isOwner = ownerEmails.includes(me)
         || (!!biz?.ownerId && biz.ownerId !== 'unassigned_owner' && !!sessionUser?.id && biz.ownerId === sessionUser.id);
-      isTeamMember = !matchedOwner;
     } catch (e: any) {
       // Fail SAFE: a fetch failure must never default to the owner path
-      // (which wipes). Only a 404 — the business is genuinely gone —
-      // proceeds; anything else (offline, timeout, server error) refuses
-      // to delete rather than risk wiping a business we could not verify.
+      // (which wipes). Only a 404 — the business is genuinely gone, and
+      // ownership is unproven — proceeds to the member path (targeted
+      // wipe only); anything else (offline, timeout, server error)
+      // refuses to delete rather than risk wiping a business we could
+      // not verify.
       if (e?.status === 404) {
-        // Business already gone: the owner path below treats it as
-        // already deleted and deletes only local traces.
+        // Business already gone, ownership unproven: member path.
       } else {
         throw new Error('Could not verify who owns this business (connection problem). Nothing was deleted. Please try again when you are back online.');
       }
     }
   }
+  // Member path = not the proven owner (includes: no business linked,
+  // business already gone, or proven non-owner). Only the member path's
+  // targeted wipe runs for these.
+  const leftTeam = !isOwner;
 
   // 1. Server first. Throws on failure — nothing local is touched.
   let deletedBusinessIds: string[] = [];
   let alreadyDeleted = false;
-  let leftTeam = false;
-  if (isTeamMember) {
-    // Leave the team — the business and its data stay for the company.
-    // Best-effort: if the roster does not list this user (empty roster on
-    // a restored business, already left), the server answers 403/404 and
-    // there is nothing to leave — the login deletion below still runs.
-    // Any other leave failure is also non-fatal: the business data is
-    // untouched either way, and a stale roster entry can be removed by
-    // the owner.
-    try {
-      await apiFetch(`/api/business/${encodeURIComponent(businessId)}/team/leave`, {
-        method: 'POST',
-        headers: { 'X-User-Email': email },
-        body: JSON.stringify({ requesterEmail: email })
-      });
-    } catch { /* already not on the team, or roster cleanup failed — continue */ }
-    leftTeam = true;
+  let businessGone = false; // true only when the owner path confirmed the business is gone
+  if (leftTeam) {
+    // Member path — the business and its data stay for the company.
+    // Leave the team when a business is linked. Best-effort: if the
+    // roster does not list this user (empty roster on a restored
+    // business, already left, or no business at all), the server
+    // answers 403/404 and there is nothing to leave — the login
+    // deletion below still runs. Any other leave failure is also
+    // non-fatal: the business data is untouched either way, and a
+    // stale roster entry can be removed by the owner.
+    if (businessId) {
+      try {
+        await apiFetch(`/api/business/${encodeURIComponent(businessId)}/team/leave`, {
+          method: 'POST',
+          headers: { 'X-User-Email': email },
+          body: JSON.stringify({ requesterEmail: email })
+        });
+      } catch { /* already not on the team, or roster cleanup failed — continue */ }
+    }
     alreadyDeleted = true; // nothing business-side left to remove for this account
-  } else if (businessId) {
+  } else {
+    // Owner path — only reachable with proven ownership of a business.
     const res = await apiFetch<{ ok: boolean; deletedBusinessIds?: string[]; alreadyDeleted?: boolean }>(
       `/api/business/${encodeURIComponent(businessId)}/delete-account`,
       {
@@ -173,8 +187,7 @@ export async function deleteAccount(
     if (!alreadyDeleted && !deletedBusinessIds.includes(businessId)) {
       throw new Error('The server could not find this business to delete it. Nothing was deleted.');
     }
-  } else {
-    alreadyDeleted = true; // no business configured — nothing server-side to remove
+    businessGone = true;
   }
 
   // The fingerprint link for the deleted account is stale the moment the
@@ -219,13 +232,14 @@ export async function deleteAccount(
     throw new Error('Your business data and login were deleted, but the saved login on this phone could not be removed. Please try deleting again.');
   }
 
-  // 5. Local data — only now that every step is verified. Owner path
-  // wipes everything (the business is gone); member path removes only
-  // the deleted user's own traces.
-  if (leftTeam) {
-    wipeLocalDataForUser(email);
-  } else {
+  // 5. Local data — only now that every step is verified. Full wipe
+  // ONLY when the owner path confirmed the business is gone; every
+  // other case (member, no business linked, business already gone
+  // without proof) removes only the deleted user's own traces.
+  if (!leftTeam && businessGone) {
     wipeLocalData();
+  } else {
+    wipeLocalDataForUser(email);
   }
 
   return { deletedBusinessIds, alreadyDeleted, leftTeam };
