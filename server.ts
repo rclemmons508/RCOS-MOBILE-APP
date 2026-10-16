@@ -27,6 +27,7 @@ import { telephonyRouter } from './server/telephony';
 import { sendVonageSms } from './server/vonage';
 import { initAuth, requireAuth } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
+import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 
 dotenv.config();
 // Verify Firebase login tokens on API routes (gate activates once FIREBASE_SERVICE_ACCOUNT is set)
@@ -503,7 +504,7 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
 
 // WebRTC voice: mint a LiveKit access token for an AI agent call.
 // The voice-agent worker ('rcos-receptionist') is dispatched into the new room automatically.
-// Body may include persona: 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support'
+// Body may include persona: 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support' | 'executive' | 'technician' | 'finance'
 // (default 'receptionist'). The worker reads it from the room metadata.
 app.post('/api/voice/token', async (req: Request, res: Response) => {
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
@@ -515,7 +516,7 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
     const user = (req as any).user || {};
     const businessId = typeof req.body?.businessId === 'string' ? req.body.businessId : 'default';
     const personaRaw = typeof req.body?.persona === 'string' ? req.body.persona.toLowerCase() : 'receptionist';
-    const persona = ['receptionist', 'sales', 'operations', 'marketing', 'support'].includes(personaRaw)
+    const persona = ['receptionist', 'sales', 'operations', 'marketing', 'support', 'executive', 'technician', 'finance'].includes(personaRaw)
       ? personaRaw
       : 'receptionist';
     const roomName = `${persona}-${businessId}-${Date.now()}`;
@@ -698,8 +699,8 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : undefined,
     contactEmail: typeof data.contactEmail === 'string' ? data.contactEmail : undefined,
     profilePicture: typeof data.profilePicture === 'string' ? data.profilePicture : undefined,
-    name: data.name || 'My Business',
-    industry: data.industry || 'general_small_business',
+    name: String(data.name ?? 'My Business'),
+    industry: String(data.industry ?? 'general_small_business'),
     size: data.size || 'Solo Operator (1)',
     services: Array.isArray(data.services) && data.services.length ? data.services : ['General Service Call'],
     pricingApproach: data.pricingApproach || 'Flat-rate standard pricing',
@@ -761,7 +762,52 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
   if (!existing) {
     return res.status(404).json({ error: 'Business account not found' });
   }
-  const updated = { ...existing, ...req.body, id: existing.id, updatedAt: new Date().toISOString() };
+  // Allow-list update (Bug 5): never spread req.body verbatim — an object
+  // smuggled into a string field used to crash the dashboard on render.
+  // Only known BusinessAccount fields are accepted, each coerced to its
+  // declared type. Unknown fields (e.g. createdAt, id) are ignored.
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const updates: Partial<BusinessAccount> = {};
+  for (const field of ['ownerId', 'name', 'contactName', 'contactPhone', 'contactEmail', 'profilePicture', 'industry', 'size', 'pricingApproach', 'brandTone'] as const) {
+    if (body[field] !== undefined && body[field] !== null) updates[field] = String(body[field]);
+  }
+  for (const field of ['services', 'painPoints'] as const) {
+    if (Array.isArray(body[field])) updates[field] = body[field].map((v) => String(v));
+  }
+  if (body.autonomyMode === 'autonomous' || body.autonomyMode === 'supervised') updates.autonomyMode = body.autonomyMode;
+  if (body.answeringMode === 'ai' || body.answeringMode === 'manual') updates.answeringMode = body.answeringMode;
+  if (typeof body.dollarThreshold === 'number' && Number.isFinite(body.dollarThreshold)) updates.dollarThreshold = body.dollarThreshold;
+  if (typeof body.onboardingCompleted === 'boolean') updates.onboardingCompleted = body.onboardingCompleted;
+  if (Array.isArray(body.members)) {
+    updates.members = body.members
+      .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && !Array.isArray(m))
+      .map((m) => ({
+        userId: String(m.userId ?? ''),
+        email: String(m.email ?? ''),
+        name: String(m.name ?? ''),
+        role: m.role === 'owner' || m.role === 'member' ? m.role : 'member',
+        ...(m.avatar !== undefined && m.avatar !== null ? { avatar: String(m.avatar) } : {}),
+        joinedAt: String(m.joinedAt ?? '')
+      }));
+  }
+  if (body.activeEmployees && typeof body.activeEmployees === 'object' && !Array.isArray(body.activeEmployees)) {
+    const rec: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(body.activeEmployees as Record<string, unknown>)) rec[String(k)] = v === true;
+    updates.activeEmployees = rec;
+  }
+  if (Array.isArray(body.starterDrafts)) {
+    updates.starterDrafts = body.starterDrafts
+      .filter((d): d is Record<string, unknown> => !!d && typeof d === 'object' && !Array.isArray(d))
+      .map((d) => ({
+        id: String(d.id ?? ''),
+        title: String(d.title ?? ''),
+        type: d.type === 'follow_up_template' ? 'follow_up_template' : 'quote_template',
+        content: String(d.content ?? ''),
+        status: d.status === 'approved' || d.status === 'rejected' ? d.status : 'awaiting_approval',
+        createdAt: String(d.createdAt ?? '')
+      }));
+  }
+  const updated: BusinessAccount = { ...existing, ...updates, id: existing.id, updatedAt: new Date().toISOString() };
   const saved = db.saveBusiness(updated);
   res.json(saved);
 });
@@ -998,270 +1044,35 @@ app.post('/api/business/:id/team-messages', (req: Request, res: Response) => {
   res.status(201).json(db.saveTeamMessage(msg));
 });
 
-// Helper to intelligently match industry from keywords locally
-function matchIndustryLocally(text: string): {
-  preset: typeof INDUSTRY_PRESETS[0];
-  confidence: number;
-  reason: string;
-} {
-  const lower = text.toLowerCase();
-  const rules: Array<{ keywords: string[]; id: string; reason: string }> = [
-    { keywords: ['plumb', 'pipe', 'leak', 'water heater', 'drain', 'hydro-jet', 'sewer', 'faucet', 'toilet', 'repipe', 'backflow'], id: 'plumbing', reason: 'High concentration of plumbing, leak mitigation, and drain service terminology' },
-    { keywords: ['electric', 'panel', 'breaker', 'ev charger', 'wiring', 'conduit', 'amp', 'voltage', 'lighting', 'generator', 'nec code', 'gfci'], id: 'electrical', reason: 'Explicit electrical power distribution, EV charger, and panel upgrade indicators' },
-    { keywords: ['hvac', 'ac ', 'air conditioning', 'furnace', 'heating', 'heat pump', 'duct', 'thermostat', 'refrigerant', 'chiller', 'freon', 'ventilation'], id: 'hvac', reason: 'Identified heating, ventilation, and air conditioning mechanical systems' },
-    { keywords: ['roof', 'shingle', 'gutter', 'flashing', 'ridge cap', 'soffit', 'fascia', 'reroof', 'leak inspection'], id: 'roofing', reason: 'Roofing materials, gutter clearing, and storm damage inspection terminology detected' },
-    { keywords: ['msp', 'managed it', 'it support', 'helpdesk', 'cybersecurity', 'cloud', 'm365', 'firewall', 'network', 'sysadmin', 'workstation', 'backup', 'ransomware'], id: 'it_services', reason: 'Managed service provider (MSP), cybersecurity, and cloud IT infrastructure terminology' },
-    { keywords: ['solar', 'photovoltaic', 'powerwall', 'inverter', 'battery storage', 'clean energy', 'solar panel', 'pto', 'net metering'], id: 'solar_cleanenergy', reason: 'Solar photovoltaic generation and energy storage engineering detected' },
-    { keywords: ['gym', 'fitness', 'personal train', 'workout', 'yoga', 'pilates', 'coach', 'crossfit', 'exercise', 'body composition', 'fms'], id: 'fitness_gyms', reason: 'Health & fitness facility, workout coaching, and athletic training operations' },
-    { keywords: ['pet', 'dog', 'cat', 'groom', 'vet', 'veterinary', 'boarding', 'daycare', 'animal', 'canine', 'rabies', 'bather'], id: 'pet_care', reason: 'Pet wellness, veterinary exams, and canine grooming operations identified' },
-    { keywords: ['wedding', 'event', 'catering', 'banquet', 'audio/visual', 'av ', 'dj', 'photography', 'videography', 'venue', 'run of show'], id: 'event_production', reason: 'Event planning, catering service, and audio-visual staging indicators' },
-    { keywords: ['dental', 'dentist', 'teeth', 'hygiene', 'orthodont', 'aligner', 'cavity', 'oral', 'implant', 'prophylaxis', 'bitewing'], id: 'dental_practices', reason: 'Clinical dentistry, patient dental hygiene, and orthodontic treatments' },
-    { keywords: ['mov', 'moving', 'mover', 'storage', 'packing', 'crating', 'van lines', 'freight', 'hauling', 'relocation', 'furniture dolly'], id: 'moving_storage', reason: 'Residential moving, commercial logistics, and secure vault storage detected' },
-    { keywords: ['marketing', 'seo', 'ads', 'campaign', 'branding', 'creative agency', 'roas', 'social media', 'website design', 'copywriting'], id: 'marketing_creative', reason: 'Digital marketing, paid advertising campaign management, and creative branding' },
-    { keywords: ['airbnb', 'vrbo', 'short-term rental', 'vacation rental', 'turnover', 'guest concierge', 'smart lock', 'linen', 'boutique hotel'], id: 'hospitality_rentals', reason: 'Short-term rental turnover, guest hospitality, and lodging property management' },
-    { keywords: ['tutor', 'tutoring', 'academy', 'learning', 'sat', 'act', 'test prep', 'curriculum', 'student', 'math', 'academic'], id: 'education_tutoring', reason: 'Academic tutoring, student learning diagnostic, and educational center operations' },
-    { keywords: ['property management', 'tenant', 'lease', 'facility', 'building code', 'scupper', 'egress', 'hoa', 'rent collection'], id: 'property_operations', reason: 'Commercial & residential property operations, tenant leases, and facilities management' },
-    { keywords: ['locksmith', 'lockout', 'rekey', 'access control', 'cctv', 'surveillance', 'smart lock', 'alarm', 'electric strike', 'deadbolt'], id: 'security_locksmith', reason: 'Master locksmithing, access control credentialing, and commercial security alarms' },
-    { keywords: ['clean', 'maid', 'janitor', 'deep clean', 'disinfect', 'sanitiz', 'turnover clean', 'housekeeping'], id: 'cleaning', reason: 'Residential and commercial cleaning, housekeeping, and deep sanitation services' },
-    { keywords: ['paint', 'stain', 'interior paint', 'exterior paint', 'drywall patch', 'primer', 'roller', 'sash brush', 'caulk'], id: 'painting', reason: 'Interior/exterior coatings, drywall prep, and architectural painting' },
-    { keywords: ['pressure wash', 'power wash', 'soft wash', 'surface cleaner', 'siding wash', 'concrete cleaning', 'driveway wash'], id: 'pressure_washing', reason: 'High-pressure washing, soft-wash siding care, and concrete surface cleaning' },
-    { keywords: ['lawn', 'mow', 'landscap', 'turf', 'mulch', 'edging', 'tree trim', 'irrigation', 'sprinkler', 'yard'], id: 'landscaping', reason: 'Lawn care maintenance, commercial landscaping, and turf irrigation' },
-    { keywords: ['auto', 'mechanic', 'car', 'vehicle', 'brake', 'oil change', 'transmission', 'fleet', 'engine', 'diagnostic scanner'], id: 'auto_services', reason: 'Automotive diagnostics, brake repair, mobile mechanic, and fleet maintenance' },
-    { keywords: ['handyman', 'home repair', 'fixture', 'mounting', 'carpentry', 'drywall repair', 'cabinet', 'shelf'], id: 'handyman', reason: 'General home maintenance, small repairs, and multi-skill fixture installation' },
-    { keywords: ['construct', 'general contractor', 'framing', 'concrete', 'masonry', 'structural', 'subcontractor', 'osha', 'jobsite'], id: 'construction', reason: 'Commercial contracting, framing, structural trades, and general building' },
-    { keywords: ['lawyer', 'attorney', 'legal', 'law firm', 'cpa', 'accountant', 'tax', 'bookkeeping', 'audit', 'retainer', 'conflict check'], id: 'legal_accounting', reason: 'Professional legal counsel, CPA accounting, tax filings, and fiduciary practices' },
-    { keywords: ['doctor', 'clinic', 'medical', 'patient', 'therapy', 'chiropract', 'physician', 'healthcare', 'wellness', 'telehealth'], id: 'healthcare', reason: 'Clinical patient care, outpatient wellness, and specialized medical practice' },
-    { keywords: ['restaurant', 'cafe', 'bistro', 'food', 'kitchen', 'dining', 'catering', 'haccp', 'chef', 'menu', 'culinary'], id: 'restaurants', reason: 'Culinary dining, restaurant hospitality, commercial food safety, and kitchen ops' },
-    { keywords: ['salon', 'spa', 'hair', 'stylist', 'barber', 'aesthetician', 'facial', 'skin care', 'manicure', 'lash'], id: 'salons_spas', reason: 'Personal care studio, salon styling, aesthetics, and spa treatments' },
-    { keywords: ['retail', 'ecommerce', 'boutique', 'shop', 'order fulfillment', 'sku', 'apparel', 'merchandise', 'shipping label'], id: 'retail_ecommerce', reason: 'Retail storefront, omnichannel e-commerce, and physical order fulfillment' },
-    { keywords: ['nonprofit', 'charity', 'foundation', 'volunteer', 'donor', 'grant', 'community outreach', '501c3'], id: 'nonprofits', reason: 'Nonprofit foundation, donor stewardship, and community volunteer programs' },
-    { keywords: ['real estate', 'realtor', 'broker', 'escrow', 'open house', 'home staging', 'closing', 'listing'], id: 'real_estate', reason: 'Real estate brokerage, residential sales transactions, and client home showings' },
-    { keywords: ['consulting', 'advisory', 'strategy', 'executive coaching', 'management consult', 'b2b'], id: 'professional_services', reason: 'Strategic business advisory, consulting engagements, and corporate professional services' }
-  ];
-
-  for (const rule of rules) {
-    if (rule.keywords.some(kw => lower.includes(kw))) {
-      const match = INDUSTRY_PRESETS.find(p => p.id === rule.id);
-      if (match) {
-        return { preset: match, confidence: 0.94, reason: rule.reason };
-      }
-    }
-  }
-
-  const fallbackPreset = INDUSTRY_PRESETS.find(p => p.id === 'general_small_business') || INDUSTRY_PRESETS[0];
-  return {
-    preset: fallbackPreset,
-    confidence: 0.85,
-    reason: 'Matched versatile operational profile suited for broad commercial services and customer support'
-  };
-}
-
-// AI Onboarding Agent - Document Analysis & Industry Preset Deciphering
+// AI Onboarding Agent - Document Analysis & Industry Preset Deciphering.
+// Parsing + scored matching live in ./server/onboarding-docs; this route is
+// a thin handler so the file stays small enough to push via the API.
 app.post('/api/business/analyze-document', async (req: Request, res: Response) => {
-  const { fileText, fileName, fileType, fileBase64, rawInput } = req.body;
-  const contentToAnalyze = (fileText || rawInput || '').trim();
-
-  if (!contentToAnalyze && !fileBase64) {
+  const { fileText, fileName, fileType, fileBase64, rawInput } = req.body || {};
+  const text = typeof fileText === 'string' ? fileText : typeof rawInput === 'string' ? rawInput : '';
+  if (!text.trim() && !fileBase64) {
     return res.status(400).json({ error: 'No document text or file payload provided' });
   }
-
-  const presetList = INDUSTRY_PRESETS.map(p => `- ${p.id}: "${p.name}" (${p.description})`).join('\n');
-
-  // Smart fallback extraction if AI model is unreachable
-  const fallbackExtractor = () => {
-    const textSample = contentToAnalyze || fileName || '';
-    const match = matchIndustryLocally(textSample);
-    
-    // Extract potential company name from common headers
-    let extractedName = '';
-    const namePatterns = [
-      /(?:Company|Business|Name|Organization|Invoice From|Prepared For|Client|Contractor):\s*([^\n\r,]+)/i,
-      /^([A-Z0-9][A-Za-z0-9\s&'-]{3,35}(?:LLC|Inc|Co|Services|Solutions|Pros|Group|Plumbing|Electric|HVAC|Care|Studio|Agency|Cleaning))/m,
-      /^([A-Z][a-zA-Z0-9\s&'-]{3,30})$/m
-    ];
-    for (const pat of namePatterns) {
-      const hit = textSample.match(pat);
-      if (hit && hit[1] && hit[1].trim().length > 2) {
-        extractedName = hit[1].trim();
-        break;
-      }
-    }
-
-    if (!extractedName && fileName) {
-      extractedName = fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim();
-      extractedName = extractedName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    }
-
-    return JSON.stringify({
-      businessName: extractedName || `${match.preset.name.split('&')[0].trim()} Company`,
-      industryId: match.preset.id,
-      industryName: match.preset.name,
-      confidence: match.confidence,
-      reasoning: `Deciphered from document: ${match.reason}. Matched core operational requirements and preset workflows.`,
-      extractedServices: match.preset.defaultServices.slice(0, 4),
-      recommendedTone: match.preset.recommendedTone,
-      dollarThreshold: match.preset.id === 'electrical' || match.preset.id === 'construction' || match.preset.id === 'solar_cleanenergy' ? 1750 : 1000,
-      technicianRoleName: match.preset.technicianRoleName || 'Field Specialist',
-      keyInsights: [
-        'Document indicates active customer service requests and field scheduling',
-        'Workflows benefit from 24/7 automated receptionist & trade dispatch',
-        'Safety limits calibrated to trade operational scope'
-      ],
-      alternativeIndustries: [
-        match.preset.id === 'plumbing' ? 'handyman' : 'general_small_business',
-        'professional_services'
-      ]
-    });
-  };
-
-  const prompt = `You are an elite AI Business Onboarding Agent for RCOS (Autonomous Operations OS).
-Your goal is to thoroughly read the user's uploaded business document (invoice, company overview, service rate card, proposal, or operations manual), decipher their exact business identity and operations, and determine the optimal industry preset.
-
-AVAILABLE INDUSTRY PRESETS:
-${presetList}
-
-DOCUMENT FILENAME: ${fileName || 'Uploaded_Document.txt'}
-DOCUMENT MIME TYPE: ${fileType || 'text/plain'}
-
-DOCUMENT CONTENT:
-"""
-${contentToAnalyze.slice(0, 10000)}
-"""
-
-DECIPHERING INSTRUCTIONS:
-1. "businessName": Extract the official business/company name from the header, invoice, letterhead, or email. If not explicitly found, infer a professional company name based on their primary service.
-2. "industryId": Pick the single most accurate matching preset id from the AVAILABLE INDUSTRY PRESETS above.
-3. "industryName": The human-readable name of the selected preset.
-4. "confidence": A float between 0.75 and 0.99 reflecting match precision.
-5. "reasoning": A 2-sentence explanation citing the specific services, terms, or clues from the document that justify this preset.
-6. "extractedServices": 3 to 5 real services offered by this business based on the document.
-7. "recommendedTone": Optimal brand tone for customer communications in this trade.
-8. "dollarThreshold": Recommended autonomous action approval threshold in dollars (e.g. 500-2500).
-9. "technicianRoleName": Precise specialist role title (e.g. "Journeyman Plumber", "Systems Engineer", "Certified Solar Lead").
-10. "keyInsights": Array of 2 to 3 concise bullet points highlighting key business traits deciphered from the document (e.g. "Offers 24/7 emergency dispatch", "Commercial and residential service lines").
-11. "alternativeIndustries": Array of 2 alternative preset IDs if the user wants to adjust.
-
-Respond with ONLY valid JSON with this exact schema:
-{
-  "businessName": "...",
-  "industryId": "...",
-  "industryName": "...",
-  "confidence": 0.96,
-  "reasoning": "...",
-  "extractedServices": ["...", "..."],
-  "recommendedTone": "...",
-  "dollarThreshold": 1250,
-  "technicianRoleName": "...",
-  "keyInsights": ["...", "..."],
-  "alternativeIndustries": ["...", "..."]
-}`;
-
   try {
-    let contentsPayload: any = prompt;
-
-    // If PDF or image base64 provided, include multimodal parts
-    if (fileBase64 && (fileType?.includes('pdf') || fileType?.includes('image'))) {
-      contentsPayload = [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType: fileType,
-                data: fileBase64
-              }
-            },
-            { text: prompt }
-          ]
-        }
-      ];
-    }
-
-    const aiRes = await executeGeminiWithFallback({
-      preferredModel: FAST_MODEL,
-      contents: contentsPayload,
-      config: { responseMimeType: 'application/json' },
-      fallbackFn: fallbackExtractor
-    });
-
-    const parsed = JSON.parse(aiRes.text || fallbackExtractor());
-    
-    // Ensure industry preset exists in our presets catalog
-    const matchedPreset = INDUSTRY_PRESETS.find(p => p.id === parsed.industryId) || INDUSTRY_PRESETS.find(p => p.id === 'general_small_business');
-    if (matchedPreset) {
-      parsed.industryId = matchedPreset.id;
-      parsed.industryName = matchedPreset.name;
-      if (!parsed.extractedServices || parsed.extractedServices.length === 0) {
-        parsed.extractedServices = matchedPreset.defaultServices.slice(0, 4);
-      }
-      if (!parsed.technicianRoleName) {
-        parsed.technicianRoleName = matchedPreset.technicianRoleName;
-      }
-      if (!parsed.recommendedTone) {
-        parsed.recommendedTone = matchedPreset.recommendedTone;
-      }
-    }
-
-    res.json(parsed);
+    res.json(await analyzeDocument({ fileText: text, fileName, fileType, fileBase64 }));
   } catch (err: any) {
     console.error('[Onboarding Agent] Document analysis error:', err);
-    res.json(JSON.parse(fallbackExtractor()));
+    res.status(500).json({ error: 'Could not analyze the document. Please try again.' });
   }
 });
 
-// AI Industry Detection
-app.post('/api/business/:id/detect-industry', async (req: Request, res: Response) => {
-  const { description } = req.body;
-  if (!description) {
-    return res.status(400).json({ error: 'Description is required' });
-  }
-
-  const presetList = INDUSTRY_PRESETS.map(p => `${p.id}: ${p.name} (${p.description})`).join('\n');
-  const prompt = `Based on this business owner's description or operational details:
-"${description}"
-
-Pick the best matching industry preset from this list:
-${presetList}
-Or suggest 'general_small_business' if none closely match.
-
-Respond with ONLY valid JSON:
-{
-  "industryId": "preset_id",
-  "industryName": "Human friendly name",
-  "reason": "Detailed sentence explaining why this matches their specific operations",
-  "suggestedServices": ["Service 1", "Service 2", "Service 3", "Service 4"],
-  "technicianRoleName": "Field Specialist Title",
-  "recommendedTone": "Professional communication tone",
-  "dollarThreshold": 1000
-}`;
-
-  const fallbackDetect = () => {
-    const local = matchIndustryLocally(description);
-    return JSON.stringify({
-      industryId: local.preset.id,
-      industryName: local.preset.name,
-      reason: local.reason,
-      suggestedServices: local.preset.defaultServices.slice(0, 4),
-      technicianRoleName: local.preset.technicianRoleName || 'Field Specialist',
-      recommendedTone: local.preset.recommendedTone,
-      dollarThreshold: local.preset.id === 'construction' || local.preset.id === 'electrical' ? 1500 : 1000
-    });
-  };
-
-  try {
-    const aiRes = await executeGeminiWithFallback({
-      preferredModel: FAST_MODEL,
-      contents: prompt,
-      config: { responseMimeType: 'application/json' },
-      fallbackFn: fallbackDetect
-    });
-    const result = JSON.parse(aiRes.text || fallbackDetect());
-    res.json(result);
-  } catch (err: any) {
-    console.error('Industry detection error:', err);
-    res.json(JSON.parse(fallbackDetect()));
-  }
-});
+// Bug 5: never pass unvalidated LLM JSON to the client — coerce first.
+const coerceFinite = (value: unknown, fallback: number, min: number, max: number): number => {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+const coerceString = (value: unknown, fallback: string): string =>
+  typeof value === 'string' && value.trim() ? value : fallback;
+const coerceStringArray = (value: unknown, fallback: string[]): string[] => {
+  if (!Array.isArray(value)) return fallback;
+  const out = value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  return out.length ? out : fallback;
+};
 
 // Proactive AI Monitor: Evaluates business context & services added, suggesting an optimized Industry Profile preset
 app.post('/api/business/:id/suggest-optimized-industry', async (req: Request, res: Response) => {
@@ -1269,11 +1080,14 @@ app.post('/api/business/:id/suggest-optimized-industry', async (req: Request, re
   const { services, currentIndustry, businessName } = req.body;
 
   const currentBiz = db.getBusiness(businessId);
-  const effectiveServices: string[] = Array.isArray(services) && services.length > 0
+  // Coerce: only strings reach the client or the LLM prompt — an object in
+  // this array used to crash the dashboard when rendered.
+  const rawServices: unknown[] = Array.isArray(services) && services.length > 0
     ? services
     : (currentBiz?.services || []);
-  const effectiveCurrentIndustry = currentIndustry || currentBiz?.industry || 'general_small_business';
-  const effectiveBizName = businessName || currentBiz?.name || 'Your Business';
+  const effectiveServices: string[] = rawServices.filter((s): s is string => typeof s === 'string');
+  const effectiveCurrentIndustry = String(currentIndustry || currentBiz?.industry || 'general_small_business');
+  const effectiveBizName = String(businessName || currentBiz?.name || 'Your Business');
 
   if (!effectiveServices.length) {
     return res.json({ suggestion: null, reason: 'Insufficient services registered to evaluate optimization.' });
@@ -1284,8 +1098,15 @@ app.post('/api/business/:id/suggest-optimized-industry', async (req: Request, re
 
   // Fallback heuristic scoring
   const fallbackOptimization = () => {
-    const localMatch = matchIndustryLocally(`${effectiveBizName} ${combinedServicesText}`);
-    const matchedPreset = localMatch.preset;
+    const rankedLocal = scorePresetsByKeywords(`${effectiveBizName} ${combinedServicesText}`);
+    const topLocal = rankedLocal[0];
+    if (!topLocal || topLocal.score <= 0) {
+      return {
+        suggestion: null,
+        message: 'Current industry profile is already optimally aligned with your operational services.'
+      };
+    }
+    const matchedPreset = topLocal.preset;
 
     // Check if the matched preset is noticeably different from current
     const isDifferent = matchedPreset.id.toLowerCase() !== effectiveCurrentIndustry.toLowerCase() &&
@@ -1309,7 +1130,7 @@ app.post('/api/business/:id/suggest-optimized-industry', async (req: Request, re
         currentIndustryId: effectiveCurrentIndustry,
         suggestedPresetId: matchedPreset.id,
         suggestedPresetName: matchedPreset.name,
-        confidence: localMatch.confidence || 0.92,
+        confidence: 0.92,
         matchScore: 94,
         reason: `Based on your recent services (${effectiveServices.slice(0, 3).join(', ')}), your operations strongly indicate specialized ${matchedPreset.name} workflows rather than ${effectiveCurrentIndustry}.`,
         newServicesDetected: effectiveServices,
@@ -1373,15 +1194,15 @@ Respond with ONLY valid JSON matching this schema:
             currentIndustryId: effectiveCurrentIndustry,
             suggestedPresetId: targetPreset.id,
             suggestedPresetName: targetPreset.name,
-            confidence: parsed.confidence || 0.95,
-            matchScore: parsed.matchScore || 95,
-            reason: parsed.reason || `Your service catalog matches the specialized workflows and job packs of ${targetPreset.name}.`,
+            confidence: coerceFinite(parsed.confidence, 0.95, 0, 1),
+            matchScore: coerceFinite(parsed.matchScore, 95, 0, 100),
+            reason: coerceString(parsed.reason, `Your service catalog matches the specialized workflows and job packs of ${targetPreset.name}.`),
             newServicesDetected: effectiveServices,
-            recommendedTone: parsed.recommendedTone || targetPreset.recommendedTone,
-            technicianRoleName: parsed.technicianRoleName || targetPreset.technicianRoleName,
+            recommendedTone: coerceString(parsed.recommendedTone, targetPreset.recommendedTone),
+            technicianRoleName: coerceString(parsed.technicianRoleName, targetPreset.technicianRoleName),
             suggestedServices: targetPreset.defaultServices,
             activeEmployees: activeEmps,
-            triggers: parsed.triggers || [`Services directly align with ${targetPreset.name}`]
+            triggers: coerceStringArray(parsed.triggers, [`Services directly align with ${targetPreset.name}`])
           }
         });
       }
@@ -2083,7 +1904,39 @@ app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
     dollarThreshold: 250
   };
 
-  const amt = Number(invoiceAmount) || 0;
+  // Canonical invoice payload (Bug 3): stored as invoiceDetails, never
+  // the quote shape, with amount === totalAmount so mark-paid (which reads
+  // invoiceDetails.totalAmount) and the header badge agree.
+  const dueDaysNum = Number(dueDays) || 15;
+  const invoiceNumber =
+    typeof req.body?.invoiceNumber === 'string' && req.body.invoiceNumber.trim()
+      ? req.body.invoiceNumber.trim().slice(0, 40)
+      : `INV-${Date.now().toString().slice(-4)}`;
+  const dueDate =
+    typeof req.body?.dueDate === 'string' && req.body.dueDate.trim()
+      ? req.body.dueDate.trim().slice(0, 60)
+      : `Net-${dueDaysNum} days`;
+  const paymentInstructions =
+    typeof req.body?.paymentInstructions === 'string' ? req.body.paymentInstructions.slice(0, 500) : undefined;
+  const notes = typeof req.body?.notes === 'string' ? req.body.notes.slice(0, 1000) : undefined;
+  const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+  const parsedItems = rawItems.map((it: any) => {
+    const quantity = Number(it?.quantity) > 0 ? Number(it.quantity) : 1;
+    const unitPrice = Number(it?.unitPrice) || 0;
+    const total = quantity * unitPrice;
+    return {
+      description: typeof it?.description === 'string' ? it.description.slice(0, 200) : serviceName,
+      quantity,
+      unitPrice,
+      total,
+      amount: total
+    };
+  });
+  const parsedTotal = parsedItems.reduce((sum: number, it: { total: number }) => sum + it.total, 0);
+  const items = parsedItems.length && parsedTotal > 0
+    ? parsedItems
+    : [{ description: serviceName, quantity: 1, unitPrice: Number(invoiceAmount) || 0, total: Number(invoiceAmount) || 0, amount: Number(invoiceAmount) || 0 }];
+  const amt = items.reduce((sum: number, it: { total: number }) => sum + it.total, 0);
   if (amt <= 0) {
     return res.status(400).json({ error: 'A valid invoice amount is required.' });
   }
@@ -2103,19 +1956,15 @@ app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
     requiresReview: true,
     result: {
       summary: `Invoice prepared for ${clientName}`,
-      quoteDetails: {
+      invoiceDetails: {
         clientName,
-        items: [
-          {
-            description: serviceName,
-            quantity: 1,
-            unitPrice: amt,
-            total: amt
-          }
-        ],
+        invoiceNumber,
+        amount: amt,
         totalAmount: amt,
-        validDays: Number(dueDays) || 15,
-        terms: `Net-${Number(dueDays) || 15} days`
+        items,
+        dueDate,
+        ...(paymentInstructions !== undefined ? { paymentInstructions } : {}),
+        ...(notes !== undefined ? { notes } : {})
       }
     },
     createdAt: new Date().toISOString(),
@@ -2493,7 +2342,7 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
     return res.status(404).json({ error: 'Business not found' });
   }
 
-  const { decision, editedContent, reviewerNote } = req.body;
+  const { decision, editedContent, reviewerNote, editedAmounts } = req.body;
   if (!decision || !['approved', 'rejected', 'edited'].includes(decision)) {
     return res.status(400).json({ error: 'Invalid decision type' });
   }
@@ -2503,7 +2352,8 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
     req.params.actionId,
     decision,
     editedContent,
-    reviewerNote
+    reviewerNote,
+    editedAmounts
   );
 
   if (!updatedAction) {

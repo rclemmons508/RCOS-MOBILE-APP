@@ -207,13 +207,14 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
       if (data.actionTriggered) {
         const act = data.actionTriggered;
         if (act.type === 'transfer_call') {
+          // Simulation only: this console has no live call, so nothing is
+          // actually transferred. Record the request without claiming success.
           playChime('transfer');
-          setActiveDepartment(act.targetDepartment);
-          setCallStatus(`Transferred to ${act.targetDepartment}`);
+          setCallStatus(`Transfer requested: ${act.targetDepartment} (simulation — not transferred)`);
           if (onTriggerNotification) {
             onTriggerNotification(
-              'Call Transferred',
-              `Caller transferred to ${act.targetDepartment} (Ext ${act.extension || '101'})`
+              'Transfer requested (simulation)',
+              `Transfer to ${act.targetDepartment} (Ext ${act.extension || '101'}) noted in this simulation — no live call was transferred.`
             );
           }
         } else if (act.type === 'request_quote_approval') {
@@ -284,26 +285,27 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
     }
   };
 
-  // Department Transfer execution
+  // Department Transfer execution (simulation only — no live call is moved).
+  // Records the requested department in the transcript without reporting a
+  // transfer that did not happen. Real transfers happen on a live LiveKit call.
   const handleExecuteTransfer = (dept: DepartmentTransfer) => {
     playChime('transfer');
-    setActiveDepartment(dept.name);
-    setCallStatus(`Transferred to ${dept.name}`);
+    setCallStatus(`Transfer requested: ${dept.name} (simulation — not transferred)`);
 
     const transferEntry: CallTranscriptEntry = {
       speaker: 'System',
-      text: `🔀 Call transferred to ${dept.name} (Ext ${dept.extension}, ${dept.leadName}). Transferring audio feed...`,
+      text: `🔀 Transfer requested to ${dept.name} (Ext ${dept.extension}, ${dept.leadName}). Simulation only — no live call was transferred.`,
       time: formatTimer(callDurationSeconds)
     };
     setTranscript(prev => [...prev, transferEntry]);
 
-    const announcement = `Please stay on the line while I connect you with ${dept.leadName} at ${dept.name}, Extension ${dept.extension}.`;
+    const announcement = `Transfer to ${dept.leadName} at ${dept.name} was noted in this simulation. No live call was transferred.`;
     handleSynthesizeAndSpeak(announcement);
 
     if (onTriggerNotification) {
       onTriggerNotification(
-        'Call Transferred',
-        `Routed to ${dept.name} (${dept.leadName} - Ext ${dept.extension})`
+        'Transfer requested (simulation)',
+        `Transfer to ${dept.name} (${dept.leadName} - Ext ${dept.extension}) noted in this simulation — no live call was transferred.`
       );
     }
   };
@@ -326,6 +328,10 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-black text-white p-3 sm:p-4 rounded-3xl border border-zinc-800 shadow-2xl relative overflow-hidden">
+      {/* Simulation notice — this console is a demo, not a live call. */}
+      <div className="mb-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/40 text-[11px] text-amber-300 font-bold text-center shrink-0">
+        Simulation — practice console only. No real call is connected and transfers do not move a live caller.
+      </div>
       {/* Top Call Status Bar */}
       <div className="flex items-center justify-between pb-3 border-b border-zinc-900 shrink-0">
         <div className="flex items-center gap-2.5">
@@ -490,7 +496,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
           className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-bold text-lime-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
         >
           <PhoneForwarded className="w-4 h-4" />
-          <span>Transfer</span>
+          <span>Simulate Transfer</span>
         </button>
 
         <button

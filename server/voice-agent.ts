@@ -8,10 +8,15 @@
  * What it does: joins the LiveKit room created by POST /api/voice/token,
  * greets the caller, listens, thinks with Gemini (Live API), speaks back.
  * The room metadata carries a persona ('receptionist' | 'sales' | 'operations' |
- * 'marketing' | 'support'); the receptionist uses the route_to_representative
+ * 'marketing' | 'support' | 'executive' | 'technician' | 'finance'); the
+ * receptionist uses the route_to_representative
  * tool to HAND the call to the right department agent (a real mid-call handoff
- * via the SDK's handoff mechanism), while the four team agents are
- * conversation-only (no tools), so a transferred call cannot route back.
+ * via the SDK's handoff mechanism). The department agent carries the SAME
+ * routing-tool instance as the receptionist, so the SDK can reuse the live
+ * Gemini session across the handoff instead of tearing it down and opening a
+ * new one; the tool's once-per-call guard still means a transferred call
+ * cannot route again. The handoff also carries the conversation history, so
+ * the department agent is not amnesiac.
  *
  * Needs in the environment:
  *   LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (LiveKit Cloud — free tier works)
@@ -19,7 +24,7 @@
  *   APP_URL (so the routing tool can log to your own API)
  */
 import 'dotenv/config';
-import { defineAgent, cli, WorkerOptions, Agent, AgentSession, tool, handoff } from '@livekit/agents';
+import { defineAgent, cli, WorkerOptions, Agent, AgentSession, AgentSessionEventTypes, tool, handoff } from '@livekit/agents';
 import { realtime } from '@livekit/agents-plugin-google';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
@@ -49,7 +54,7 @@ Keep replies short and speak naturally — this is a phone call, not an email.
 Never invent prices, arrival times, or promises. If you do not know, say you will
 have the right person call them back.`;
 
-type VoicePersona = 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support';
+type VoicePersona = 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support' | 'executive' | 'technician' | 'finance';
 
 const PERSONAS: Record<VoicePersona, { instructions: string; greeting: string; useRoutingTool: boolean }> = {
   receptionist: {
@@ -99,6 +104,38 @@ check.`,
     greeting: 'Greet the caller as the RC Solutions support agent and ask how you can help.',
     useRoutingTool: false,
   },
+  executive: {
+    instructions: `You are the Executive Assistant for RC Solutions, a service business,
+talking with the business owner on a voice call. Help with escalations, safety
+issues, and owner-level decisions — what needs the owner's call, what can
+wait, and what to do next. If something sounds like a safety issue, say so
+plainly and escalate right away. Keep replies short and speak naturally —
+this is a phone call, not an email. Never invent facts, decisions, or promises
+— if you do not know, say you will check.`,
+    greeting: 'Greet the caller as the RC Solutions executive assistant and ask what needs your attention.',
+    useRoutingTool: false,
+  },
+  technician: {
+    instructions: `You are the Field Technician agent for RC Solutions, a service business,
+talking with the business owner on a voice call. Help with Job Pack checklists
+— what to check, test, and record on the job — and walk through the safety
+steps before work starts. If something sounds unsafe, stop and say so plainly
+before anything else. Keep replies short and speak naturally — this is a
+phone call, not an email. Never invent job details, readings, or safety
+clearances — if you do not know, say you will check.`,
+    greeting: 'Greet the caller as the RC Solutions field technician and ask what job you are working on.',
+    useRoutingTool: false,
+  },
+  finance: {
+    instructions: `You are the Finance agent for RC Solutions, a service business,
+talking with the business owner on a voice call. Help with invoices, balances,
+and payments — what is owed, what has been paid, and what to follow up on.
+Never invent prices, balances, or payments — if you do not know a number,
+say you will check and come back with it. Keep replies short and speak
+naturally — this is a phone call, not an email.`,
+    greeting: 'Greet the caller as the RC Solutions finance agent and ask what you want to check.',
+    useRoutingTool: false,
+  },
 };
 
 /** Persona comes from the room metadata set by POST /api/voice/token; anything unknown falls back to receptionist. */
@@ -110,7 +147,10 @@ function personaFromMetadata(roomMetadata: unknown, jobMetadata: unknown): Voice
         parsed.persona === 'sales' ||
         parsed.persona === 'operations' ||
         parsed.persona === 'marketing' ||
-        parsed.persona === 'support'
+        parsed.persona === 'support' ||
+        parsed.persona === 'executive' ||
+        parsed.persona === 'technician' ||
+        parsed.persona === 'finance'
       ) {
         return parsed.persona;
       }
@@ -153,28 +193,107 @@ function handoffGreeting(
  * An agent that greets the caller the moment it takes over a transferred call.
  * The base Agent's onEnter is a no-op, so without this the department agent
  * would sit silent after a handoff.
+ *
+ * The department agent is built with the SAME routing-tool instance as the
+ * receptionist, passed as a NAMED tool in an ARRAY ([routeTool]): the LiveKit
+ * SDK only reuses the live realtime session across a handoff when the two
+ * agents' tools are equal by object identity (the Google plugin cannot update
+ * tools mid-session), so a different/no toolset would tear the Gemini
+ * websocket down and open a brand-new one on every transfer. The object-map
+ * form ({ name: tool }) does NOT work here — the SDK spread-copies anonymous
+ * tools on every registration, so the two agents would never compare equal.
+ * It also gets a copy of the conversation history (minus the receptionist's
+ * instructions), so it picks up where the receptionist left off instead of
+ * starting amnesiac.
  */
 class DepartmentAgent extends Agent {
   private handoffGreeting: string;
-  constructor(instructions: string, greeting: string) {
-    super({ instructions });
+  constructor(
+    instructions: string,
+    greeting: string,
+    options?: {
+      tools?: ConstructorParameters<typeof Agent>[0]['tools'];
+      chatCtx?: ConstructorParameters<typeof Agent>[0]['chatCtx'];
+    },
+  ) {
+    super({
+      instructions,
+      ...(options?.tools ? { tools: options.tools } : {}),
+      ...(options?.chatCtx ? { chatCtx: options.chatCtx } : {}),
+    });
     this.handoffGreeting = greeting;
   }
   async onEnter() {
-    await this.session.generateReply({ instructions: this.handoffGreeting });
+    try {
+      await this.session.generateReply({ instructions: this.handoffGreeting });
+      console.log('[voice-agent] handoff succeeded — department agent greeting delivered.');
+    } catch (e) {
+      // Log, don't rethrow: the session is still alive and the caller can
+      // speak; killing the transition here would drop the call.
+      console.error('[voice-agent] handoff greeting failed:', e);
+    }
   }
+}
+
+/**
+ * Fire-and-forget: logs a routing decision to the RCOS API so it shows up in
+ * the dashboard. This used to be awaited (up to 8s) BEFORE the handoff,
+ * stalling the transfer on a slow log call — it now runs in the background
+ * while the handoff proceeds, and a failed log never blocks the call.
+ */
+function logRoutingDecision(input: {
+  department: string;
+  summary: string;
+  urgency: string;
+  callerName?: string;
+}): void {
+  const appUrl = process.env.APP_URL;
+  if (!appUrl) {
+    return;
+  }
+  // Never let a slow log call stall the conversation: give up after 8s.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  fetch(`${appUrl}/api/voice/routing-log`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(process.env.VOICE_AGENT_SECRET ? { 'x-voice-secret': process.env.VOICE_AGENT_SECRET } : {}),
+    },
+    body: JSON.stringify({
+      department: input.department,
+      summary: input.summary,
+      urgency: input.urgency,
+      callerName: input.callerName || 'Unknown caller',
+      at: new Date().toISOString(),
+      source: 'webrtc-receptionist',
+    }),
+    signal: controller.signal,
+  })
+    .catch((e) => {
+      console.warn('[voice-agent] routing log failed:', (e as Error)?.message);
+    })
+    .finally(() => {
+      clearTimeout(timeout);
+    });
 }
 
 /**
  * Builds the receptionist's transfer tool. One instance per call, so the
  * once-per-call guard below never leaks across calls in the same worker process.
- * The tool still logs the routing decision to the RCOS API (the dashboard
- * record is unchanged); it then returns an SDK handoff, which swaps the live
- * session to the department agent — the same agent does NOT keep talking.
+ * The tool logs the routing decision to the RCOS API in the background (the
+ * dashboard record is unchanged); it then returns an SDK handoff, which swaps
+ * the live session to the department agent — the same agent does NOT keep talking.
  */
 function createRouteToRepresentativeTool() {
   let hasTransferred = false;
-  return tool({
+  // The exact tool instance handed to the receptionist AND to the department
+  // agent: the SDK compares tools by identity, so sharing this instance is
+  // what lets it reuse the live Gemini session across the handoff. It must
+  // be a NAMED tool passed as an ARRAY ([routeTool]) — the object-map form
+  // spread-copies anonymous tools per registration and breaks identity.
+  const routeTool = tool({
+    name: 'route_to_representative',
     description:
       'Transfer the call to the department that should handle the caller\'s issue. Call this once you know the caller\'s issue — the call is handed to the department agent immediately.',
     parameters: z.object({
@@ -185,43 +304,15 @@ function createRouteToRepresentativeTool() {
       urgency: z.enum(['routine', 'urgent', 'emergency']).describe('How urgent this is'),
       callerName: z.string().optional().describe('Caller name if they gave one'),
     }),
-    execute: async ({ department, summary, urgency, callerName }) => {
-      // Log the routing decision to the RCOS API so it shows up in the dashboard.
-      try {
-        const appUrl = process.env.APP_URL;
-        if (appUrl) {
-          // Never let a slow log call stall the conversation: give up after 8s.
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 8000);
-          try {
-            await fetch(`${appUrl}/api/voice/routing-log`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(process.env.VOICE_AGENT_SECRET ? { 'x-voice-secret': process.env.VOICE_AGENT_SECRET } : {}),
-            },
-            body: JSON.stringify({
-              department,
-              summary,
-              urgency,
-              callerName: callerName || 'Unknown caller',
-              at: new Date().toISOString(),
-              source: 'webrtc-receptionist',
-            }),
-              signal: controller.signal,
-            });
-          } finally {
-            clearTimeout(timeout);
-          }
-        }
-      } catch (e) {
-        console.warn('[voice-agent] routing log failed:', (e as Error)?.message);
-      }
-      // At most one transfer per call. Department agents have no routing tool,
-      // so this is belt-and-braces against a double tool call in one turn.
+    execute: async ({ department, summary, urgency, callerName }, { ctx }) => {
+      // At most one transfer per call. The department agent carries this same
+      // tool, so this guard is what stops a transferred call routing again.
       if (hasTransferred) {
         return 'Already transferred — stay with the current agent.';
       }
+      // Log the routing decision in the background — never awaited, so a slow
+      // log call cannot stall the transfer.
+      logRoutingDecision({ department, summary, urgency, callerName });
       const persona = DEPARTMENT_TO_PERSONA[department];
       const base = PERSONAS[persona];
       const context =
@@ -231,16 +322,35 @@ function createRouteToRepresentativeTool() {
         (department === 'emergency'
           ? ' This is an emergency escalation — act now, stay calm, and tell the caller plainly what happens next.'
           : '');
+      // Carry the conversation history across the handoff (without the
+      // receptionist's instructions, which belong to the old agent). If the
+      // history cannot be copied, the summary + greeting below still carry
+      // the transfer — a history failure must never drop the call.
+      let chatCtx: ConstructorParameters<typeof Agent>[0]['chatCtx'];
+      try {
+        const history = ctx?.session?.history;
+        chatCtx = history
+          ? history.copy({ excludeInstructions: true, excludeHandoff: true, excludeConfigUpdate: true })
+          : undefined;
+      } catch (e) {
+        console.warn('[voice-agent] could not copy chat history for handoff, continuing with summary only:', (e as Error)?.message);
+        chatCtx = undefined;
+      }
+      console.log(`[voice-agent] handoff starting — department=${department} urgency=${urgency} persona=${persona}`);
       const agent = new DepartmentAgent(
         `${base.instructions}${context}`,
         handoffGreeting(department, summary),
+        { tools: [routeTool], chatCtx },
       );
       hasTransferred = true;
       // No `returns` value: the new agent's onEnter greeting is the only speech
       // after the transfer (no tool-output reply from the receptionist).
+      // Handoff success is logged by DepartmentAgent.onEnter; handoff failure
+      // surfaces via the session 'error' / 'close' listeners in entry.
       return handoff({ agent });
     },
   });
+  return routeTool;
 }
 
 export default defineAgent({
@@ -264,14 +374,36 @@ export default defineAgent({
 
     const agent = new Agent({
       instructions: config.instructions,
-      ...(config.useRoutingTool ? { tools: { route_to_representative: createRouteToRepresentativeTool() } } : {}),
+      // Array form: preserves the tool's object identity, which is what the
+      // SDK's handoff session-reuse check compares (see DepartmentAgent).
+      ...(config.useRoutingTool ? { tools: [createRouteToRepresentativeTool()] } : {}),
     });
 
     const session = new AgentSession({ llm: model });
-    await session.start({ agent, room: ctx.room });
-    await session.generateReply({
-      instructions: config.greeting,
+    // A realtime-model failure used to end the job silently (the SDK's
+    // _onError path) with nothing in the logs. Surface it, plus session
+    // closes, so a dropped call always leaves a trace.
+    session.on(AgentSessionEventTypes.Error, (ev) => {
+      console.error('[voice-agent] session error:', ev.error);
     });
+    session.on(AgentSessionEventTypes.Close, (ev) => {
+      console.log('[voice-agent] session closed:', ev.reason, ev.error ?? '');
+    });
+    try {
+      await session.start({ agent, room: ctx.room });
+    } catch (e) {
+      console.error('[voice-agent] session.start failed:', e);
+      throw e;
+    }
+    try {
+      await session.generateReply({
+        instructions: config.greeting,
+      });
+    } catch (e) {
+      // Log, don't throw: the session is still alive and the caller can speak;
+      // a failed greeting must not drop the call.
+      console.error('[voice-agent] greeting failed:', e);
+    }
   },
 });
 

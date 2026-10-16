@@ -48,6 +48,9 @@ const TALK_PERSONAS: Partial<Record<string, TalkPersona>> = {
   operations: 'operations',
   sales: 'sales',
   marketing: 'marketing',
+  executive_assistant: 'executive',
+  technician: 'technician',
+  finance: 'finance',
 };
 
 interface AiTeamViewProps {

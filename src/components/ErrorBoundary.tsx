@@ -4,6 +4,12 @@ import { RCLogo } from './RCLogo';
 
 interface Props {
   children: ReactNode;
+  /**
+   * Optional compact fallback for section-scoped use (wrap one Dashboard
+   * section so a bad record shows this card instead of killing the whole
+   * app). When omitted, the existing full-page dashboard fallback renders.
+   */
+  fallback?: ReactNode;
 }
 
 interface State {
@@ -23,6 +29,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught component error:', error, errorInfo);
+    // Bug 5 (React #310): the component stack pinpoints which section
+    // rendered the bad value, so log it explicitly instead of leaving it
+    // buried inside the ErrorInfo object.
+    console.error('Component stack:', errorInfo.componentStack);
   }
 
   public handleReset = () => {
@@ -32,6 +42,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      if (this.props.fallback !== undefined) {
+        return <>{this.props.fallback}</>;
+      }
       return (
         <div className="min-h-screen bg-[#090b0e] text-slate-100 flex flex-col items-center justify-center p-6 text-center">
           <div className="max-w-md w-full bg-[#0e1118] border border-[#21293a] rounded-3xl p-8 space-y-5 shadow-2xl">

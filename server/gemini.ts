@@ -73,10 +73,11 @@ export async function executeGeminiWithFallback(params: {
   config?: any;
   preferredModel?: string;
   fallbackFn: () => string;
-}): Promise<{ text: string; modelUsed: string }> {
-  // If API key is missing, immediately use the resilient offline engine
+}): Promise<{ text: string; modelUsed: string; source: 'llm' | 'fallback' }> {
+  // If API key is missing, run the caller's keyword fallback. It is labelled
+  // honestly as a fallback — never as a neural-engine result.
   if (!hasValidApiKey) {
-    return { text: params.fallbackFn(), modelUsed: 'rcos-neural-engine' };
+    return { text: params.fallbackFn(), modelUsed: 'keyword-fallback', source: 'fallback' };
   }
 
   const modelsToTry = params.preferredModel 
@@ -92,7 +93,7 @@ export async function executeGeminiWithFallback(params: {
       });
 
       if (response?.text) {
-        return { text: response.text, modelUsed: model };
+        return { text: response.text, modelUsed: model, source: 'llm' };
       }
     } catch (err: any) {
       const msg = err?.message || String(err);
@@ -104,6 +105,7 @@ export async function executeGeminiWithFallback(params: {
     }
   }
 
-  // Gracefully fallback without crashing
-  return { text: params.fallbackFn(), modelUsed: 'rcos-neural-engine' };
+  // All LLM models failed: run the caller's keyword fallback and label it
+  // honestly as a fallback — never as a neural-engine result.
+  return { text: params.fallbackFn(), modelUsed: 'keyword-fallback', source: 'fallback' };
 }
