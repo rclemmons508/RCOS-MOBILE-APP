@@ -16,7 +16,7 @@ import { teamService } from '../../services/teamService';
 import { authService } from '../../services/authService';
 import { apiFetch } from '../../lib/api';
 import { auth } from '../../lib/firebase';
-import { biometricService } from '../../services/biometricService';
+import { biometricService, BIOMETRICS_ENABLED } from '../../services/biometricService';
 import { DEFAULT_PROFILE_PICTURES, defaultPictureDataUrl, downscaleImageFile, resolveProfilePicture } from '../../utils/profilePicture';
 import { 
   Settings2, 
@@ -1011,7 +1011,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
 
           {/* Biometric Access & Device Keystore */}
-          <BiometricSettingsCard currentUser={currentUser} />
+          {BIOMETRICS_ENABLED && <BiometricSettingsCard currentUser={currentUser} />}
         </div>
       )}
 

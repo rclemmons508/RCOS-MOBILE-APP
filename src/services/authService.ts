@@ -1,6 +1,6 @@
 import { User, UserPreferences } from '../types';
 import { userPreferencesService, DEFAULT_USER_PREFERENCES } from './userPreferencesService';
-import { biometricService } from './biometricService';
+import { biometricService, BIOMETRICS_ENABLED } from './biometricService';
 import { auth, googleProvider } from '../lib/firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { setCachedAccessToken } from '../lib/gmail';
@@ -370,6 +370,9 @@ class AuthService {
    * Sign In with Biometrics (Fingerprint / Face ID)
    */
   async loginWithBiometrics(): Promise<User> {
+    if (!BIOMETRICS_ENABLED) {
+      throw new Error('Biometric login is turned off for now. Please sign in with your email and password.');
+    }
     const enrolledInfo = biometricService.getEnrolledInfo();
 
     // Verify biometric hardware scan

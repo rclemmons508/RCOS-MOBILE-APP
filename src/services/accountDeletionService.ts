@@ -124,9 +124,17 @@ export async function deleteAccount(
       const matchedOwner = ownerEmails.includes(me)
         || (!!biz?.ownerId && biz.ownerId !== 'unassigned_owner' && !!sessionUser?.id && biz.ownerId === sessionUser.id);
       isTeamMember = !matchedOwner;
-    } catch {
-      // Business fetch failed (offline / already gone). The owner path
-      // below treats a missing business as already deleted.
+    } catch (e: any) {
+      // Fail SAFE: a fetch failure must never default to the owner path
+      // (which wipes). Only a 404 — the business is genuinely gone —
+      // proceeds; anything else (offline, timeout, server error) refuses
+      // to delete rather than risk wiping a business we could not verify.
+      if (e?.status === 404) {
+        // Business already gone: the owner path below treats it as
+        // already deleted and deletes only local traces.
+      } else {
+        throw new Error('Could not verify who owns this business (connection problem). Nothing was deleted. Please try again when you are back online.');
+      }
     }
   }
 

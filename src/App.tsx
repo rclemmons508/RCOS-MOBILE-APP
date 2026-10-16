@@ -56,6 +56,7 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { ServiceManagerModal } from './components/ServiceManagerModal';
 import { ProactiveIndustrySuggestionModal } from './components/ProactiveIndustrySuggestionModal';
 import { authService } from './services/authService';
+import { APP_BUILD_ID } from './utils/buildInfo';
 import { firestoreService } from './services/firestoreService';
 import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
@@ -127,6 +128,18 @@ async function resolveBusinessForUser(user: User): Promise<BusinessAccount | nul
       const byMember = businesses.find(b => (b.members || []).some(m => (m.email || '').toLowerCase() === email));
       if (byMember) return byMember;
     }
+    // Owner match: a business whose recorded owner is this user, even
+    // when the roster is empty (e.g. a business created before the
+    // roster existed). Without this, the owner is sent back to
+    // onboarding on every fresh login because nothing matches them.
+    if (user.id) {
+      const byOwnerId = businesses.find(b => b.ownerId && b.ownerId !== 'unassigned_owner' && b.ownerId === user.id);
+      if (byOwnerId) return byOwnerId;
+    }
+    if (email) {
+      const byContact = businesses.find(b => (b.contactEmail || '').toLowerCase() === email);
+      if (byContact) return byContact;
+    }
     return null;
   } catch {
     return null;
@@ -143,7 +156,20 @@ export default function App() {
   const { isDashboardLocked, isBiometricEnabled, unenrollBiometrics } = useBiometrics();
 
   // Authentication State - starts from scratch (no preloaded user profile)
-  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getActiveSession());
+  // A new install or a new build never starts logged in as anyone: if
+  // the stored build marker does not match this build, clear the
+  // session and show the login screen. Bump APP_BUILD_ID on every
+  // release build so each new APK starts at login.
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      if (localStorage.getItem('rcos_app_build') !== APP_BUILD_ID) {
+        authService.logout();
+        localStorage.setItem('rcos_app_build', APP_BUILD_ID);
+        return null;
+      }
+    } catch { /* storage unavailable */ }
+    return authService.getActiveSession();
+  });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Application Core Data - starts fresh from scratch
@@ -1985,7 +2011,12 @@ export default function App() {
                 : undefined;
               const withOwner: BusinessAccount = {
                 ...configuredBiz,
-                ownerId: configuredBiz.ownerId || currentUser?.id,
+                // 'unassigned_owner' is a placeholder, not an owner — it
+                // must never beat the real signed-in user, or the business
+                // stays ownerless forever (roster empty, nobody matches).
+                ownerId: (configuredBiz.ownerId && configuredBiz.ownerId !== 'unassigned_owner')
+                  ? configuredBiz.ownerId
+                  : (currentUser?.id || configuredBiz.ownerId),
                 members: configuredBiz.members && configuredBiz.members.length > 0
                   ? configuredBiz.members
                   : ownerMember
