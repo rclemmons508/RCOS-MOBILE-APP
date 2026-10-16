@@ -35,6 +35,13 @@ const STORAGE_KEY_LOCKED = 'rcos_biometric_locked';
 const STORAGE_KEY_LAST_ACTIVE = 'rcos_last_active_timestamp';
 const STORAGE_KEY_ENROLLMENT = 'rcos_biometric_enrollment';
 
+// Biometric login is turned OFF for now (Oct 16, 2026). The fingerprint
+// login kept resurrecting deleted profiles and getting in the way of the
+// app's core job, so it is disabled until the core is solid. This is one
+// switch: set it to true to bring biometrics back. All screens hide
+// automatically because they read isBiometricsEnabled() / getEnrolledInfo().
+export const BIOMETRICS_ENABLED = false;
+
 export const DEFAULT_BIOMETRIC_SETTINGS: BiometricSecuritySettings = {
   enabled: true,
   autoLockOnBackground: true,
@@ -134,6 +141,9 @@ class BiometricService {
    * Check if a biometric profile has been enrolled on this device
    */
   getEnrolledInfo(): BiometricEnrollmentInfo {
+    if (!BIOMETRICS_ENABLED) {
+      return { enrolled: false, biometryType: 'fingerprint' };
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY_ENROLLMENT);
       if (raw) {
@@ -365,6 +375,9 @@ class BiometricService {
    * Load security settings from storage
    */
   getSettings(): BiometricSecuritySettings {
+    if (!BIOMETRICS_ENABLED) {
+      return { ...DEFAULT_BIOMETRIC_SETTINGS, enabled: false };
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
       if (raw) {
