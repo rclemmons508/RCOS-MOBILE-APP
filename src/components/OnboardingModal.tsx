@@ -30,6 +30,7 @@ import { INDUSTRY_PRESETS } from '../data/presets';
 import { RCLogo } from './RCLogo';
 import { useAuth } from '../context/AuthContext';
 import { haptic } from '../utils/haptics';
+import { asText } from '../utils/safeRender';
 import { apiFetch } from '../lib/api';
 import { firestoreService } from '../services/firestoreService';
 import { biometricService } from '../services/biometricService';
@@ -1667,7 +1668,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       key={idx} 
                       className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700/80 flex items-center gap-1.5"
                     >
-                      <span>{service}</span>
+                      <span>{asText(service)}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveService(idx)}
