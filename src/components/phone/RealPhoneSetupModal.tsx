@@ -282,7 +282,7 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
                   type="tel"
                   value={testPhoneNumber}
                   onChange={(e) => setTestPhoneNumber(e.target.value)}
-                  placeholder="+14707832596"
+                  placeholder="+14707136068"
                   className="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 font-mono"
                 />
                 <button
