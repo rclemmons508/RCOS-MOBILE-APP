@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { asStringList } from '../utils/safeRender';
 
 interface PublicBusiness {
   id: string;
@@ -140,7 +141,7 @@ export const PublicBookingPage: React.FC = () => {
             <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Service needed</label>
             {business.services.length > 0 ? (
               <select value={service} onChange={(e) => setService(e.target.value)} className={inputCls}>
-                {business.services.map((sv) => (
+                {asStringList(business.services).map((sv) => (
                   <option key={sv} value={sv}>{sv}</option>
                 ))}
               </select>
