@@ -863,6 +863,27 @@ function teamIsOwner(business: BusinessAccount, email: string): boolean {
   return teamMemberFor(business, email)?.role === 'owner';
 }
 
+// Owner proof that does NOT trust an empty roster (Oct 16, 2026). The old
+// code treated everyone as the owner when the roster was empty
+// (`teamIsOwner(...) || !hasMembers`) — but the roster is empty on
+// restored businesses, so a member could invite, remove, and (via the
+// Danger Zone) wipe the business. Owner proof is: roster owner, Firebase
+// UID match, or the requester's email matching an owner identity recorded
+// on the business (contact email / owner email). The one exception: a
+// record with no owner identity anywhere — nobody to protect, so the
+// requester is treated as the owner (legacy behavior).
+function teamIsOwnerByIdentity(business: BusinessAccount, email: string, uid?: string): boolean {
+  if (teamIsOwner(business, email)) return true;
+  if (uid && business.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === uid) return true;
+  const identities = [
+    String((business as any).contactEmail || '').toLowerCase().trim(),
+    String((business as any).ownerEmail || '').toLowerCase().trim(),
+  ].filter(Boolean);
+  if (identities.length === 0) return true;
+  const clean = (email || '').toLowerCase().trim();
+  return clean !== '' && identities.includes(clean);
+}
+
 // Invite codes: 8 characters, letters + digits, with the easily
 // confused 0/O/1/l/I left out so a code read off a screen still works.
 const INVITE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -887,7 +908,7 @@ app.get('/api/business/:id/team', (req: Request, res: Response) => {
   if (hasMembers && !me) {
     return res.status(403).json({ error: 'Only people on this team can see the roster.' });
   }
-  const owner = teamIsOwner(business, email) || !hasMembers;
+  const owner = teamIsOwnerByIdentity(business, email, ((req as any).user as { uid?: string } | undefined)?.uid);
   const invites = owner
     ? db.getTeamInvites(business.id).filter(i => !i.used && !i.revoked && new Date(i.expiresAt).getTime() > Date.now())
     : [];
@@ -900,8 +921,7 @@ app.post('/api/business/:id/team/invites', teamInviteLimiter, (req: Request, res
   const business = db.getBusiness(req.params.id);
   if (!business) return res.status(404).json({ error: 'Business not found.' });
   const email = teamRequesterEmail(req);
-  const hasMembers = (business.members || []).length > 0;
-  if (hasMembers && !teamIsOwner(business, email)) {
+  if (!teamIsOwnerByIdentity(business, email, ((req as any).user as { uid?: string } | undefined)?.uid)) {
     return res.status(403).json({ error: 'Only the owner can invite people to the team.' });
   }
   const inviteEmail = String((req.body as any)?.email || '').trim().toLowerCase();
@@ -930,8 +950,7 @@ app.delete('/api/business/:id/team/invites/:code', (req: Request, res: Response)
   const business = db.getBusiness(req.params.id);
   if (!business) return res.status(404).json({ error: 'Business not found.' });
   const email = teamRequesterEmail(req);
-  const hasMembers = (business.members || []).length > 0;
-  if (hasMembers && !teamIsOwner(business, email)) {
+  if (!teamIsOwnerByIdentity(business, email, ((req as any).user as { uid?: string } | undefined)?.uid)) {
     return res.status(403).json({ error: 'Only the owner can cancel invites.' });
   }
   const invite = db.getTeamInviteByCode(req.params.code);
@@ -949,8 +968,7 @@ app.delete('/api/business/:id/team/members/:email', (req: Request, res: Response
   const business = db.getBusiness(req.params.id);
   if (!business) return res.status(404).json({ error: 'Business not found.' });
   const email = teamRequesterEmail(req);
-  const hasMembers = (business.members || []).length > 0;
-  if (hasMembers && !teamIsOwner(business, email)) {
+  if (!teamIsOwnerByIdentity(business, email, ((req as any).user as { uid?: string } | undefined)?.uid)) {
     return res.status(403).json({ error: 'Only the owner can remove team members.' });
   }
   const target = decodeURIComponent(req.params.email).toLowerCase();
