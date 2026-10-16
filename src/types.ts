@@ -60,9 +60,17 @@ export interface ActionResult {
   invoiceDetails?: {
     clientName: string;
     invoiceNumber: string;
+    /**
+     * Canonical invoice shape (Bug 3): `amount` and `totalAmount` are ALWAYS
+     * kept equal. Older readers use `amount`; mark-paid reads `totalAmount`.
+     */
     amount: number;
-    totalAmount?: number;
-    items?: Array<{ description: string; quantity?: number; unitPrice?: number; total?: number; amount?: number }>;
+    totalAmount: number;
+    /**
+     * Canonical item shape: every item carries quantity, unitPrice, total
+     * (= quantity × unitPrice) AND `amount` (= total, for older readers).
+     */
+    items?: Array<{ description: string; quantity: number; unitPrice: number; total: number; amount: number }>;
     dueDate: string;
     paymentInstructions?: string;
     notes?: string;
@@ -84,6 +92,39 @@ export interface ActionResult {
     message?: string;
     subject?: string;
   };
+}
+
+/**
+ * One line item as edited by the owner in Review edit mode. `total` is
+ * always recomputed as quantity × unitPrice before saving.
+ */
+export interface EditedLineItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+/**
+ * Structured amounts the owner edited in Review edit mode (Bug 3).
+ * Sent alongside the free-text `editedContent` when the owner saves an edit.
+ * `kind` selects which details block the edit applies to: 'quote' edits
+ * `result.quoteDetails`, 'invoice' edits `result.invoiceDetails`.
+ * `totalAmount` is the owner's final total — line-item edits recompute it as
+ * the sum of item totals, and the owner may also type a total directly.
+ * Invoice-only fields (invoiceNumber, dueDate, paymentInstructions, notes)
+ * are omitted for quotes; `terms` is quote-only.
+ */
+export interface EditedAmounts {
+  kind: 'quote' | 'invoice';
+  clientName: string;
+  items: EditedLineItem[];
+  totalAmount: number;
+  terms?: string;
+  invoiceNumber?: string;
+  dueDate?: string;
+  paymentInstructions?: string;
+  notes?: string;
 }
 
 export interface ActionRecord {
@@ -119,6 +160,8 @@ export interface ActionRecord {
     decidedBy?: string;
     reviewerNote?: string;
     editedContent?: string;
+    /** Structured amounts applied on an 'edited' decision (Bug 3). */
+    editedAmounts?: EditedAmounts;
   };
   createdAt: string;
   updatedAt: string;
