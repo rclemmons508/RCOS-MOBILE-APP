@@ -348,7 +348,9 @@ export type TabType =
   | 'settings'
   | 'approvals'
   | 'team'
-  | 'team-chat';
+  | 'team-chat'
+  | 'more'
+  | 'requests';
 
 export interface ChatMessage {
   id: string;
