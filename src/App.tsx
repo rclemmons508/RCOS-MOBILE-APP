@@ -36,6 +36,8 @@ import { ClientsTab } from './components/tabs/ClientsTab';
 import { SettingsTab, ProfileUpdate } from './components/tabs/SettingsTab';
 import { TeamChatView } from './components/tabs/TeamChatView';
 import { teamService } from './services/teamService';
+import { industryLabel } from './utils/industry';
+import { asSafeSuggestion } from './utils/safeRender';
 import { GmailTab } from './components/tabs/GmailTab';
 import { GeminiChatView } from './components/GeminiChatView';
 import { AiTeamView } from './components/AiTeamView';
@@ -315,7 +317,7 @@ export default function App() {
       if (res?.suggestion && res.suggestion.suggestedPresetId) {
         // Only trigger if user hasn't explicitly dismissed this exact suggestion
         if (res.suggestion.suggestedPresetId !== dismissedSuggestionPresetId) {
-          setProactiveSuggestion(res.suggestion);
+          setProactiveSuggestion(asSafeSuggestion(res.suggestion));
         }
       } else {
         setProactiveSuggestion(null);
@@ -432,7 +434,23 @@ export default function App() {
     (async () => {
       try {
         const businesses = await apiFetch<BusinessAccount[]>('/api/businesses');
-        if (Array.isArray(businesses) && businesses.some((b) => b.id === biz.id)) return;
+        const serverBiz = Array.isArray(businesses) ? businesses.find((b) => b.id === biz.id) : undefined;
+        if (serverBiz) {
+          // Pull: the server copy wins when it is newer. The app used to
+          // keep its stale localStorage copy forever (e.g. industry
+          // "general_small_business" long after the server said
+          // "it_services"), so the dashboard showed the wrong industry.
+          // Newest-wins by updatedAt — a local edit still in flight
+          // (local newer) is never clobbered by an older server copy.
+          const serverNewer = (serverBiz.updatedAt || '') > (biz.updatedAt || '');
+          if (serverNewer) {
+            setBusinessAccount(serverBiz);
+            try {
+              localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(serverBiz)));
+            } catch { /* storage unavailable */ }
+          }
+          return;
+        }
         await apiFetch('/api/businesses', { method: 'POST', body: JSON.stringify(biz) });
       } catch {
         // Offline / server down: fail silently; retry next app start.
@@ -1592,7 +1610,7 @@ export default function App() {
               })()}
               businessId={activeBusiness.id}
               businessName={activeBusiness.name || 'Setup Company'}
-              industryName={activeBusiness.industry || 'Field Operations'}
+              industryName={industryLabel(activeBusiness.industry)}
               serverOnline={serverOnline}
               pendingApprovals={actions.filter((x) => x.status === 'awaiting_approval').length}
               activeEmployees={activeBusiness.activeEmployees}
@@ -1789,7 +1807,7 @@ export default function App() {
               onToggleConditionalLogic={setConditionalLogicOn}
               industryModifierOn={industryModifierOn}
               onToggleIndustryModifier={setIndustryModifierOn}
-              industryName={businessAccount?.industry || industryProfile}
+              industryName={businessAccount?.industry ? industryLabel(businessAccount.industry) : industryProfile}
               onAddCustomTask={(task) => {
                 setAutomationTasks(prev => [...prev, task]);
               }}
