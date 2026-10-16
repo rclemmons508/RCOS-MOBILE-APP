@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ActionRecord, BusinessAccount, EditedAmounts, EditedLineItem, InvoicePrefill } from '../types';
 import { apiFetch } from '../lib/api';
+import { asStringList } from '../utils/safeRender';
 import { AI_EMPLOYEES } from '../data/employees';
 
 interface ApprovalQueueViewProps {
@@ -159,7 +160,7 @@ const QuoteInvoiceModal: React.FC<{
             <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Service</label>
             {business.services && business.services.length > 0 ? (
               <select value={serviceName} onChange={(e) => setServiceName(e.target.value)} className={inputCls}>
-                {business.services.map((sv) => (
+                {asStringList(business.services).map((sv) => (
                   <option key={sv} value={sv}>{sv}</option>
                 ))}
               </select>
