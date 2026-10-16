@@ -1932,11 +1932,11 @@ app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
       amount: total
     };
   });
-  const parsedTotal = parsedItems.reduce((sum, it) => sum + it.total, 0);
+  const parsedTotal = parsedItems.reduce((sum: number, it: { total: number }) => sum + it.total, 0);
   const items = parsedItems.length && parsedTotal > 0
     ? parsedItems
     : [{ description: serviceName, quantity: 1, unitPrice: Number(invoiceAmount) || 0, total: Number(invoiceAmount) || 0, amount: Number(invoiceAmount) || 0 }];
-  const amt = items.reduce((sum, it) => sum + it.total, 0);
+  const amt = items.reduce((sum: number, it: { total: number }) => sum + it.total, 0);
   if (amt <= 0) {
     return res.status(400).json({ error: 'A valid invoice amount is required.' });
   }
