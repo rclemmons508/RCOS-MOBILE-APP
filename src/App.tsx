@@ -1639,6 +1639,7 @@ export default function App() {
               messages={messages}
               currentUser={currentUser}
               businessId={businessAccount?.id ?? ''}
+              availableDepartments={activeBusiness.availableDepartments}
               onSendMessage={(text) => {
                 const newMessage = {
                   id: 'msg-' + Date.now(),

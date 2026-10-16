@@ -28,6 +28,7 @@ import { defineAgent, cli, WorkerOptions, Agent, AgentSession, AgentSessionEvent
 import { realtime } from '@livekit/agents-plugin-google';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
+import { ALL_TRANSFER_DEPARTMENTS, DEPARTMENT_LABELS, isTransferDepartment, type TransferDepartment } from '../src/utils/departments';
 
 const AGENT_NAME = 'rcos-receptionist';
 
@@ -162,8 +163,23 @@ function personaFromMetadata(roomMetadata: unknown, jobMetadata: unknown): Voice
   return 'receptionist';
 }
 
+/** Departments this business offers for transfers, from the room metadata set by POST /api/voice/token (worked out from the business's industry + services at onboarding). Anything unknown falls back to every department. */
+function departmentsFromMetadata(roomMetadata: unknown, jobMetadata: unknown): TransferDepartment[] {
+  for (const raw of [roomMetadata, jobMetadata]) {
+    try {
+      const parsed = JSON.parse(typeof raw === 'string' ? raw : '{}') as { departments?: unknown };
+      if (Array.isArray(parsed.departments)) {
+        const kept = parsed.departments.filter(isTransferDepartment);
+        const deduped = ALL_TRANSFER_DEPARTMENTS.filter((d) => kept.includes(d));
+        if (deduped.length > 0) return deduped;
+      }
+    } catch { /* not JSON — try the next source */ }
+  }
+  return [...ALL_TRANSFER_DEPARTMENTS];
+}
+
 /** Where each routing department lands. Billing and emergency both go to Support: there is no billing persona, and Support's instructions include safety escalation. */
-const DEPARTMENT_TO_PERSONA: Record<'sales' | 'support' | 'dispatch' | 'billing' | 'emergency', VoicePersona> = {
+const DEPARTMENT_TO_PERSONA: Record<TransferDepartment, VoicePersona> = {
   sales: 'sales',
   support: 'support',
   dispatch: 'operations',
@@ -173,7 +189,7 @@ const DEPARTMENT_TO_PERSONA: Record<'sales' | 'support' | 'dispatch' | 'billing'
 
 /** One-time greeting the department agent speaks the moment it takes over the call. */
 function handoffGreeting(
-  department: 'sales' | 'support' | 'dispatch' | 'billing' | 'emergency',
+  department: TransferDepartment,
   summary: string,
 ): string {
   const issue = `The caller was just telling the receptionist: ${summary}. Pick up from there — do not make them repeat everything.`;
@@ -230,12 +246,14 @@ function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Pro
 
 class DepartmentAgent extends Agent {
   private handoffGreeting: string;
+  private transferState?: { completed: boolean };
   constructor(
     instructions: string,
     greeting: string,
     options?: {
       tools?: ConstructorParameters<typeof Agent>[0]['tools'];
       chatCtx?: ConstructorParameters<typeof Agent>[0]['chatCtx'];
+      transferState?: { completed: boolean };
     },
   ) {
     super({
@@ -244,8 +262,13 @@ class DepartmentAgent extends Agent {
       ...(options?.chatCtx ? { chatCtx: options.chatCtx } : {}),
     });
     this.handoffGreeting = greeting;
+    this.transferState = options?.transferState;
   }
   async onEnter() {
+    // onEnter running means the switch SUCCEEDED — mark it completed
+    // before the greeting, so a failed greeting can never look like a
+    // failed transfer and block a retry that is not needed.
+    if (this.transferState) this.transferState.completed = true;
     try {
       await withTimeout(this.session.generateReply({ instructions: this.handoffGreeting }), 15000, 'handoff greeting');
       console.log('[voice-agent] handoff succeeded — department agent greeting delivered.');
@@ -315,13 +338,23 @@ function logRoutingDecision(input: {
 
 /**
  * Builds the receptionist's transfer tool. One instance per call, so the
- * once-per-call guard below never leaks across calls in the same worker process.
+ * guard below never leaks across calls in the same worker process. The tool
+ * only offers `availableDepartments` — the departments this business
+ * offers (worked out from its industry + services at onboarding), so a
+ * business with no dispatch function never hears Dispatch as an option.
+ * A previous attempt that never completed does not block a retry.
  * The tool logs the routing decision to the RCOS API in the background (the
  * dashboard record is unchanged); it then returns an SDK handoff, which swaps
  * the live session to the department agent — the same agent does NOT keep talking.
  */
-function createRouteToRepresentativeTool() {
-  let hasTransferred = false;
+function createRouteToRepresentativeTool(availableDepartments: TransferDepartment[]) {
+  // Shared transfer state for this one call. `requested` flips when the
+  // tool hands off; `completed` flips when the department agent's onEnter
+  // runs (the switch actually happened). A previous attempt that was
+  // requested but never completed — onEnter never ran — must NOT block
+  // a retry, or the caller is stuck with no way to reach the department.
+  // A completed transfer still blocks re-transfer.
+  const transferState = { requested: false, completed: false };
   // The exact tool instance handed to the receptionist AND to the department
   // agent: the SDK compares tools by identity, so sharing this instance is
   // what lets it reuse the live Gemini session across the handoff. It must
@@ -333,17 +366,26 @@ function createRouteToRepresentativeTool() {
       'Transfer the call to the department that should handle the caller\'s issue. Call this once you know the caller\'s issue — the call is handed to the department agent immediately.',
     parameters: z.object({
       department: z
-        .enum(['sales', 'support', 'dispatch', 'billing', 'emergency'])
+        // The tool can only be called with a department this business
+        // actually offers — a business with no dispatch function cannot
+        // be transferred to Dispatch.
+        .enum(availableDepartments as [TransferDepartment, ...TransferDepartment[]])
         .describe('Which department owns this issue'),
       summary: z.string().describe('One or two sentences describing the caller\'s issue'),
       urgency: z.enum(['routine', 'urgent', 'emergency']).describe('How urgent this is'),
       callerName: z.string().optional().describe('Caller name if they gave one'),
     }),
     execute: async ({ department, summary, urgency, callerName }, { ctx }) => {
-      // At most one transfer per call. The department agent carries this same
-      // tool, so this guard is what stops a transferred call routing again.
-      if (hasTransferred) {
+      // At most one COMPLETED transfer per call. The department agent
+      // carries this same tool, so this guard is what stops a transferred
+      // call routing again. But a previous attempt that never completed
+      // (onEnter never ran) does not count — the caller gets another try
+      // instead of being stranded.
+      if (transferState.completed) {
         return 'Already transferred — stay with the current agent.';
+      }
+      if (transferState.requested) {
+        console.log('[voice-agent] retrying transfer — previous attempt never completed.');
       }
       // Log the routing decision in the background — never awaited, so a slow
       // log call cannot stall the transfer.
@@ -375,9 +417,9 @@ function createRouteToRepresentativeTool() {
       const agent = new DepartmentAgent(
         `${base.instructions}${context}`,
         handoffGreeting(department, summary),
-        { tools: [routeTool], chatCtx },
+        { tools: [routeTool], chatCtx, transferState },
       );
-      hasTransferred = true;
+      transferState.requested = true;
       // No `returns` value: the new agent's onEnter greeting is the only speech
       // after the transfer (no tool-output reply from the receptionist).
       // Handoff success is logged by DepartmentAgent.onEnter; handoff failure
@@ -400,6 +442,10 @@ export default defineAgent({
       (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
     );
     const config = PERSONAS[persona];
+    const availableDepartments = departmentsFromMetadata(
+      (ctx.room as unknown as { metadata?: unknown }).metadata,
+      (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
+    );
 
     const model = new realtime.RealtimeModel({
       apiKey: process.env.GEMINI_API_KEY,
@@ -407,11 +453,16 @@ export default defineAgent({
       instructions: config.instructions,
     });
 
+    // Only the departments this business offers — a business with no
+    // dispatch function never hears Dispatch as an option.
+    const transferLine = config.useRoutingTool
+      ? `\n\nOnly transfer to these departments: ${availableDepartments.map((d) => DEPARTMENT_LABELS[d]).join(', ')}. Never offer or transfer to any other department.`
+      : '';
     const agent = new Agent({
-      instructions: config.instructions,
+      instructions: `${config.instructions}${transferLine}`,
       // Array form: preserves the tool's object identity, which is what the
       // SDK's handoff session-reuse check compares (see DepartmentAgent).
-      ...(config.useRoutingTool ? { tools: [createRouteToRepresentativeTool()] } : {}),
+      ...(config.useRoutingTool ? { tools: [createRouteToRepresentativeTool(availableDepartments)] } : {}),
     });
 
     const session = new AgentSession({ llm: model });

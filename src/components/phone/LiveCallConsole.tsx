@@ -27,13 +27,16 @@ interface LiveCallConsoleProps {
   onEndCall: (finalCall: PhoneCall) => void;
   onUpdateCall: (updatedCall: PhoneCall) => void;
   onTriggerNotification?: (title: string, message: string) => void;
+  /** Transfer departments this business offers — passed to the transfer picker. */
+  availableDepartmentIds?: string[];
 }
 
 export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
   activeCall,
   onEndCall,
   onUpdateCall,
-  onTriggerNotification
+  onTriggerNotification,
+  availableDepartmentIds
 }) => {
   const [answeredBy, setAnsweredBy] = useState<'ai_receptionist' | 'human_operator'>(
     activeCall.answeredBy || 'ai_receptionist'
@@ -597,6 +600,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
         onClose={() => setIsTransferModalOpen(false)}
         onSelectDepartment={handleExecuteTransfer}
         currentDepartment={activeDepartment}
+        availableDepartmentIds={availableDepartmentIds}
       />
 
       {/* Direct Email Modal */}

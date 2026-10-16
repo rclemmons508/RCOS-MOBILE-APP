@@ -1,6 +1,7 @@
 import React from 'react';
 import { DepartmentTransfer } from '../../types';
 import { RCOS_DEPARTMENTS } from '../../data/departments';
+import { MODAL_DEPARTMENT_TO_TRANSFER } from '../../utils/departments';
 import { PhoneForwarded, X, User, PhoneCall, ShieldCheck } from 'lucide-react';
 
 interface DepartmentTransferModalProps {
@@ -8,15 +9,28 @@ interface DepartmentTransferModalProps {
   onClose: () => void;
   onSelectDepartment: (dept: DepartmentTransfer) => void;
   currentDepartment?: string;
+  /** Transfer departments this business offers (e.g. no 'dispatch' for a business with no dispatch function). Unset = show all. */
+  availableDepartmentIds?: string[];
 }
 
 export const DepartmentTransferModal: React.FC<DepartmentTransferModalProps> = ({
   isOpen,
   onClose,
   onSelectDepartment,
-  currentDepartment
+  currentDepartment,
+  availableDepartmentIds
 }) => {
   if (!isOpen) return null;
+
+  // Only this business's departments: a business with no dispatch function
+  // never sees Dispatch here. Unset (older record) = show all. Never show
+  // an empty list — if filtering leaves nothing, fall back to all.
+  const visibleDepartments = RCOS_DEPARTMENTS.filter((dept) => {
+    if (!availableDepartmentIds || availableDepartmentIds.length === 0) return true;
+    const transferKey = MODAL_DEPARTMENT_TO_TRANSFER[dept.id];
+    return transferKey ? availableDepartmentIds.includes(transferKey) : true;
+  });
+  const shownDepartments = visibleDepartments.length > 0 ? visibleDepartments : RCOS_DEPARTMENTS;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -41,7 +55,7 @@ export const DepartmentTransferModal: React.FC<DepartmentTransferModalProps> = (
         </div>
 
         <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-0.5">
-          {RCOS_DEPARTMENTS.map((dept) => {
+          {shownDepartments.map((dept) => {
             const isCurrent = currentDepartment === dept.name;
             return (
               <button
@@ -82,7 +96,7 @@ export const DepartmentTransferModal: React.FC<DepartmentTransferModalProps> = (
             <ShieldCheck className="w-3.5 h-3.5 text-lime-400" />
             <span>VoIP PBX Direct Trunk</span>
           </span>
-          <span>5 Available Depts</span>
+          <span>{shownDepartments.length} Available Dept{shownDepartments.length === 1 ? '' : 's'}</span>
         </div>
       </div>
     </div>

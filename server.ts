@@ -21,6 +21,7 @@ import {
   PendingIntake
 } from './src/types';
 import { INDUSTRY_PRESETS } from './src/data/presets';
+import { ALL_TRANSFER_DEPARTMENTS, availableDepartmentsFor, normalizeDepartments } from './src/utils/departments';
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
@@ -536,6 +537,16 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
     const { AccessToken, RoomServiceClient } = await import('livekit-server-sdk');
     const user = (req as any).user || {};
     const businessId = typeof req.body?.businessId === 'string' ? req.body.businessId : 'default';
+    // Departments this business offers for transfers, worked out from its
+    // industry + services. The worker only offers these — a business with
+    // no dispatch function never hears Dispatch as an option. Falls back
+    // to every department when the business is unknown or has no record.
+    const tokenBusiness = businessId !== 'default' ? db.getBusiness(businessId) : undefined;
+    const departments = tokenBusiness
+      ? (Array.isArray(tokenBusiness.availableDepartments) && tokenBusiness.availableDepartments.length > 0
+          ? normalizeDepartments(tokenBusiness.availableDepartments)
+          : availableDepartmentsFor(tokenBusiness))
+      : [...ALL_TRANSFER_DEPARTMENTS];
     const personaRaw = typeof req.body?.persona === 'string' ? req.body.persona.toLowerCase() : 'receptionist';
     const persona = ['receptionist', 'sales', 'operations', 'marketing', 'support', 'executive', 'technician', 'finance'].includes(personaRaw)
       ? personaRaw
@@ -547,7 +558,7 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
       emptyTimeout: 60,
       departureTimeout: 20,
       maxParticipants: 2,
-      metadata: JSON.stringify({ businessId, persona }),
+      metadata: JSON.stringify({ businessId, persona, departments }),
       // The LiveKit API only needs agentName to dispatch the receptionist worker;
       // the installed SDK types mark the rest of RoomAgentDispatch required.
       agents: [{ agentName: 'rcos-receptionist' }] as any,
@@ -750,6 +761,11 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     updatedAt: new Date().toISOString()
   };
 
+  // Departments offered for transfers are worked out from the industry +
+  // services at onboarding (and on every save) — a business with no
+  // dispatch function and no skilled trade never gets Dispatch in its options.
+  newBusiness.availableDepartments = availableDepartmentsFor(newBusiness);
+
   const saved = db.saveBusiness(newBusiness);
 
   // Flush any demo leads that arrived while no business existed. They were
@@ -828,6 +844,10 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
         createdAt: String(d.createdAt ?? '')
       }));
   }
+  // Recompute the offered transfer departments on every save, so a
+  // business that adds (or drops) field work picks up (or loses) Dispatch.
+  updates.availableDepartments = availableDepartmentsFor({ ...existing, ...updates });
+
   const updated: BusinessAccount = { ...existing, ...updates, id: existing.id, updatedAt: new Date().toISOString() };
   const saved = db.saveBusiness(updated);
   res.json(saved);

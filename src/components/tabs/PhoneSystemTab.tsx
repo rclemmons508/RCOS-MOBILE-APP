@@ -40,6 +40,8 @@ interface PhoneSystemTabProps {
   messages: ChatMessage[];
   currentUser: User | null;
   businessId: string;
+  /** Transfer departments this business offers — passed to the call console's transfer picker. */
+  availableDepartments?: string[];
   onSendMessage: (text: string) => void;
   onNavigateTab?: (tab: any) => void;
   onTriggerNotification?: (title: string, message: string) => void;
@@ -118,7 +120,8 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   onSimulateCall, 
   messages, 
   currentUser,
-  businessId, 
+  businessId,
+  availableDepartments,
   onSendMessage,
   onNavigateTab,
   onTriggerNotification
@@ -427,6 +430,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
               onEndCall={handleEndLiveCall}
               onUpdateCall={(updated) => setActiveLiveCall(updated)}
               onTriggerNotification={onTriggerNotification}
+              availableDepartmentIds={availableDepartments}
             />
           ) : (
             <>

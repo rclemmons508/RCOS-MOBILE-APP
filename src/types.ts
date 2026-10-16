@@ -273,6 +273,17 @@ export interface BusinessAccount {
   industry: string;
   size: string;
   services: string[];
+  /**
+   * Departments this business offers for call transfers, worked out by the
+   * server from the industry + services when the business is saved (at
+   * onboarding and on every later save): every business gets sales,
+   * support, billing, and emergency; dispatch is included only when the
+   * business involves field/dispatch work or a skilled trade. The
+   * receptionist only offers these departments, and the transfer picker
+   * only shows them. Missing on older records — readers treat that as
+   * "all departments".
+   */
+  availableDepartments?: string[];
   pricingApproach: string;
   brandTone: string;
   painPoints: string[];
