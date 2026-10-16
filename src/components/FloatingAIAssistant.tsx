@@ -104,7 +104,11 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
 
   return (
     <>
-      {/* Floating Draggable Button placed safely above Bottom Navigation inside phone frame */}
+      {/* Floating Draggable Button — rests above the bottom nav: nav height (~82px max with
+          home-indicator safe-area inset) + breathing room, plus the inset again via env() so it
+          fully clears the nav on both inset and non-inset devices. z-[45] sits above the nav
+          (z-40) but below the open drawer (z-50). dragConstraints bottom: 0 keeps it from being
+          dragged back down behind the nav. */}
       {!isOpen && (
         <motion.button
           drag
@@ -114,10 +118,10 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
           onClick={() => setIsOpen(true)}
           style={{ 
             position: 'absolute', 
-            bottom: '4.25rem', 
+            bottom: 'calc(6rem + env(safe-area-inset-bottom))', 
             right: '0.85rem' 
           }}
-          className="z-30 p-2.5 rounded-full bg-gradient-to-tr from-lime-600 via-zinc-900 to-black border-2 border-lime-400 shadow-[0_0_20px_rgba(132,204,22,0.45)] text-white hover:scale-105 active:scale-95 transition-all group cursor-pointer"
+          className="z-[45] p-2.5 rounded-full bg-gradient-to-tr from-lime-600 via-zinc-900 to-black border-2 border-lime-400 shadow-[0_0_20px_rgba(132,204,22,0.45)] text-white hover:scale-105 active:scale-95 transition-all group cursor-pointer"
           aria-label="Open RCOS Multi-Agent AI"
         >
           <div className="relative pointer-events-none flex items-center justify-center w-6 h-6">
