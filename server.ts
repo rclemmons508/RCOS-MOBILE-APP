@@ -504,7 +504,7 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
 
 // WebRTC voice: mint a LiveKit access token for an AI agent call.
 // The voice-agent worker ('rcos-receptionist') is dispatched into the new room automatically.
-// Body may include persona: 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support'
+// Body may include persona: 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support' | 'executive' | 'technician' | 'finance'
 // (default 'receptionist'). The worker reads it from the room metadata.
 app.post('/api/voice/token', async (req: Request, res: Response) => {
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
@@ -516,7 +516,7 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
     const user = (req as any).user || {};
     const businessId = typeof req.body?.businessId === 'string' ? req.body.businessId : 'default';
     const personaRaw = typeof req.body?.persona === 'string' ? req.body.persona.toLowerCase() : 'receptionist';
-    const persona = ['receptionist', 'sales', 'operations', 'marketing', 'support'].includes(personaRaw)
+    const persona = ['receptionist', 'sales', 'operations', 'marketing', 'support', 'executive', 'technician', 'finance'].includes(personaRaw)
       ? personaRaw
       : 'receptionist';
     const roomName = `${persona}-${businessId}-${Date.now()}`;
