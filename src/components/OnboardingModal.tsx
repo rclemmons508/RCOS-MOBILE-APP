@@ -55,6 +55,36 @@ interface UploadedFileRecord {
   base64?: string;
 }
 
+// Response contract for POST /api/business/analyze-document (implemented
+// server-side). The server MUST return `source` so the UI can tell a real AI
+// result from an offline keyword fallback. `confidence` is only meaningful
+// when source === 'llm' — a fallback confidence must never be displayed.
+interface AnalyzeDocumentAlternative {
+  industryId: string;
+  score?: number;
+  confidence?: number;
+}
+interface AnalyzeDocumentResponse {
+  industryId: string;
+  confidence?: number;
+  uncertain?: boolean;
+  alternatives?: AnalyzeDocumentAlternative[];
+  source?: 'llm' | 'fallback';
+  reasoning?: string;
+  businessName?: string;
+  extractedServices?: string[];
+  keyInsights?: string[];
+  recommendedTone?: string;
+  technicianRoleName?: string;
+  dollarThreshold?: number;
+}
+
+interface ScoredPresetMatch {
+  preset: typeof INDUSTRY_PRESETS[0];
+  score: number;
+  matchedTerms: string[];
+}
+
 // Sample business files for instant 1-tap testing
 const SAMPLE_BUSINESS_FILES = [
   {
@@ -260,6 +290,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [dollarThreshold, setDollarThreshold] = useState<number>(1250);
   const [technicianRoleName, setTechnicianRoleName] = useState<string>('HVAC Certified Technician');
 
+  // Alternatives + provenance for the detected preset (Bug 1: never trust a
+  // fake confidence — the server must say whether this came from the LLM).
+  const [alternativeIndustries, setAlternativeIndustries] = useState<Array<{ preset: typeof INDUSTRY_PRESETS[0]; score?: number }>>([]);
+  const [resultSource, setResultSource] = useState<'llm' | 'fallback' | null>(null);
+  const [isUncertain, setIsUncertain] = useState(false);
+
   // New service tag input for review step
   const [newServiceTag, setNewServiceTag] = useState('');
 
@@ -329,8 +365,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                    file.name.endsWith('.csv');
     const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
     const isImage = file.type.startsWith('image/');
+    // DOCX/DOC are ZIP/binary files: never read them as text (that sends raw
+    // ZIP bytes). They go through the base64 branch and the server parses them.
+    const isDoc = file.name.endsWith('.doc') || file.name.endsWith('.docx') ||
+                  file.type === 'application/msword' ||
+                  file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-    const beginRead = () => readFileWithRetry(file, isText, isPdf, isImage, 0);
+    const beginRead = () => readFileWithRetry(file, isText, isPdf, isImage, isDoc, 0);
 
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
       let started = false;
@@ -361,6 +402,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     isText: boolean,
     isPdf: boolean,
     isImage: boolean,
+    isDoc: boolean,
     attempt: number
   ) => {
     const reader = new FileReader();
@@ -368,7 +410,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     const fail = () => {
       if (attempt < 1) {
         // One automatic retry — transient picker handoff failures are common.
-        setTimeout(() => readFileWithRetry(file, isText, isPdf, isImage, attempt + 1), 600);
+        setTimeout(() => readFileWithRetry(file, isText, isPdf, isImage, isDoc, attempt + 1), 600);
         return;
       }
       const reason = reader.error?.name ? ` (${reader.error.name})` : '';
@@ -394,16 +436,20 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         setError(null);
       };
       reader.readAsText(file);
-    } else if (isPdf || isImage) {
-      // For PDF or image, read as Data URL base64 for multimodal AI deciphering
+    } else if (isPdf || isImage || isDoc) {
+      // Binary file (PDF, image, DOC/DOCX): send the real bytes as base64 and
+      // leave `text` empty. The server parses the document (mammoth for
+      // DOCX, pdf-parse for PDF). Never send the `[Binary document payload:
+      // ...]` placeholder or raw ZIP bytes as content — the server cannot
+      // detect an industry from either.
       reader.onload = (e) => {
         const dataUrl = (e.target?.result as string) || '';
         const base64Data = dataUrl.split(',')[1] || '';
         persistUploadedFile({
           name: file.name,
           size: file.size,
-          type: file.type || (isPdf ? 'application/pdf' : 'image/jpeg'),
-          text: `[Binary document payload: ${file.name}]`,
+          type: file.type || (isPdf ? 'application/pdf' : isDoc ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'image/jpeg'),
+          text: '',
           base64: base64Data
         });
         resetFileInput();
@@ -411,19 +457,23 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       };
       reader.readAsDataURL(file);
     } else {
-      // Fallback read as text
+      // Unknown type: do NOT guess-read as text (binary bytes would be sent
+      // as content). Send the real bytes as base64 and let the server parse
+      // or reject them.
       reader.onload = (e) => {
-        const textContent = (e.target?.result as string) || '';
+        const dataUrl = (e.target?.result as string) || '';
+        const base64Data = dataUrl.split(',')[1] || '';
         persistUploadedFile({
           name: file.name,
           size: file.size,
           type: file.type || 'application/octet-stream',
-          text: textContent
+          text: '',
+          base64: base64Data
         });
         resetFileInput();
         setError(null);
       };
-      reader.readAsText(file);
+      reader.readAsDataURL(file);
     }
   };
 
@@ -477,58 +527,437 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     setError(null);
   };
 
-  // Local preset keyword matcher (ultra-fast zero-latency offline fallback)
-  const matchPresetLocally = (text: string) => {
+  // Scored local preset keyword matcher (offline fallback only).
+  //
+  // Every term matches on WORD BOUNDARIES (\b...\b), never substrings, and
+  // multi-word phrases outrank bare words. That fixes the known collisions:
+  // - "roof leak" must NOT match Plumbing: bare "leak" is not a Plumbing
+  //   term — only qualified phrases (water/pipe/slab/plumbing leak) count.
+  // - "move-in clean" must NOT match Moving: Moving matches \bmoving\b /
+  //   \bmovers\b, never the substring "mov", and "move-in"/"move-out"
+  //   clean(ing) are Cleaning terms. Bare "move" is deliberately absent:
+  //   \bmove\b matches inside "move-in" (the hyphen is a word boundary).
+  // - "leads" must NOT match Marketing: Marketing matches \bads\b / "ad
+  //   campaign", never the substring "ads" inside "leads".
+  // - "customer satisfaction" / "contract" must NOT match Education:
+  //   Education matches \bsat\b / \bact\b, which do not fire inside
+  //   "satisfaction" (no trailing boundary) or "contract" (no leading one).
+  //   SAT/ACT only count when another education anchor is present, so a
+  //   plain verb ("we act fast") cannot match Education on its own.
+  // - salon "wellness" must NOT match Healthcare: "wellness" is not a
+  //   Healthcare term at all (Healthcare needs medical terms).
+  // - solar proposal must NOT match Electrical via "panel": bare "panel"
+  //   is not an Electrical term — only qualified phrases (electrical /
+  //   breaker / main panel, panel upgrade) count, while "solar panel(s)"
+  //   count for Solar.
+  const PRESET_KEYWORD_WEIGHTS: Record<string, Array<{ term: string; weight: number }>> = {
+    cleaning: [
+      { term: 'move-in clean', weight: 5 },
+      { term: 'move-out clean', weight: 5 },
+      { term: 'move-in cleaning', weight: 5 },
+      { term: 'move-out cleaning', weight: 5 },
+      { term: 'move in clean', weight: 5 },
+      { term: 'move out clean', weight: 5 },
+      { term: 'move in cleaning', weight: 5 },
+      { term: 'move out cleaning', weight: 5 },
+      { term: 'deep clean', weight: 4 },
+      { term: 'deep cleaning', weight: 4 },
+      { term: 'house cleaning', weight: 4 },
+      { term: 'office cleaning', weight: 4 },
+      { term: 'maid', weight: 4 },
+      { term: 'janitorial', weight: 4 },
+      { term: 'janitor', weight: 3 },
+      { term: 'housekeeping', weight: 3 },
+      { term: 'carpet cleaning', weight: 3 },
+      { term: 'window cleaning', weight: 3 },
+      { term: 'cleaning', weight: 2 },
+    ],
+    handyman: [
+      { term: 'handyman', weight: 5 },
+      { term: 'drywall', weight: 4 },
+      { term: 'carpentry', weight: 4 },
+      { term: 'home repair', weight: 3 },
+      { term: 'fixture installation', weight: 3 },
+      { term: 'furniture assembly', weight: 3 },
+      { term: 'door repair', weight: 3 },
+    ],
+    landscaping: [
+      { term: 'landscaping', weight: 5 },
+      { term: 'landscaper', weight: 5 },
+      { term: 'lawn', weight: 4 },
+      { term: 'mowing', weight: 4 },
+      { term: 'mow', weight: 3 },
+      { term: 'hedge trimming', weight: 3 },
+      { term: 'tree trimming', weight: 3 },
+      { term: 'mulch', weight: 3 },
+      { term: 'yard work', weight: 3 },
+      { term: 'sprinkler', weight: 3 },
+      { term: 'garden', weight: 2 },
+    ],
+    painting: [
+      { term: 'interior painting', weight: 4 },
+      { term: 'exterior painting', weight: 4 },
+      { term: 'painting', weight: 4 },
+      { term: 'painter', weight: 4 },
+      { term: 'cabinet refinishing', weight: 3 },
+      { term: 'deck staining', weight: 3 },
+      { term: 'staining', weight: 3 },
+      { term: 'paint', weight: 2 },
+    ],
+    pressure_washing: [
+      { term: 'pressure washing', weight: 5 },
+      { term: 'pressure wash', weight: 5 },
+      { term: 'power washing', weight: 4 },
+      { term: 'soft wash', weight: 4 },
+      { term: 'driveway wash', weight: 3 },
+      { term: 'siding wash', weight: 3 },
+    ],
+    hvac: [
+      { term: 'hvac', weight: 5 },
+      { term: 'air conditioning', weight: 4 },
+      { term: 'furnace', weight: 4 },
+      { term: 'heat pump', weight: 4 },
+      { term: 'ac repair', weight: 4 },
+      { term: 'heating', weight: 3 },
+      { term: 'thermostat', weight: 3 },
+      { term: 'duct', weight: 3 },
+      { term: 'cooling', weight: 2 },
+      { term: 'air quality', weight: 2 },
+    ],
+    roofing: [
+      { term: 'roofing', weight: 5 },
+      { term: 'roofer', weight: 5 },
+      { term: 'roof leak', weight: 5 },
+      { term: 'reroof', weight: 5 },
+      { term: 'roof repair', weight: 4 },
+      { term: 'shingle', weight: 4 },
+      { term: 'gutter', weight: 3 },
+      { term: 'roof', weight: 3 },
+      { term: 'storm damage', weight: 2 },
+    ],
+    construction: [
+      { term: 'general contractor', weight: 4 },
+      { term: 'construction', weight: 4 },
+      { term: 'framing', weight: 4 },
+      { term: 'buildout', weight: 4 },
+      { term: 'concrete', weight: 3 },
+      { term: 'remodel', weight: 3 },
+      { term: 'renovation', weight: 3 },
+      { term: 'contractor', weight: 2 },
+    ],
+    auto_services: [
+      { term: 'auto repair', weight: 4 },
+      { term: 'car repair', weight: 4 },
+      { term: 'mechanic', weight: 4 },
+      { term: 'oil change', weight: 4 },
+      { term: 'engine diagnostics', weight: 4 },
+      { term: 'brake', weight: 3 },
+      { term: 'fleet maintenance', weight: 3 },
+      { term: 'tire', weight: 2 },
+      { term: 'auto', weight: 1 },
+    ],
+    professional_services: [
+      { term: 'business consulting', weight: 5 },
+      { term: 'consulting', weight: 4 },
+      { term: 'consultant', weight: 4 },
+      { term: 'advisory', weight: 3 },
+      { term: 'audit', weight: 2 },
+    ],
+    real_estate: [
+      { term: 'real estate', weight: 5 },
+      { term: 'realtor', weight: 5 },
+      { term: 'property listing', weight: 4 },
+      { term: 'home buying', weight: 3 },
+      { term: 'broker', weight: 3 },
+      { term: 'listing', weight: 2 },
+    ],
+    general_small_business: [],
+    healthcare: [
+      { term: 'healthcare', weight: 4 },
+      { term: 'health care', weight: 4 },
+      { term: 'urgent care', weight: 5 },
+      { term: 'physical therapy', weight: 4 },
+      { term: 'mental health', weight: 4 },
+      { term: 'chiropractic', weight: 4 },
+      { term: 'clinic', weight: 4 },
+      { term: 'medical', weight: 4 },
+      { term: 'patient', weight: 4 },
+      { term: 'doctor', weight: 3 },
+    ],
+    legal_accounting: [
+      { term: 'law firm', weight: 5 },
+      { term: 'attorney', weight: 5 },
+      { term: 'lawyer', weight: 5 },
+      { term: 'accounting', weight: 4 },
+      { term: 'accountant', weight: 4 },
+      { term: 'tax preparation', weight: 4 },
+      { term: 'bookkeeping', weight: 4 },
+      { term: 'legal', weight: 3 },
+      { term: 'cpa', weight: 3 },
+    ],
+    restaurants: [
+      { term: 'restaurant', weight: 5 },
+      { term: 'food truck', weight: 4 },
+      { term: 'bakery', weight: 4 },
+      { term: 'cafe', weight: 3 },
+      { term: 'chef', weight: 3 },
+      { term: 'dining', weight: 3 },
+      { term: 'catering', weight: 2 },
+      { term: 'menu', weight: 2 },
+    ],
+    salons_spas: [
+      { term: 'hair salon', weight: 5 },
+      { term: 'nail salon', weight: 5 },
+      { term: 'salon', weight: 5 },
+      { term: 'haircut', weight: 4 },
+      { term: 'manicure', weight: 4 },
+      { term: 'pedicure', weight: 4 },
+      { term: 'facial', weight: 4 },
+      { term: 'massage', weight: 4 },
+      { term: 'barber', weight: 4 },
+      { term: 'spa', weight: 4 },
+    ],
+    retail_ecommerce: [
+      { term: 'retail', weight: 4 },
+      { term: 'ecommerce', weight: 4 },
+      { term: 'e-commerce', weight: 4 },
+      { term: 'online store', weight: 4 },
+      { term: 'shopify', weight: 4 },
+      { term: 'inventory', weight: 2 },
+      { term: 'store', weight: 1 },
+    ],
+    nonprofits: [
+      { term: 'nonprofit', weight: 5 },
+      { term: 'non-profit', weight: 5 },
+      { term: 'charity', weight: 4 },
+      { term: 'donor', weight: 4 },
+      { term: 'fundraising', weight: 4 },
+      { term: 'volunteer', weight: 3 },
+      { term: 'grant', weight: 3 },
+    ],
+    plumbing: [
+      { term: 'plumbing', weight: 5 },
+      { term: 'plumber', weight: 5 },
+      { term: 'water leak', weight: 5 },
+      { term: 'pipe leak', weight: 5 },
+      { term: 'slab leak', weight: 5 },
+      { term: 'plumbing leak', weight: 5 },
+      { term: 'leak repair', weight: 4 },
+      { term: 'water heater', weight: 4 },
+      { term: 'sewer', weight: 4 },
+      { term: 'hydrojetting', weight: 4 },
+      { term: 'hydro-jetting', weight: 4 },
+      { term: 'drain', weight: 3 },
+      { term: 'pipe', weight: 3 },
+      { term: 'water line', weight: 3 },
+      { term: 'toilet', weight: 3 },
+      { term: 'faucet', weight: 3 },
+    ],
+    electrical: [
+      { term: 'electrician', weight: 5 },
+      { term: 'ev charger', weight: 5 },
+      { term: 'panel upgrade', weight: 5 },
+      { term: 'electrical panel', weight: 5 },
+      { term: 'breaker panel', weight: 5 },
+      { term: 'main panel', weight: 4 },
+      { term: 'rewiring', weight: 4 },
+      { term: 'electrical', weight: 4 },
+      { term: 'wiring', weight: 3 },
+      { term: 'breaker', weight: 3 },
+      { term: 'gfci', weight: 3 },
+      { term: 'afci', weight: 3 },
+      { term: 'lighting', weight: 2 },
+    ],
+    it_services: [
+      { term: 'managed it', weight: 5 },
+      { term: 'msp', weight: 4 },
+      { term: 'helpdesk', weight: 4 },
+      { term: 'help desk', weight: 4 },
+      { term: 'cybersecurity', weight: 4 },
+      { term: 'cloud migration', weight: 4 },
+      { term: 'it support', weight: 4 },
+      { term: 'microsoft 365', weight: 3 },
+      { term: 'network', weight: 2 },
+    ],
+    fitness_gyms: [
+      { term: 'personal training', weight: 5 },
+      { term: 'personal trainer', weight: 5 },
+      { term: 'gym', weight: 4 },
+      { term: 'fitness', weight: 4 },
+      { term: 'strength training', weight: 4 },
+      { term: 'crossfit', weight: 4 },
+      { term: 'workout', weight: 3 },
+      { term: 'yoga', weight: 3 },
+      { term: 'pilates', weight: 3 },
+      { term: 'nutrition coaching', weight: 2 },
+    ],
+    pet_care: [
+      { term: 'pet grooming', weight: 5 },
+      { term: 'pet care', weight: 5 },
+      { term: 'dog daycare', weight: 4 },
+      { term: 'canine', weight: 4 },
+      { term: 'veterinary', weight: 4 },
+      { term: 'grooming', weight: 3 },
+      { term: 'pet', weight: 3 },
+      { term: 'dog', weight: 3 },
+      { term: 'vet', weight: 2 },
+      { term: 'boarding', weight: 2 },
+    ],
+    event_production: [
+      { term: 'event planning', weight: 5 },
+      { term: 'event production', weight: 5 },
+      { term: 'wedding', weight: 4 },
+      { term: 'banquet', weight: 4 },
+      { term: 'party planning', weight: 4 },
+      { term: 'catering', weight: 3 },
+      { term: 'audio visual', weight: 3 },
+      { term: 'av staging', weight: 3 },
+      { term: 'event', weight: 2 },
+    ],
+    dental_practices: [
+      { term: 'dental', weight: 5 },
+      { term: 'dentist', weight: 5 },
+      { term: 'root canal', weight: 5 },
+      { term: 'teeth whitening', weight: 4 },
+      { term: 'orthodontic', weight: 4 },
+      { term: 'dental hygiene', weight: 4 },
+      { term: 'toothache', weight: 4 },
+      { term: 'veneers', weight: 4 },
+      { term: 'braces', weight: 3 },
+      { term: 'cavity', weight: 3 },
+    ],
+    moving_storage: [
+      { term: 'moving company', weight: 5 },
+      { term: 'office relocation', weight: 5 },
+      { term: 'piano moving', weight: 5 },
+      { term: 'moving', weight: 4 },
+      { term: 'movers', weight: 4 },
+      { term: 'relocation', weight: 4 },
+      { term: 'packing', weight: 3 },
+      { term: 'storage', weight: 2 },
+    ],
+    solar_cleanenergy: [
+      { term: 'solar panel', weight: 5 },
+      { term: 'solar panels', weight: 5 },
+      { term: 'solar array', weight: 5 },
+      { term: 'solar installation', weight: 5 },
+      { term: 'photovoltaic', weight: 5 },
+      { term: 'powerwall', weight: 5 },
+      { term: 'microinverter', weight: 4 },
+      { term: 'microinverters', weight: 4 },
+      { term: 'solar energy', weight: 4 },
+      { term: 'net metering', weight: 4 },
+      { term: 'solar', weight: 4 },
+      { term: 'battery storage', weight: 3 },
+      { term: 'inverter', weight: 3 },
+      { term: 'panels', weight: 2 },
+    ],
+    marketing_creative: [
+      { term: 'digital marketing', weight: 5 },
+      { term: 'marketing', weight: 4 },
+      { term: 'ad campaign', weight: 4 },
+      { term: 'ad campaigns', weight: 4 },
+      { term: 'paid ads', weight: 4 },
+      { term: 'lead generation', weight: 3 },
+      { term: 'ads', weight: 3 },
+      { term: 'seo', weight: 4 },
+      { term: 'brand identity', weight: 3 },
+      { term: 'website design', weight: 3 },
+      { term: 'content strategy', weight: 3 },
+      { term: 'social media', weight: 2 },
+    ],
+    hospitality_rentals: [
+      { term: 'vacation rental', weight: 5 },
+      { term: 'airbnb', weight: 5 },
+      { term: 'guest turnover', weight: 4 },
+      { term: 'short-term rental', weight: 4 },
+      { term: 'hospitality', weight: 4 },
+      { term: 'concierge', weight: 3 },
+      { term: 'property management', weight: 3 },
+      { term: 'rental', weight: 2 },
+    ],
+    education_tutoring: [
+      { term: 'tutoring', weight: 5 },
+      { term: 'test prep', weight: 5 },
+      { term: 'tutor', weight: 4 },
+      { term: 'standardized test', weight: 4 },
+      { term: 'academic', weight: 3 },
+      { term: 'curriculum', weight: 3 },
+      { term: 'sat', weight: 2 },
+      { term: 'act', weight: 2 },
+      { term: 'student', weight: 2 },
+      { term: 'learning', weight: 2 },
+    ],
+    property_operations: [
+      { term: 'property operations', weight: 5 },
+      { term: 'facility maintenance', weight: 4 },
+      { term: 'building maintenance', weight: 4 },
+      { term: 'property management', weight: 4 },
+      { term: 'tenant', weight: 3 },
+      { term: 'lease', weight: 3 },
+    ],
+    security_locksmith: [
+      { term: 'locksmith', weight: 5 },
+      { term: 'lockout', weight: 4 },
+      { term: 'rekeying', weight: 4 },
+      { term: 'security camera', weight: 4 },
+      { term: 'cctv', weight: 4 },
+      { term: 'access control', weight: 4 },
+      { term: 'alarm system', weight: 3 },
+      { term: 'smart lock', weight: 3 },
+      { term: 'security', weight: 2 },
+    ],
+  };
+
+  const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // Count whole-word / whole-phrase hits, capped so repetition can't dominate.
+  const countPhraseHits = (haystackLower: string, term: string): number => {
+    const matches = haystackLower.match(new RegExp(`\\b${escapeRegExp(term.toLowerCase())}\\b`, 'g'));
+    return matches ? Math.min(matches.length, 3) : 0;
+  };
+
+  // SAT/ACT only count alongside another education anchor, so a plain verb
+  // ("we act fast") or "customer satisfaction" can never match Education.
+  const EDUCATION_ANCHORS = ['tutor', 'tutoring', 'test prep', 'student', 'academic', 'curriculum', 'learning', 'school', 'exam', 'college', 'class'];
+
+  // Score every preset against the text; highest score wins. Ties keep
+  // preset order (Array.sort is stable), so results are deterministic.
+  const scorePresetsByKeywords = (text: string): ScoredPresetMatch[] => {
     const lower = text.toLowerCase();
-    if (lower.includes('plumb') || lower.includes('pipe') || lower.includes('water heater') || lower.includes('leak') || lower.includes('drain')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'plumbing') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('electric') || lower.includes('panel') || lower.includes('breaker') || lower.includes('ev charger') || lower.includes('wiring')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'electrical') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('msp') || lower.includes('managed it') || lower.includes('cloud') || lower.includes('helpdesk') || lower.includes('cyber')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'it_services') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('solar') || lower.includes('powerwall') || lower.includes('photovoltaic') || lower.includes('inverter')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'solar_cleanenergy') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('gym') || lower.includes('fitness') || lower.includes('workout') || lower.includes('personal train')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'fitness_gyms') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('pet') || lower.includes('dog') || lower.includes('groom') || lower.includes('vet') || lower.includes('canine')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'pet_care') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('event') || lower.includes('wedding') || lower.includes('catering') || lower.includes('banquet') || lower.includes('av ')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'event_production') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('dental') || lower.includes('dentist') || lower.includes('hygiene') || lower.includes('teeth')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'dental_practices') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('hvac') || lower.includes('ac ') || lower.includes('air conditioning') || lower.includes('furnace') || lower.includes('heating')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'hvac') || INDUSTRY_PRESETS[5];
-    }
-    if (lower.includes('roof') || lower.includes('gutter') || lower.includes('shingle')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'roofing') || INDUSTRY_PRESETS[6];
-    }
-    if (lower.includes('clean') || lower.includes('maid') || lower.includes('sanitat') || lower.includes('janitor')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'cleaning') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('paint') || lower.includes('stain') || lower.includes('drywall')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'painting') || INDUSTRY_PRESETS[3];
-    }
-    if (lower.includes('lawn') || lower.includes('mow') || lower.includes('landscap') || lower.includes('tree')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'landscaping') || INDUSTRY_PRESETS[2];
-    }
-    if (lower.includes('auto') || lower.includes('mechanic') || lower.includes('brake') || lower.includes('car ')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'auto_services') || INDUSTRY_PRESETS[8];
-    }
-    if (lower.includes('marketing') || lower.includes('ad ') || lower.includes('campaign') || lower.includes('seo')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'marketing_creative') || INDUSTRY_PRESETS[0];
-    }
-    if (lower.includes('construct') || lower.includes('contractor') || lower.includes('framing')) {
-      return INDUSTRY_PRESETS.find(p => p.id === 'construction') || INDUSTRY_PRESETS[7];
+    const scored = INDUSTRY_PRESETS.map((preset) => {
+      const keywords = PRESET_KEYWORD_WEIGHTS[preset.id] || [];
+      let score = 0;
+      const matchedTerms: string[] = [];
+      for (const kw of keywords) {
+        if (preset.id === 'education_tutoring' && (kw.term === 'sat' || kw.term === 'act')) {
+          const hasAnchor = EDUCATION_ANCHORS.some((anchor) => countPhraseHits(lower, anchor) > 0);
+          if (!hasAnchor) continue;
+        }
+        const hits = countPhraseHits(lower, kw.term);
+        if (hits > 0) {
+          score += kw.weight * hits;
+          matchedTerms.push(kw.term);
+        }
+      }
+      return { preset, score, matchedTerms };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored;
+  };
+
+  // Top-1 local match (same signature as before, for existing callers).
+  const matchPresetLocally = (text: string) => {
+    const ranked = scorePresetsByKeywords(text);
+    if (ranked.length > 0 && ranked[0].score > 0) {
+      return ranked[0].preset;
     }
     return INDUSTRY_PRESETS.find(p => p.id === 'general_small_business') || INDUSTRY_PRESETS[11];
+  };
+
+  // Ranked local matches for the alternatives UI (top `limit`, score > 0).
+  const matchPresetsLocallyRanked = (text: string, limit = 3): ScoredPresetMatch[] => {
+    return scorePresetsByKeywords(text).filter(r => r.score > 0).slice(0, limit);
   };
 
   // Run AI Onboarding Agent Analysis (from either file or manual inputs)
@@ -562,12 +991,28 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     setStep('detecting');
     await haptic.medium();
 
+    // Never send a placeholder or raw binary bytes as content. Binary files
+    // (PDF/DOCX/images) travel as base64 and the server parses them; only
+    // real extracted text goes in fileText. Older saved uploads may still
+    // carry the legacy `[Binary document payload: ...]` placeholder — strip it.
+    const isPlaceholderContent = rawContent.startsWith('[Binary document payload:');
+    const fileText = isPlaceholderContent ? '' : rawContent;
+    // The local fallback only ever sees real text (never base64 bytes).
+    const localMatchText = fileText || `Business Name: ${businessName}\nServices & Description: ${businessDescription}`;
+
     try {
-      // Send document payload to AI Onboarding Agent endpoint
-      const result = await apiFetch<any>('/api/business/analyze-document', {
+      // Send the document payload to the AI Onboarding Agent endpoint.
+      // Contract: POST /api/business/analyze-document
+      //   request:  { fileText, fileName, fileType, fileBase64? }
+      //   response: { industryId, confidence?, uncertain?, source,
+      //               alternatives?: [{ industryId, score? }],
+      //               reasoning?, businessName?, extractedServices?,
+      //               keyInsights?, recommendedTone?, technicianRoleName?,
+      //               dollarThreshold? }
+      const result = await apiFetch<AnalyzeDocumentResponse>('/api/business/analyze-document', {
         method: 'POST',
         body: JSON.stringify({
-          fileText: rawContent,
+          fileText,
           fileName,
           fileType,
           fileBase64: fileBase64 || undefined
@@ -575,12 +1020,31 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       });
 
       if (result && result.industryId) {
-        const matched = INDUSTRY_PRESETS.find(p => p.id === result.industryId) || matchPresetLocally(rawContent);
+        const matched = INDUSTRY_PRESETS.find(p => p.id === result.industryId) || matchPresetLocally(localMatchText);
+
+        // `source` is the only trustworthy provenance signal. A missing or
+        // non-'llm' source means the result came from a keyword fallback, so
+        // show the low-confidence state — never trust a fallback confidence.
+        const source: 'llm' | 'fallback' = result.source === 'llm' ? 'llm' : 'fallback';
+        setResultSource(source);
+        setIsUncertain(result.uncertain === true || source === 'fallback');
+
+        // Alternatives from the server (2nd/3rd choices), resolved to presets.
+        const serverAlternatives = (Array.isArray(result.alternatives) ? result.alternatives : [])
+          .map((alt) => {
+            const preset = INDUSTRY_PRESETS.find(p => p.id === alt.industryId);
+            return preset && preset.id !== matched.id ? { preset, score: alt.score ?? alt.confidence } : null;
+          })
+          .filter((alt): alt is { preset: typeof INDUSTRY_PRESETS[0]; score?: number } => alt !== null)
+          .slice(0, 2);
+        setAlternativeIndustries(serverAlternatives);
 
         // Load the full industry preset first (services, tone, assistants), then apply AI refinements.
         applyPreset(matched);
-        setConfidenceScore(result.confidence || 0.96);
-        setAgentReasoning(result.reasoning || `Deciphered from business profile: ${matched.description}`);
+        setConfidenceScore(source === 'llm' ? (result.confidence ?? 0.96) : 0);
+        setAgentReasoning(result.reasoning || (source === 'fallback'
+          ? `Offline match from your text — please confirm this is the right industry: ${matched.description}`
+          : `Deciphered from business profile: ${matched.description}`));
 
         if (result.businessName && !businessName.trim()) {
           setBusinessName(result.businessName);
@@ -600,18 +1064,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         if (result.technicianRoleName) setTechnicianRoleName(result.technicianRoleName);
         setDollarThreshold(typeof result.dollarThreshold === 'number' ? result.dollarThreshold : 1250);
       } else {
-        // Local fallback
-        const local = matchPresetLocally(rawContent);
-        applyPreset(local);
-        setConfidenceScore(0.92);
-        setAgentReasoning(`Matched from operational text: ${local.description}`);
+        // Server returned no industry: local scored fallback.
+        applyLocalFallback(localMatchText);
       }
     } catch (err) {
       console.warn('AI Onboarding Agent fallback:', err);
-      const local = matchPresetLocally(rawContent);
-      applyPreset(local);
-      setConfidenceScore(0.90);
-      setAgentReasoning(`Matched core operational traits: ${local.description}`);
+      applyLocalFallback(localMatchText);
     } finally {
       // Simulate smooth step progression completion
       setTimeout(async () => {
@@ -620,6 +1078,19 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         await haptic.success();
       }, 1000);
     }
+  };
+
+  // Offline fallback: scored local keyword matching. Always labelled as a
+  // fallback with the low-confidence state — never a fake high confidence.
+  const applyLocalFallback = (text: string) => {
+    const ranked = matchPresetsLocallyRanked(text, 3);
+    const local = ranked.length > 0 ? ranked[0].preset : matchPresetLocally(text);
+    applyPreset(local);
+    setResultSource('fallback');
+    setIsUncertain(true);
+    setConfidenceScore(0);
+    setAlternativeIndustries(ranked.slice(1, 3).map(r => ({ preset: r.preset, score: r.score })));
+    setAgentReasoning(`Offline match from your text — please confirm this is the right industry: ${local.description}`);
   };
 
   // Apply a full industry preset: services, brand tone, technician title, and which AI assistants are on.
@@ -640,7 +1111,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     applyPreset(preset);
     setAgentReasoning(`Manually verified & selected by user: Configured for ${preset.name}.`);
     setConfidenceScore(1.0);
+    setAlternativeIndustries([]);
+    setResultSource(null);
+    setIsUncertain(false);
     setIsChangingPreset(false);
+  };
+
+  // User picks one of the 2nd/3rd-choice alternatives from the review screen.
+  const handleSelectAlternativePreset = (preset: typeof INDUSTRY_PRESETS[0]) => {
+    haptic.selection();
+    applyPreset(preset);
+    setAgentReasoning(`You picked an alternative match: Configured for ${preset.name}.`);
+    setConfidenceScore(1.0);
+    setAlternativeIndustries([]);
+    setResultSource(null);
+    setIsUncertain(false);
   };
 
   const handleAddService = () => {
@@ -1046,9 +1531,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <div className="space-y-0.5 text-left">
                 <div className="text-xs font-extrabold text-white flex items-center gap-2">
                   <span>AI Agent Recommendation Awaiting Your Approval</span>
-                  <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-300 font-bold">
-                    {(confidenceScore * 100).toFixed(0)}% Confidence
-                  </span>
+                  {resultSource === 'fallback' || isUncertain ? (
+                    <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
+                      Low confidence — offline match, please confirm
+                    </span>
+                  ) : (
+                    <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-300 font-bold">
+                      {(confidenceScore * 100).toFixed(0)}% Confidence
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-zinc-300">
                   The AI Onboarding Agent analyzed your inputs and selected the preset below. You have full control to approve it or switch to any other preset before proceeding.
@@ -1108,6 +1599,32 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* ALTERNATIVE MATCHES (2nd/3rd choices) */}
+            {alternativeIndustries.length > 0 && (
+              <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+                <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                  Not quite right? Try one of these instead:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {alternativeIndustries.map((alt) => (
+                    <button
+                      key={alt.preset.id}
+                      type="button"
+                      onClick={() => handleSelectAlternativePreset(alt.preset)}
+                      className="text-[11px] px-2.5 py-1.5 rounded-xl border border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-lime-500/50 hover:text-lime-300 font-bold transition cursor-pointer"
+                    >
+                      {alt.preset.name}
+                      {typeof alt.score === 'number' && (
+                        <span className="ml-1.5 text-[10px] font-mono text-zinc-400">
+                          {alt.score <= 1 ? `${(alt.score * 100).toFixed(0)}%` : `Score ${alt.score}`}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* EDITABLE BUSINESS SETTINGS */}
             <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
