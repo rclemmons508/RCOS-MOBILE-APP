@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserPreferences } from '../../types';
 import { authService, SEED_USERS } from '../../services/authService';
+import { BIOMETRICS_ENABLED } from '../../services/biometricService';
 import { teamService } from '../../services/teamService';
 import { useBiometrics } from '../../context/BiometricContext';
 import { RCLogo } from '../RCLogo';
@@ -158,7 +159,7 @@ const [joinPin, setJoinPin] = useState('');
     }
     // A backup PIN is required when biometric login is on — it is the only
     // way back in if the sensor ever fails.
-    if (regEnableBiometrics && !/^\d{4}$/.test(regBackupPin)) {
+    if (BIOMETRICS_ENABLED && regEnableBiometrics && !/^\d{4}$/.test(regBackupPin)) {
       setErrorMsg('Please set a 4-digit backup PIN in case biometrics fail.');
       return;
     }
@@ -178,12 +179,12 @@ const [joinPin, setJoinPin] = useState('');
         role: regRole,
         organization: regOrganization,
         backupPin: regBackupPin || undefined,
-        enableBiometrics: regEnableBiometrics,
+        enableBiometrics: BIOMETRICS_ENABLED && regEnableBiometrics,
         preferences: {
           industryProfile: industryPreset ? industryPreset.name : regIndustryId,
           autoDispatchThreshold: regAutoDispatch as any,
           ringerMode: regRingerMode,
-          biometricsEnabled: regEnableBiometrics
+          biometricsEnabled: BIOMETRICS_ENABLED && regEnableBiometrics
         }
       });
 
@@ -347,6 +348,8 @@ const [joinPin, setJoinPin] = useState('');
         </div>
         )}
 
+        {BIOMETRICS_ENABLED && (
+          <>
         {/* PRIMARY AUTH OPTION 2: BIOMETRIC LOGIN */}
         <div className="relative">
           <button
@@ -391,6 +394,8 @@ const [joinPin, setJoinPin] = useState('');
             </button>
           )}
         </div>
+          </>
+        )}
 
         {/* DIVIDER */}
         <div className="relative flex items-center justify-center">
@@ -692,6 +697,8 @@ const [joinPin, setJoinPin] = useState('');
                   </div>
                 </div>
 
+                {BIOMETRICS_ENABLED && (
+                  <>
                 {/* Biometrics Toggle for New Account */}
                 <label className="flex items-center justify-between pt-1 cursor-pointer">
                   <span className="text-[11px] text-zinc-300 flex items-center gap-1.5">
@@ -705,6 +712,8 @@ const [joinPin, setJoinPin] = useState('');
                     className="rounded bg-zinc-900 border-zinc-700 text-lime-500 focus:ring-0"
                   />
                 </label>
+                  </>
+                )}
               </div>
 
               <button
