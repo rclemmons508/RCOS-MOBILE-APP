@@ -61,6 +61,16 @@ export const Header: React.FC<HeaderProps> = ({
         return 'AI Ops Chat';
       case 'settings':
         return 'Settings & Rules';
+      case 'team':
+        return 'AI Team';
+      case 'approvals':
+        return 'Review';
+      case 'team-chat':
+        return 'Team Chat';
+      case 'more':
+        return 'More';
+      case 'requests':
+        return 'Customer Requests';
       default:
         return 'RCOS Mobile';
     }
