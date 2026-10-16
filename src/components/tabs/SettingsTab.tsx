@@ -304,7 +304,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       // The first time its owner opens Team, record them as the owner so
       // invites work. Members always arrive with a list, so this only
       // ever runs for the creator.
-      if ((roster.members || []).length === 0 && !teamBackfilledRef.current) {
+      // Backfill guard (Oct 16, 2026): an empty roster does NOT prove the
+      // current user is the creator — the roster is empty on restored
+      // businesses too, and backfilling a member as owner let a test
+      // account wipe the whole business from the Danger Zone. Only
+      // backfill when the user matches an owner identity on the business
+      // record (contact email / owner email / owner id), or when the
+      // record has no owner identity at all (legacy, nobody to protect).
+      const ownerIdentities = [
+        (business?.contactEmail || '').toLowerCase(),
+        ((business as unknown as { ownerEmail?: string } | null)?.ownerEmail || '').toLowerCase(),
+      ].filter(Boolean);
+      const matchesOwnerIdentity =
+        ownerIdentities.length === 0 ||
+        ownerIdentities.includes((currentUser?.email || '').toLowerCase()) ||
+        (!!business?.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === currentUser?.id);
+      if ((roster.members || []).length === 0 && !teamBackfilledRef.current && matchesOwnerIdentity) {
         teamBackfilledRef.current = true;
         const ownerMember: BusinessMember = {
           userId: currentUser.id,
@@ -1730,7 +1745,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <>
                 <ul className="text-xs text-zinc-300 list-disc pl-5 space-y-1">
                   <li>Your login and profile</li>
-                  <li>Your business profile</li>
+                  <li>Your business profile — and every team member loses access to it too</li>
                   <li>Your customers and customer requests</li>
                   <li>Your jobs, quotes, invoices, and approvals</li>
                   <li>Your chat history and Agent Inbox messages</li>
@@ -1822,7 +1837,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 disabled={deleteInput !== 'DELETE' || deleteDeleting || (deleteNeedsPassword && !deletePassword)}
                 className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-white transition cursor-pointer"
               >
-                {deleteDeleting ? 'Deleting…' : 'Delete everything'}
+                {deleteDeleting ? 'Deleting…' : (teamIsOwner ? 'Delete everything' : 'Leave & delete my login')}
               </button>
             </div>
           </>
