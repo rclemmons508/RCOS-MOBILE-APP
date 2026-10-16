@@ -1035,7 +1035,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             const preset = INDUSTRY_PRESETS.find(p => p.id === alt.industryId);
             return preset && preset.id !== matched.id ? { preset, score: alt.score ?? alt.confidence } : null;
           })
-          .filter((alt): alt is { preset: typeof INDUSTRY_PRESETS[0]; score?: number } => alt !== null)
+          .filter((alt): alt is { preset: typeof INDUSTRY_PRESETS[0]; score: number | undefined } => alt !== null)
           .slice(0, 2);
         setAlternativeIndustries(serverAlternatives);
 
