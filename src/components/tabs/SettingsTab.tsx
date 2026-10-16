@@ -13,6 +13,7 @@ import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerMo
 import { haptic } from '../../utils/haptics';
 import { deleteAccount, isReauthRequired } from '../../services/accountDeletionService';
 import { teamService } from '../../services/teamService';
+import { authService } from '../../services/authService';
 import { apiFetch } from '../../lib/api';
 import { auth } from '../../lib/firebase';
 import { biometricService } from '../../services/biometricService';
@@ -305,19 +306,18 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       // The first time its owner opens Team, record them as the owner so
       // invites work. Members always arrive with a list, so this only
       // ever runs for the creator.
-      // Backfill guard (Oct 16, 2026): an empty roster does NOT prove the
-      // current user is the creator — the roster is empty on restored
-      // businesses too, and backfilling a member as owner let a test
-      // account wipe the whole business from the Danger Zone. Only
-      // backfill when the user matches an owner identity on the business
-      // record (contact email / owner email / owner id), or when the
-      // record has no owner identity at all (legacy, nobody to protect).
+      // Backfill guard: an empty roster does NOT prove the current user
+      // is the creator — the roster is empty on restored businesses too,
+      // and backfilling a member as owner let a test account wipe the
+      // whole business from the Danger Zone. Only backfill on positive
+      // proof (contact email / owner email / owner id match). When the
+      // record has no owner identity at all, nobody is backfilled — no
+      // one becomes owner just by opening Team.
       const ownerIdentities = [
         (business?.contactEmail || '').toLowerCase(),
         ((business as unknown as { ownerEmail?: string } | null)?.ownerEmail || '').toLowerCase(),
       ].filter(Boolean);
       const matchesOwnerIdentity =
-        ownerIdentities.length === 0 ||
         ownerIdentities.includes((currentUser?.email || '').toLowerCase()) ||
         (!!business?.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === currentUser?.id);
       if ((roster.members || []).length === 0 && !teamBackfilledRef.current && matchesOwnerIdentity) {
@@ -386,6 +386,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     if (!businessId || !currentUser?.email) return;
     try {
       await teamService.removeMember(businessId, currentUser.email, memberEmail);
+      // Device-local cleanup: on a shared device, the removed person's
+      // saved login + fingerprint link must go too, or fingerprint
+      // sign-in brings them straight back. Only touches data for the
+      // removed email — nothing else on this device is affected.
+      try {
+        authService.removeRegisteredUser(memberEmail);
+      } catch { /* no saved login for them on this device */ }
+      try {
+        const enrolled = biometricService.getEnrolledInfo();
+        if (enrolled.enrolled && (enrolled.userEmail || '').toLowerCase() === memberEmail.toLowerCase()) {
+          biometricService.unenrollBiometrics();
+        }
+      } catch { /* no fingerprint link for them on this device */ }
       setRemoveTarget(null);
       await loadTeam();
     } catch (e: any) {
