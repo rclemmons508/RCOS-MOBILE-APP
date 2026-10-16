@@ -93,22 +93,35 @@ export async function deleteAccount(
   }
   // Google-only Firebase accounts need no password; step 3 deletes the Firebase user directly.
 
-  // Membership check: a team member deletes THEIR account, not the whole
-  // company. Decided here from the server's roster (not from local state,
-  // which could be stale) so a member can never wipe the business by
-  // reaching the owner path below.
+  // Ownership check (Oct 16, 2026): deleting ONE account must never wipe
+  // the whole business. The old code treated the requester as the owner
+  // whenever the roster was empty — but the roster is empty on restored
+  // businesses, so deleting a test account wiped the owner's business and
+  // every account in it. The rule now: wipe ONLY on positive proof that
+  // the signed-in user is the owner; everyone else takes the member path
+  // (leave the team + delete only their own login), even when the roster
+  // is empty. Proof = the signed-in email matches an owner identity on
+  // the business record (owner roster email, contact email). The one
+  // exception: a legacy record with no owner identity at all AND no other
+  // roster members — there is nobody else to protect, so it wipes.
   let isTeamMember = false;
   if (businessId) {
     try {
       const biz = await apiFetch<BusinessAccount>(`/api/business/${encodeURIComponent(businessId)}`);
       const members = biz?.members || [];
-      if (members.length > 0) {
-        const me = members.find(m => m.email.toLowerCase() === email.toLowerCase());
-        isTeamMember = !!me && me.role === 'member';
-      }
+      const me = email.toLowerCase();
+      const ownerEmails = Array.from(new Set([
+        (members.find(m => m.role === 'owner')?.email || '').toLowerCase(),
+        (biz?.contactEmail || '').toLowerCase(),
+        ((biz as unknown as { ownerEmail?: string })?.ownerEmail || '').toLowerCase(),
+      ].filter(Boolean)));
+      const matchedOwner = ownerEmails.length > 0 && ownerEmails.includes(me);
+      const otherMembers = members.filter(m => (m.email || '').toLowerCase() !== me);
+      const isOwner = matchedOwner || (otherMembers.length === 0 && ownerEmails.length === 0);
+      isTeamMember = !isOwner;
     } catch {
-      // Business fetch failed (offline / already gone). Fall through to
-      // the owner path, which treats a missing business as already deleted.
+      // Business fetch failed (offline / already gone). The owner path
+      // below treats a missing business as already deleted.
     }
   }
 
@@ -118,17 +131,29 @@ export async function deleteAccount(
   let leftTeam = false;
   if (isTeamMember) {
     // Leave the team — the business and its data stay for the company.
-    await apiFetch(`/api/business/${encodeURIComponent(businessId)}/team/leave`, {
-      method: 'POST',
-      headers: { 'X-User-Email': email },
-      body: JSON.stringify({ requesterEmail: email })
-    });
+    // Best-effort: if the roster does not list this user (empty roster on
+    // a restored business, already left), the server answers 403/404 and
+    // there is nothing to leave — the login deletion below still runs.
+    // Any other leave failure is also non-fatal: the business data is
+    // untouched either way, and a stale roster entry can be removed by
+    // the owner.
+    try {
+      await apiFetch(`/api/business/${encodeURIComponent(businessId)}/team/leave`, {
+        method: 'POST',
+        headers: { 'X-User-Email': email },
+        body: JSON.stringify({ requesterEmail: email })
+      });
+    } catch { /* already not on the team, or roster cleanup failed — continue */ }
     leftTeam = true;
     alreadyDeleted = true; // nothing business-side left to remove for this account
   } else if (businessId) {
     const res = await apiFetch<{ ok: boolean; deletedBusinessIds?: string[]; alreadyDeleted?: boolean }>(
       `/api/business/${encodeURIComponent(businessId)}/delete-account`,
-      { method: 'POST', body: JSON.stringify({ confirm: 'DELETE' }) }
+      {
+        method: 'POST',
+        headers: { 'X-User-Email': email },
+        body: JSON.stringify({ confirm: 'DELETE', requesterEmail: email }),
+      }
     );
     deletedBusinessIds = res.deletedBusinessIds || [];
     alreadyDeleted = !!res.alreadyDeleted;
