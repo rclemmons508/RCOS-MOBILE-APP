@@ -384,41 +384,28 @@ class AuthService {
       throw new Error(authResult.error || 'Biometric authentication was cancelled or failed.');
     }
 
-    // Identify user to log into
-    let targetEmail = enrolledInfo.userEmail;
-    const users = this.getRegisteredUsers();
+    // Identify user to log into. The fingerprint only unlocks the
+    // account named in the enrollment — it never creates one. A
+    // fingerprint for a deleted (or never-registered) account must fail
+    // cleanly, never silently re-create that account and sign into it.
+    // (That auto-create is how a deleted profile kept coming back every
+    // time the fingerprint was used.) No silent enrollment either: with
+    // no fingerprint linked, sign in with email + password first.
+    const targetEmail = enrolledInfo.userEmail;
     if (!targetEmail) {
-      if (users.length === 0) {
-        throw new Error('No user registered yet. Please create an account or sign in with Google first.');
-      }
-      targetEmail = users[0].email;
-      // Enroll this user so subsequent logins are instant
-      await biometricService.enrollBiometrics(targetEmail, users[0]?.fullName || 'Lead Operator');
+      throw new Error('No fingerprint is linked on this phone yet. Please sign in with your email and password, then link your fingerprint in Settings.');
     }
-
-    let matchedUser = users.find(u => u.email.toLowerCase() === targetEmail.toLowerCase());
-
-    if (!matchedUser) {
-      matchedUser = {
-        id: `usr_bio_${Date.now()}`,
-        email: targetEmail,
-        fullName: enrolledInfo.userName || targetEmail.split('@')[0].toUpperCase(),
-        role: 'Operations Lead',
-        avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(targetEmail)}`,
-        organization: '',
-        authenticated: true,
-        biometricsEnabled: true,
-        lastLogin: 'Just now',
-        preferences: userPreferencesService.getUserPreferences(targetEmail)
-      };
-    } else {
-      matchedUser = {
-        ...matchedUser,
-        authenticated: true,
-        lastLogin: 'Just now',
-        preferences: userPreferencesService.getUserPreferences(matchedUser.email)
-      };
+    const users = this.getRegisteredUsers();
+    const foundUser = users.find(u => u.email.toLowerCase() === targetEmail.toLowerCase());
+    if (!foundUser) {
+      throw new Error('No account found for that fingerprint. The account may have been deleted. Please sign in with your email and password.');
     }
+    const matchedUser = {
+      ...foundUser,
+      authenticated: true,
+      lastLogin: 'Just now',
+      preferences: userPreferencesService.getUserPreferences(foundUser.email)
+    };
 
     this.upsertUser(matchedUser);
     this.saveActiveSession(matchedUser);

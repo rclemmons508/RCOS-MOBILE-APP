@@ -38,7 +38,11 @@ export function isReauthRequired(err: unknown): boolean {
  *      Any failure throws: no success screen, no local wipe.
  *   3. Firebase Auth user, only when one is signed in.
  *   4. Saved login record — removed from this device and verified gone.
- *   5. Local data — biometrics, cached tokens, ALL local/session storage.
+ *   5. Local data — owner path: biometrics, cached tokens, ALL local/session
+ *      storage (the business is gone). Member path: only the deleted user's
+ *      own traces (their login, their fingerprint link when it is theirs,
+ *      their session) — the company's business cache and other users'
+ *      data stay.
  * The caller signs the user out (reload to the login screen) after this
  * returns. Never call this without the owner typing DELETE first.
  *
@@ -93,17 +97,19 @@ export async function deleteAccount(
   }
   // Google-only Firebase accounts need no password; step 3 deletes the Firebase user directly.
 
-  // Ownership check (Oct 16, 2026): deleting ONE account must never wipe
-  // the whole business. The old code treated the requester as the owner
-  // whenever the roster was empty — but the roster is empty on restored
-  // businesses, so deleting a test account wiped the owner's business and
-  // every account in it. The rule now: wipe ONLY on positive proof that
-  // the signed-in user is the owner; everyone else takes the member path
-  // (leave the team + delete only their own login), even when the roster
-  // is empty. Proof = the signed-in email matches an owner identity on
-  // the business record (owner roster email, contact email). The one
-  // exception: a legacy record with no owner identity at all AND no other
-  // roster members — there is nobody else to protect, so it wipes.
+  // Ownership check: deleting ONE account must never wipe the whole
+  // business. Wipe ONLY on positive proof that the signed-in user is the
+  // owner; everyone else takes the member path (leave the team + delete
+  // only their own login), even when the roster is empty. The old code
+  // treated the requester as the owner whenever the roster was empty
+  // and no owner identity existed — but the roster is empty on restored
+  // businesses too, so deleting a test account wiped the owner's
+  // business and every account in it. There is NO "no identity, assume
+  // owner" fallback: an unprovable owner takes the member path, and the
+  // business survives (left orphaned, not wiped).
+  // Proof = the signed-in email matches an owner identity on the
+  // business record (owner roster email, contact email, owner email),
+  // OR the business's recorded owner id matches the signed-in user.
   let isTeamMember = false;
   if (businessId) {
     try {
@@ -115,10 +121,9 @@ export async function deleteAccount(
         (biz?.contactEmail || '').toLowerCase(),
         ((biz as unknown as { ownerEmail?: string })?.ownerEmail || '').toLowerCase(),
       ].filter(Boolean)));
-      const matchedOwner = ownerEmails.length > 0 && ownerEmails.includes(me);
-      const otherMembers = members.filter(m => (m.email || '').toLowerCase() !== me);
-      const isOwner = matchedOwner || (otherMembers.length === 0 && ownerEmails.length === 0);
-      isTeamMember = !isOwner;
+      const matchedOwner = ownerEmails.includes(me)
+        || (!!biz?.ownerId && biz.ownerId !== 'unassigned_owner' && !!sessionUser?.id && biz.ownerId === sessionUser.id);
+      isTeamMember = !matchedOwner;
     } catch {
       // Business fetch failed (offline / already gone). The owner path
       // below treats a missing business as already deleted.
@@ -164,6 +169,13 @@ export async function deleteAccount(
     alreadyDeleted = true; // no business configured — nothing server-side to remove
   }
 
+  // The fingerprint link for the deleted account is stale the moment the
+  // server deletion (or team leave) succeeds — clear it now, not only at
+  // the end, so a failure in a later step can never leave a fingerprint
+  // that signs back into a deleted account. Only touches the enrollment
+  // when it belongs to the deleted email; another user's link stays.
+  unenrollBiometricsIfMine(email);
+
   // 2. Firestore — strict: any failure throws, no success screen, no local wipe.
   // Always include the requested business id (not just the ids the server
   // reported) so a retry after a Firestore failure still removes the rest.
@@ -199,10 +211,50 @@ export async function deleteAccount(
     throw new Error('Your business data and login were deleted, but the saved login on this phone could not be removed. Please try deleting again.');
   }
 
-  // 5. Local data — only now that every step is verified.
-  wipeLocalData();
+  // 5. Local data — only now that every step is verified. Owner path
+  // wipes everything (the business is gone); member path removes only
+  // the deleted user's own traces.
+  if (leftTeam) {
+    wipeLocalDataForUser(email);
+  } else {
+    wipeLocalData();
+  }
 
   return { deletedBusinessIds, alreadyDeleted, leftTeam };
+}
+
+/** Remove the fingerprint enrollment, but only when it belongs to the
+ * given email. The enrollment on a shared device may belong to someone
+ * else — never clear another user's fingerprint link. */
+export function unenrollBiometricsIfMine(email: string): void {
+  try {
+    const enrolled = biometricService.getEnrolledInfo();
+    if (enrolled.enrolled && (enrolled.userEmail || '').toLowerCase() === email.toLowerCase()) {
+      biometricService.unenrollBiometrics();
+    }
+  } catch { /* already clear */ }
+}
+
+/**
+ * Remove only one user's own traces from this device: their fingerprint
+ * link (when it is theirs), their session + configured business +
+ * onboarding flags, their cached Gmail token, and session storage. The
+ * company's business cache and other users' data stay — a member leaving
+ * must never wipe the device the way a business deletion does.
+ */
+export function wipeLocalDataForUser(email: string): void {
+  unenrollBiometricsIfMine(email);
+  try {
+    setCachedAccessToken(null);
+  } catch { /* noop */ }
+  for (const key of ['rcos_active_session', 'rcos_auth_user', 'rcos_configured_business', 'rcos_onboarding_completed']) {
+    try {
+      localStorage.removeItem(key);
+    } catch { /* storage unavailable */ }
+  }
+  try {
+    sessionStorage.clear();
+  } catch { /* storage unavailable */ }
 }
 
 /** Remove biometrics, cached tokens, and ALL local/session storage. */
