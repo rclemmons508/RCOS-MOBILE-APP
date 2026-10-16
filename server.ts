@@ -699,8 +699,8 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : undefined,
     contactEmail: typeof data.contactEmail === 'string' ? data.contactEmail : undefined,
     profilePicture: typeof data.profilePicture === 'string' ? data.profilePicture : undefined,
-    name: data.name || 'My Business',
-    industry: data.industry || 'general_small_business',
+    name: String(data.name ?? 'My Business'),
+    industry: String(data.industry ?? 'general_small_business'),
     size: data.size || 'Solo Operator (1)',
     services: Array.isArray(data.services) && data.services.length ? data.services : ['General Service Call'],
     pricingApproach: data.pricingApproach || 'Flat-rate standard pricing',
@@ -762,7 +762,52 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
   if (!existing) {
     return res.status(404).json({ error: 'Business account not found' });
   }
-  const updated = { ...existing, ...req.body, id: existing.id, updatedAt: new Date().toISOString() };
+  // Allow-list update (Bug 5): never spread req.body verbatim — an object
+  // smuggled into a string field used to crash the dashboard on render.
+  // Only known BusinessAccount fields are accepted, each coerced to its
+  // declared type. Unknown fields (e.g. createdAt, id) are ignored.
+  const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const updates: Partial<BusinessAccount> = {};
+  for (const field of ['ownerId', 'name', 'contactName', 'contactPhone', 'contactEmail', 'profilePicture', 'industry', 'size', 'pricingApproach', 'brandTone'] as const) {
+    if (body[field] !== undefined && body[field] !== null) updates[field] = String(body[field]);
+  }
+  for (const field of ['services', 'painPoints'] as const) {
+    if (Array.isArray(body[field])) updates[field] = body[field].map((v) => String(v));
+  }
+  if (body.autonomyMode === 'autonomous' || body.autonomyMode === 'supervised') updates.autonomyMode = body.autonomyMode;
+  if (body.answeringMode === 'ai' || body.answeringMode === 'manual') updates.answeringMode = body.answeringMode;
+  if (typeof body.dollarThreshold === 'number' && Number.isFinite(body.dollarThreshold)) updates.dollarThreshold = body.dollarThreshold;
+  if (typeof body.onboardingCompleted === 'boolean') updates.onboardingCompleted = body.onboardingCompleted;
+  if (Array.isArray(body.members)) {
+    updates.members = body.members
+      .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && !Array.isArray(m))
+      .map((m) => ({
+        userId: String(m.userId ?? ''),
+        email: String(m.email ?? ''),
+        name: String(m.name ?? ''),
+        role: m.role === 'owner' || m.role === 'member' ? m.role : 'member',
+        ...(m.avatar !== undefined && m.avatar !== null ? { avatar: String(m.avatar) } : {}),
+        joinedAt: String(m.joinedAt ?? '')
+      }));
+  }
+  if (body.activeEmployees && typeof body.activeEmployees === 'object' && !Array.isArray(body.activeEmployees)) {
+    const rec: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(body.activeEmployees as Record<string, unknown>)) rec[String(k)] = v === true;
+    updates.activeEmployees = rec;
+  }
+  if (Array.isArray(body.starterDrafts)) {
+    updates.starterDrafts = body.starterDrafts
+      .filter((d): d is Record<string, unknown> => !!d && typeof d === 'object' && !Array.isArray(d))
+      .map((d) => ({
+        id: String(d.id ?? ''),
+        title: String(d.title ?? ''),
+        type: d.type === 'follow_up_template' ? 'follow_up_template' : 'quote_template',
+        content: String(d.content ?? ''),
+        status: d.status === 'approved' || d.status === 'rejected' ? d.status : 'awaiting_approval',
+        createdAt: String(d.createdAt ?? '')
+      }));
+  }
+  const updated: BusinessAccount = { ...existing, ...updates, id: existing.id, updatedAt: new Date().toISOString() };
   const saved = db.saveBusiness(updated);
   res.json(saved);
 });
@@ -1016,17 +1061,33 @@ app.post('/api/business/analyze-document', async (req: Request, res: Response) =
   }
 });
 
+// Bug 5: never pass unvalidated LLM JSON to the client — coerce first.
+const coerceFinite = (value: unknown, fallback: number, min: number, max: number): number => {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+const coerceString = (value: unknown, fallback: string): string =>
+  typeof value === 'string' && value.trim() ? value : fallback;
+const coerceStringArray = (value: unknown, fallback: string[]): string[] => {
+  if (!Array.isArray(value)) return fallback;
+  const out = value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  return out.length ? out : fallback;
+};
+
 // Proactive AI Monitor: Evaluates business context & services added, suggesting an optimized Industry Profile preset
 app.post('/api/business/:id/suggest-optimized-industry', async (req: Request, res: Response) => {
   const businessId = req.params.id;
   const { services, currentIndustry, businessName } = req.body;
 
   const currentBiz = db.getBusiness(businessId);
-  const effectiveServices: string[] = Array.isArray(services) && services.length > 0
+  // Coerce: only strings reach the client or the LLM prompt — an object in
+  // this array used to crash the dashboard when rendered.
+  const rawServices: unknown[] = Array.isArray(services) && services.length > 0
     ? services
     : (currentBiz?.services || []);
-  const effectiveCurrentIndustry = currentIndustry || currentBiz?.industry || 'general_small_business';
-  const effectiveBizName = businessName || currentBiz?.name || 'Your Business';
+  const effectiveServices: string[] = rawServices.filter((s): s is string => typeof s === 'string');
+  const effectiveCurrentIndustry = String(currentIndustry || currentBiz?.industry || 'general_small_business');
+  const effectiveBizName = String(businessName || currentBiz?.name || 'Your Business');
 
   if (!effectiveServices.length) {
     return res.json({ suggestion: null, reason: 'Insufficient services registered to evaluate optimization.' });
@@ -1133,15 +1194,15 @@ Respond with ONLY valid JSON matching this schema:
             currentIndustryId: effectiveCurrentIndustry,
             suggestedPresetId: targetPreset.id,
             suggestedPresetName: targetPreset.name,
-            confidence: parsed.confidence || 0.95,
-            matchScore: parsed.matchScore || 95,
-            reason: parsed.reason || `Your service catalog matches the specialized workflows and job packs of ${targetPreset.name}.`,
+            confidence: coerceFinite(parsed.confidence, 0.95, 0, 1),
+            matchScore: coerceFinite(parsed.matchScore, 95, 0, 100),
+            reason: coerceString(parsed.reason, `Your service catalog matches the specialized workflows and job packs of ${targetPreset.name}.`),
             newServicesDetected: effectiveServices,
-            recommendedTone: parsed.recommendedTone || targetPreset.recommendedTone,
-            technicianRoleName: parsed.technicianRoleName || targetPreset.technicianRoleName,
+            recommendedTone: coerceString(parsed.recommendedTone, targetPreset.recommendedTone),
+            technicianRoleName: coerceString(parsed.technicianRoleName, targetPreset.technicianRoleName),
             suggestedServices: targetPreset.defaultServices,
             activeEmployees: activeEmps,
-            triggers: parsed.triggers || [`Services directly align with ${targetPreset.name}`]
+            triggers: coerceStringArray(parsed.triggers, [`Services directly align with ${targetPreset.name}`])
           }
         });
       }
