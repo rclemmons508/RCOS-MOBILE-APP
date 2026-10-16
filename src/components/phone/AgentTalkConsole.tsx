@@ -12,6 +12,9 @@ import {
   Kanban,
   Megaphone,
   HeartHandshake,
+  ShieldAlert,
+  Wrench,
+  Receipt,
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import {
@@ -20,7 +23,7 @@ import {
   restoreAudioAfterCall,
 } from '../../utils/audioRoute';
 
-export type TalkPersona = 'sales' | 'operations' | 'marketing' | 'support';
+export type TalkPersona = 'sales' | 'operations' | 'marketing' | 'support' | 'executive' | 'technician' | 'finance';
 
 export const TALK_PERSONA_INFO: Record<
   TalkPersona,
@@ -46,6 +49,21 @@ export const TALK_PERSONA_INFO: Record<
     role: 'Customer issues & follow-ups',
     hint: 'Talk through a customer issue or complaint.',
   },
+  executive: {
+    name: 'Executive',
+    role: 'Escalations, safety & owner decisions',
+    hint: 'Talk through an escalation, a safety issue, or a decision that needs your call.',
+  },
+  technician: {
+    name: 'Field Technician',
+    role: 'Job Pack checklists & safety steps',
+    hint: 'Walk through a Job Pack checklist or the safety steps before work starts.',
+  },
+  finance: {
+    name: 'Finance',
+    role: 'Invoices, balances & payments',
+    hint: 'Check what is owed, what has been paid, or what to follow up on.',
+  },
 };
 
 const PERSONA_ICONS: Record<TalkPersona, React.ReactNode> = {
@@ -53,6 +71,9 @@ const PERSONA_ICONS: Record<TalkPersona, React.ReactNode> = {
   operations: <Kanban className="w-5 h-5 text-purple-400" />,
   marketing: <Megaphone className="w-5 h-5 text-yellow-400" />,
   support: <HeartHandshake className="w-5 h-5 text-pink-400" />,
+  executive: <ShieldAlert className="w-5 h-5 text-red-400" />,
+  technician: <Wrench className="w-5 h-5 text-orange-400" />,
+  finance: <Receipt className="w-5 h-5 text-emerald-400" />,
 };
 
 interface VoiceTokenResponse {
@@ -72,7 +93,7 @@ interface AgentTalkConsoleProps {
 type TalkPhase = 'connecting' | 'connected' | 'error';
 
 /**
- * Push-to-talk voice conversation with one of the four AI agents.
+ * Push-to-talk voice conversation with one of the seven AI agents.
  * Walkie-talkie style: hold the button to talk, release to listen.
  * On desktop, clicking the button toggles the mic instead of holding.
  * Audio starts on the earpiece (same as the receptionist call), with a
