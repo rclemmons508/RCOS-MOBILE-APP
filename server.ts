@@ -323,6 +323,27 @@ app.post('/api/business/:id/delete-account', deleteAccountLimiter, async (req: R
     }
     const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
     const idsToDelete = [businessId];
+    // Defense-in-depth (Oct 16, 2026): a team member deleting THEIR account
+    // must never wipe the whole business. The client only calls this endpoint
+    // on the owner path, but the server enforces it too: when the caller
+    // identifies themself (X-User-Email, sent by the app with the signed-in
+    // user's email) and that email is not one of the business's owner
+    // identities, refuse. A missing header keeps legacy behavior for
+    // server-side callers with no user context; the login gate (still off)
+    // is what would make this check unforgeable. This guard exists to stop
+    // an accidental cross-account wipe, not to replace the gate.
+    const callerEmail = String(
+      (req.headers['x-user-email'] as string) || (req.body as any)?.requesterEmail || ''
+    ).toLowerCase().trim();
+    const ownerMember = (business.members || []).find((m: any) => m?.role === 'owner');
+    const ownerEmails = Array.from(new Set([
+      String(ownerMember?.email || '').toLowerCase().trim(),
+      String((business as any).contactEmail || '').toLowerCase().trim(),
+      String((business as any).ownerEmail || '').toLowerCase().trim(),
+    ].filter(Boolean)));
+    if (callerEmail && ownerEmails.length > 0 && !ownerEmails.includes(callerEmail)) {
+      return res.status(403).json({ error: 'Only the business owner can delete the whole business. Team members remove only their own login from Settings.' });
+    }
     if (caller?.uid) {
       const ownerId = business.ownerId;
       if (ownerId && ownerId !== 'unassigned_owner' && ownerId !== caller.uid) {
