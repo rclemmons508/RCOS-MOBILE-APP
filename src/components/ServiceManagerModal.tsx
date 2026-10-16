@@ -36,6 +36,45 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
   const [newServiceName, setNewServiceName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Hooks must run on EVERY render, before any early return. This
+  // useMemo used to sit below `if (!isOpen) return null`, so opening the
+  // modal added a 4th hook and React threw #310 ("Rendered more hooks
+  // than during the previous render") the moment Manage Services was
+  // tapped. It lives above the return now.
+  // Live evaluation of services matching against presets
+  const detectedPreset = React.useMemo(() => {
+    if (services.length === 0) return null;
+    const allServicesText = services.join(' ').toLowerCase();
+    
+    let bestMatch: IndustryPreset | null = null;
+    let maxScore = 0;
+
+    for (const preset of INDUSTRY_PRESETS) {
+      let score = 0;
+      // Check preset name keywords
+      const nameWords = preset.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      for (const w of nameWords) {
+        if (allServicesText.includes(w)) score += 3;
+      }
+      // Check default services overlap
+      for (const ds of preset.defaultServices) {
+        const dsWords = ds.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        for (const w of dsWords) {
+          if (allServicesText.includes(w)) score += 1.5;
+        }
+      }
+      if (score > maxScore) {
+        maxScore = score;
+        bestMatch = preset;
+      }
+    }
+
+    if (bestMatch && maxScore >= 3 && bestMatch.id !== business.industry) {
+      return bestMatch;
+    }
+    return null;
+  }, [services, business.industry]);
+
   if (!isOpen) return null;
 
   const currentPreset = INDUSTRY_PRESETS.find(p => p.id === business.industry);
@@ -80,39 +119,7 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
     'On-Call After-Hours Rapid Dispatch'
   ].filter(p => !services.includes(p));
 
-  // Live evaluation of services matching against presets
-  const detectedPreset = React.useMemo(() => {
-    if (services.length === 0) return null;
-    const allServicesText = services.join(' ').toLowerCase();
-    
-    let bestMatch: IndustryPreset | null = null;
-    let maxScore = 0;
 
-    for (const preset of INDUSTRY_PRESETS) {
-      let score = 0;
-      // Check preset name keywords
-      const nameWords = preset.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      for (const w of nameWords) {
-        if (allServicesText.includes(w)) score += 3;
-      }
-      // Check default services overlap
-      for (const ds of preset.defaultServices) {
-        const dsWords = ds.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-        for (const w of dsWords) {
-          if (allServicesText.includes(w)) score += 1.5;
-        }
-      }
-      if (score > maxScore) {
-        maxScore = score;
-        bestMatch = preset;
-      }
-    }
-
-    if (bestMatch && maxScore >= 3 && bestMatch.id !== business.industry) {
-      return bestMatch;
-    }
-    return null;
-  }, [services, business.industry]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
