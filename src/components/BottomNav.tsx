@@ -1,13 +1,10 @@
 import React from 'react';
 import { 
   Gauge, 
-  Phone, 
   Briefcase, 
-  Users, 
-  Settings2,
   Bot,
-  Mail,
-  ShieldCheck
+  MessagesSquare,
+  Ellipsis
 } from 'lucide-react';
 import { TabType, User } from '../types';
 import { haptic } from '../utils/haptics';
@@ -23,15 +20,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   setActiveTab, 
   currentUser 
 }) => {
-  const tabs: { id: TabType; label: string; icon: any }[] = [
-    { id: 'dashboard', label: 'Dash', icon: Gauge },
-    { id: 'jobs', label: 'Jobs', icon: Briefcase },
-    { id: 'phone', label: 'Phone', icon: Phone },
-    { id: 'approvals', label: 'Review', icon: ShieldCheck },
-    { id: 'team', label: 'AI Team', icon: Bot },
-    { id: 'gmail', label: 'Gmail', icon: Mail },
-    { id: 'clients', label: 'Clients', icon: Users },
-    { id: 'settings', label: 'Settings', icon: Settings2 },
+  const tabs: { id: TabType; label: string; icon: any; activeWhen: TabType[] }[] = [
+    { id: 'dashboard', label: 'Dash', icon: Gauge, activeWhen: ['dashboard'] },
+    { id: 'jobs', label: 'Jobs / $', icon: Briefcase, activeWhen: ['jobs', 'approvals', 'clients'] },
+    { id: 'team', label: 'AI Team', icon: Bot, activeWhen: ['team'] },
+    { id: 'team-chat', label: 'Messages', icon: MessagesSquare, activeWhen: ['team-chat', 'gmail', 'phone', 'requests'] },
+    { id: 'more', label: 'More', icon: Ellipsis, activeWhen: ['more', 'settings'] },
   ];
 
   return (
@@ -40,7 +34,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         <nav className="flex items-center justify-between gap-0.5">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+            const isActive = tab.activeWhen.includes(activeTab);
             return (
               <button
                 key={tab.id}

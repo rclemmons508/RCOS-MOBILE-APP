@@ -24,6 +24,10 @@ import {
 } from './data/mockData';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
+import { JobsHubSwitcher } from './components/nav/JobsHubSwitcher';
+import { MessagesHubSwitcher } from './components/nav/MessagesHubSwitcher';
+import { MoreMenu } from './components/nav/MoreMenu';
+import { RequestsView } from './components/nav/RequestsView';
 import { FloatingAIAssistant } from './components/FloatingAIAssistant';
 import { DashboardTab } from './components/tabs/DashboardTab';
 import { PhoneSystemTab } from './components/tabs/PhoneSystemTab';
@@ -129,6 +133,11 @@ async function resolveBusinessForUser(user: User): Promise<BusinessAccount | nul
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [settingsSection, setSettingsSection] = useState<'user' | 'agents'>('user');
+  const openSettings = (section: 'user' | 'agents') => {
+    setSettingsSection(section);
+    setActiveTab('settings');
+  };
   const { isDashboardLocked, isBiometricEnabled, unenrollBiometrics } = useBiometrics();
 
   // Authentication State - starts from scratch (no preloaded user profile)
@@ -1554,6 +1563,16 @@ export default function App() {
 
         {/* Tab Views Container with Safe Scrollable Bounds */}
         <main className="flex-1 w-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pl-[max(0.25rem,env(safe-area-inset-left))] pr-[max(0.25rem,env(safe-area-inset-right))]">
+          {(activeTab === 'jobs' || activeTab === 'approvals' || activeTab === 'clients') && (
+            <div className="px-3.5 sm:px-4 pt-2">
+              <JobsHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} />
+            </div>
+          )}
+          {(activeTab === 'team-chat' || activeTab === 'gmail' || activeTab === 'phone' || activeTab === 'requests') && (
+            <div className="px-3.5 sm:px-4 pt-2">
+              <MessagesHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} />
+            </div>
+          )}
           {activeTab === 'dashboard' && (
             <DashboardTab
               calls={calls}
@@ -1732,8 +1751,17 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'requests' && (
+            <RequestsView
+              customerRequests={customerRequests}
+              businessId={activeBusiness.id}
+              businessName={activeBusiness.name || 'Setup Company'}
+            />
+          )}
+
           {activeTab === 'settings' && (
             <SettingsTab
+              initialSection={settingsSection}
               currentUser={currentUser}
               businessId={activeBusiness.id}
               business={activeBusiness}
@@ -1799,6 +1827,10 @@ export default function App() {
               onOpenTeamChat={() => setActiveTab('team-chat')}
               onLeaveTeam={handleLeaveTeam}
             />
+          )}
+
+          {activeTab === 'more' && (
+            <MoreMenu onOpenSettings={openSettings} />
           )}
         </main>
 
