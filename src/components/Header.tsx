@@ -79,10 +79,10 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 w-full shrink-0 bg-black/95 backdrop-blur-xl border-b border-zinc-900/80 pl-[max(0.6rem,env(safe-area-inset-left))] pr-[max(0.6rem,env(safe-area-inset-right))] pt-[max(0.45rem,calc(env(safe-area-inset-top)+0.25rem))] pb-2 transition-all">
       {/* Top Bar with Logo, Title, and Action Controls */}
-      <div className="flex items-center justify-between gap-1.5 max-w-full">
+      <div className="flex items-center justify-between gap-1.5 max-w-full overflow-hidden">
         {/* Left: Brand Logo & Title */}
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <RCLogo variant="compact" className="shrink-0" />
+        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+          <RCLogo variant="compact" showText={false} className="shrink-0" />
           <div className="min-w-0 flex-1 flex flex-col justify-center">
             <h1 className="text-xs sm:text-sm font-bold text-white tracking-tight truncate leading-tight">
               {getTitle()}
@@ -103,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenGmail}
-              className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+              className={`w-8 h-8 rounded-xl border hidden min-[420px]:flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
                 activeTab === 'gmail'
                   ? 'bg-red-500/20 text-red-400 border-red-500/50'
                   : 'bg-zinc-900/90 text-zinc-400 hover:text-white border-zinc-800'
@@ -120,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenChat}
-              className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+              className={`w-8 h-8 rounded-xl border hidden min-[420px]:flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
                 activeTab === 'chat'
                   ? 'bg-lime-500/20 text-lime-400 border-lime-500/50'
                   : 'bg-zinc-900/90 text-zinc-400 hover:text-white border-zinc-800'
