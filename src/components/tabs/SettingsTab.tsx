@@ -104,6 +104,8 @@ interface SettingsTabProps {
   onOpenTeamChat?: () => void;
   /** Leave the team (members only) — the app signs the user out after. */
   onLeaveTeam?: () => Promise<void>;
+  /** Section to show on first render. Defaults to 'user'. The caller remounts on navigation. */
+  initialSection?: 'user' | 'agents' | 'device';
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -144,9 +146,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onDismissSuggestion,
   onOpenTeamChat,
   onLeaveTeam,
+  initialSection,
 }) => {
   // Navigation: 3 clean client-facing sections
-  const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>('user');
+  const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>(initialSection ?? 'user');
   const [fireLog] = useState<AutomationLogEntry[]>(() => getAutomationLog());
 
   // User & Company Profile State (multi-company support)
