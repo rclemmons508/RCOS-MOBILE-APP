@@ -1843,7 +1843,39 @@ app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
     dollarThreshold: 250
   };
 
-  const amt = Number(invoiceAmount) || 0;
+  // Canonical invoice payload (Bug 3): stored as invoiceDetails, never
+  // the quote shape, with amount === totalAmount so mark-paid (which reads
+  // invoiceDetails.totalAmount) and the header badge agree.
+  const dueDaysNum = Number(dueDays) || 15;
+  const invoiceNumber =
+    typeof req.body?.invoiceNumber === 'string' && req.body.invoiceNumber.trim()
+      ? req.body.invoiceNumber.trim().slice(0, 40)
+      : `INV-${Date.now().toString().slice(-4)}`;
+  const dueDate =
+    typeof req.body?.dueDate === 'string' && req.body.dueDate.trim()
+      ? req.body.dueDate.trim().slice(0, 60)
+      : `Net-${dueDaysNum} days`;
+  const paymentInstructions =
+    typeof req.body?.paymentInstructions === 'string' ? req.body.paymentInstructions.slice(0, 500) : undefined;
+  const notes = typeof req.body?.notes === 'string' ? req.body.notes.slice(0, 1000) : undefined;
+  const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+  const parsedItems = rawItems.map((it: any) => {
+    const quantity = Number(it?.quantity) > 0 ? Number(it.quantity) : 1;
+    const unitPrice = Number(it?.unitPrice) || 0;
+    const total = quantity * unitPrice;
+    return {
+      description: typeof it?.description === 'string' ? it.description.slice(0, 200) : serviceName,
+      quantity,
+      unitPrice,
+      total,
+      amount: total
+    };
+  });
+  const parsedTotal = parsedItems.reduce((sum, it) => sum + it.total, 0);
+  const items = parsedItems.length && parsedTotal > 0
+    ? parsedItems
+    : [{ description: serviceName, quantity: 1, unitPrice: Number(invoiceAmount) || 0, total: Number(invoiceAmount) || 0, amount: Number(invoiceAmount) || 0 }];
+  const amt = items.reduce((sum, it) => sum + it.total, 0);
   if (amt <= 0) {
     return res.status(400).json({ error: 'A valid invoice amount is required.' });
   }
@@ -1863,19 +1895,15 @@ app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
     requiresReview: true,
     result: {
       summary: `Invoice prepared for ${clientName}`,
-      quoteDetails: {
+      invoiceDetails: {
         clientName,
-        items: [
-          {
-            description: serviceName,
-            quantity: 1,
-            unitPrice: amt,
-            total: amt
-          }
-        ],
+        invoiceNumber,
+        amount: amt,
         totalAmount: amt,
-        validDays: Number(dueDays) || 15,
-        terms: `Net-${Number(dueDays) || 15} days`
+        items,
+        dueDate,
+        ...(paymentInstructions !== undefined ? { paymentInstructions } : {}),
+        ...(notes !== undefined ? { notes } : {})
       }
     },
     createdAt: new Date().toISOString(),
@@ -2253,7 +2281,7 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
     return res.status(404).json({ error: 'Business not found' });
   }
 
-  const { decision, editedContent, reviewerNote } = req.body;
+  const { decision, editedContent, reviewerNote, editedAmounts } = req.body;
   if (!decision || !['approved', 'rejected', 'edited'].includes(decision)) {
     return res.status(400).json({ error: 'Invalid decision type' });
   }
@@ -2263,7 +2291,8 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
     req.params.actionId,
     decision,
     editedContent,
-    reviewerNote
+    reviewerNote,
+    editedAmounts
   );
 
   if (!updatedAction) {
