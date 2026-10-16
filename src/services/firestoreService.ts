@@ -20,6 +20,41 @@ import {
   ChatMessage 
 } from '../types';
 
+// Bug 5 (React #310) defense: Firestore docs are raw-cast with `as X` and a
+// doc may hold an unexpected shape (e.g. a Firestore Timestamp object where
+// the UI expects a string, or an object-typed scalar). Rendering such a
+// value directly crashes React ("Objects are not valid as a React child").
+// Normalize on read: Firestore Timestamps / Dates become ISO strings,
+// arrays and plain objects are normalized recursively, and primitives pass
+// through unchanged so numbers, booleans, sorting, and math keep working.
+// Legit nested objects (e.g. activeEmployees, approvalDecision) keep their
+// structure; render sites must still never render an object as a child.
+const isTimestampLike = (v: unknown): v is { toDate: () => Date } =>
+  typeof v === 'object' && v !== null && typeof (v as { toDate?: unknown }).toDate === 'function';
+
+const normalizeDocValue = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value;
+  if (isTimestampLike(value)) {
+    try {
+      return value.toDate().toISOString();
+    } catch {
+      return String(value);
+    }
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(normalizeDocValue);
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = normalizeDocValue(v);
+    }
+    return out;
+  }
+  return value;
+};
+
+const normalizeDoc = <T,>(data: Record<string, unknown>): T => normalizeDocValue(data) as T;
+
 export const firestoreService = {
   // ==================== BUSINESS ====================
   async getBusiness(businessId: string): Promise<BusinessAccount | null> {
@@ -27,7 +62,7 @@ export const firestoreService = {
     try {
       const snap = await getDoc(docRef);
       if (!snap.exists()) return null;
-      return snap.data() as BusinessAccount;
+      return normalizeDoc<BusinessAccount>(snap.data());
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, `businesses/${businessId}`);
     }
@@ -56,7 +91,7 @@ export const firestoreService = {
         if (!snap.exists()) {
           callback(null);
         } else {
-          callback(snap.data() as BusinessAccount);
+          callback(normalizeDoc<BusinessAccount>(snap.data()));
         }
       },
       (err) => {
@@ -72,7 +107,7 @@ export const firestoreService = {
       colRef,
       (snap) => {
         const list: Job[] = [];
-        snap.forEach((d) => list.push(d.data() as Job));
+        snap.forEach((d) => list.push(normalizeDoc<Job>(d.data())));
         callback(list);
       },
       (err) => {
@@ -106,7 +141,7 @@ export const firestoreService = {
       colRef,
       (snap) => {
         const list: Client[] = [];
-        snap.forEach((d) => list.push(d.data() as Client));
+        snap.forEach((d) => list.push(normalizeDoc<Client>(d.data())));
         callback(list);
       },
       (err) => {
@@ -140,7 +175,7 @@ export const firestoreService = {
       colRef,
       (snap) => {
         const list: CustomerRequest[] = [];
-        snap.forEach((d) => list.push(d.data() as CustomerRequest));
+        snap.forEach((d) => list.push(normalizeDoc<CustomerRequest>(d.data())));
         callback(list);
       },
       (err) => {
@@ -165,7 +200,7 @@ export const firestoreService = {
       colRef,
       (snap) => {
         const list: ActionRecord[] = [];
-        snap.forEach((d) => list.push(d.data() as ActionRecord));
+        snap.forEach((d) => list.push(normalizeDoc<ActionRecord>(d.data())));
         // Sort newest first
         list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         callback(list);
@@ -284,7 +319,7 @@ export const firestoreService = {
       q,
       (snap) => {
         const list: ChatMessage[] = [];
-        snap.forEach((d) => list.push(d.data() as ChatMessage));
+        snap.forEach((d) => list.push(normalizeDoc<ChatMessage>(d.data())));
         callback(list);
       },
       (err) => {

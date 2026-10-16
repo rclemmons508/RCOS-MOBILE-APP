@@ -19,6 +19,48 @@ import { BusinessAccount, IndustryOptimizationSuggestion, IndustryPreset } from 
 import { INDUSTRY_PRESETS } from '../data/presets';
 import { haptic } from '../utils/haptics';
 
+// Bug 5 (React #310) defense: the suggestion payload comes from unvalidated
+// LLM JSON, so any field may arrive as an object/array instead of the scalar
+// the type promises. Coerce every field before render/state so an object can
+// never reach JSX as a React child ("Objects are not valid as a React child").
+const asText = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value) ?? '';
+  } catch {
+    return '';
+  }
+};
+
+const asScore = (value: unknown): number => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const asStringList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+
+const asSafeSuggestion = (s: IndustryOptimizationSuggestion): IndustryOptimizationSuggestion => ({
+  ...s,
+  currentIndustryId: asText(s.currentIndustryId),
+  suggestedPresetId: asText(s.suggestedPresetId),
+  suggestedPresetName: asText(s.suggestedPresetName),
+  confidence: asScore((s as { confidence?: unknown }).confidence),
+  matchScore: asScore(s.matchScore),
+  reason: asText(s.reason),
+  newServicesDetected: asStringList(s.newServicesDetected),
+  recommendedTone: asText(s.recommendedTone),
+  technicianRoleName: asText(s.technicianRoleName),
+  suggestedServices: asStringList(s.suggestedServices),
+  activeEmployees:
+    typeof s.activeEmployees === 'object' && s.activeEmployees !== null && !Array.isArray(s.activeEmployees)
+      ? s.activeEmployees
+      : {},
+  triggers: asStringList(s.triggers),
+});
+
 interface ProactiveIndustrySuggestionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -36,31 +78,35 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
   onApplyOptimization,
   onDismissSuggestion
 }) => {
+  const safe = asSafeSuggestion(suggestion);
+  // Business fields also come from Firestore, so coerce the ones rendered below.
+  const businessServices = asStringList(business.services);
+  const businessIndustry = asText(business.industry);
   const [isApplying, setIsApplying] = useState(false);
   const [customizeBeforeApply, setCustomizeBeforeApply] = useState(false);
   const [selectedServices, setSelectedServices] = useState<string[]>(() => {
     // Combine current services with recommended preset services
-    const combined = Array.from(new Set([...business.services, ...suggestion.suggestedServices]));
+    const combined = Array.from(new Set([...businessServices, ...safe.suggestedServices]));
     return combined.slice(0, 8);
   });
-  const [selectedRoleTitle, setSelectedRoleTitle] = useState(suggestion.technicianRoleName);
-  const [selectedTone, setSelectedTone] = useState(suggestion.recommendedTone);
+  const [selectedRoleTitle, setSelectedRoleTitle] = useState(safe.technicianRoleName);
+  const [selectedTone, setSelectedTone] = useState(safe.recommendedTone);
 
   if (!isOpen) return null;
 
-  const targetPreset = INDUSTRY_PRESETS.find(p => p.id === suggestion.suggestedPresetId) || {
-    id: suggestion.suggestedPresetId,
-    name: suggestion.suggestedPresetName,
+  const targetPreset = INDUSTRY_PRESETS.find(p => p.id === safe.suggestedPresetId) || {
+    id: safe.suggestedPresetId,
+    name: safe.suggestedPresetName,
     description: 'Specialized autonomous operating environment.',
-    defaultServices: suggestion.suggestedServices,
-    recommendedTone: suggestion.recommendedTone,
-    technicianRoleName: suggestion.technicianRoleName,
+    defaultServices: safe.suggestedServices,
+    recommendedTone: safe.recommendedTone,
+    technicianRoleName: safe.technicianRoleName,
     sampleJobPacks: []
   };
 
-  const currentPreset = INDUSTRY_PRESETS.find(p => p.id === business.industry) || {
-    id: business.industry,
-    name: business.industry.replace(/_/g, ' ').toUpperCase(),
+  const currentPreset = INDUSTRY_PRESETS.find(p => p.id === businessIndustry) || {
+    id: businessIndustry,
+    name: businessIndustry.replace(/_/g, ' ').toUpperCase(),
     description: 'Current active profile'
   };
 
@@ -69,16 +115,16 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
     await haptic.success();
 
     const updatedEmployees = { ...business.activeEmployees };
-    if (suggestion.activeEmployees) {
-      Object.entries(suggestion.activeEmployees).forEach(([empId, active]) => {
+    if (safe.activeEmployees) {
+      Object.entries(safe.activeEmployees).forEach(([empId, active]) => {
         if (active) updatedEmployees[empId] = true;
       });
     }
 
     const updatedBiz: BusinessAccount = {
       ...business,
-      industry: suggestion.suggestedPresetId,
-      services: selectedServices.length > 0 ? selectedServices : suggestion.suggestedServices,
+      industry: safe.suggestedPresetId,
+      services: selectedServices.length > 0 ? selectedServices : safe.suggestedServices,
       brandTone: selectedTone,
       activeEmployees: updatedEmployees,
       updatedAt: new Date().toISOString()
@@ -107,11 +153,11 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
                   Proactive AI Insight
                 </span>
                 <span className="text-[10px] text-zinc-400 font-mono">
-                  {suggestion.matchScore}% Optimal Match
+                  {safe.matchScore}% Optimal Match
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-extrabold text-white mt-0.5">
-                Optimize Industry Profile to "{suggestion.suggestedPresetName}"
+                Optimize Industry Profile to "{safe.suggestedPresetName}"
               </h3>
             </div>
           </div>
@@ -146,7 +192,7 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
             <div className="min-w-0 flex-1 text-right">
               <span className="text-[10px] text-lime-400/80 font-mono uppercase block mb-0.5">Suggested Profile:</span>
               <div className="text-xs font-extrabold text-lime-400 truncate">
-                {suggestion.suggestedPresetName}
+                {safe.suggestedPresetName}
               </div>
             </div>
           </div>
@@ -158,7 +204,7 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
               <span>Why the AI Agent is suggesting this change:</span>
             </div>
             <p className="text-zinc-200 text-xs leading-relaxed">
-              {suggestion.reason}
+              {safe.reason}
             </p>
           </div>
 
@@ -168,7 +214,7 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
               Services Triggering This Upgrade:
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {business.services.map((svc, idx) => (
+              {businessServices.map((svc, idx) => (
                 <span 
                   key={idx} 
                   className="px-2.5 py-1 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-200 text-[11px] font-medium flex items-center gap-1"
@@ -191,19 +237,19 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
               <div className="flex items-start gap-2 text-zinc-300">
                 <Check className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Field Role Title:</strong> Calibrated to <span className="text-white font-mono">"{suggestion.technicianRoleName}"</span>.
+                  <strong>Field Role Title:</strong> Calibrated to <span className="text-white font-mono">"{safe.technicianRoleName}"</span>.
                 </span>
               </div>
               <div className="flex items-start gap-2 text-zinc-300">
                 <Check className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Brand Voice:</strong> Switched to <span className="text-white italic">"{suggestion.recommendedTone}"</span> for customer quotes and follow-ups.
+                  <strong>Brand Voice:</strong> Switched to <span className="text-white italic">"{safe.recommendedTone}"</span> for customer quotes and follow-ups.
                 </span>
               </div>
               <div className="flex items-start gap-2 text-zinc-300">
                 <Check className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Job Pack Checklists:</strong> Auto-loads industry standard safety protocols, toolkits, and execution sequences for {suggestion.suggestedPresetName}.
+                  <strong>Job Pack Checklists:</strong> Auto-loads industry standard safety protocols, toolkits, and execution sequences for {safe.suggestedPresetName}.
                 </span>
               </div>
             </div>
@@ -279,7 +325,7 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
             className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-lime-500/25 transition cursor-pointer"
           >
             <Check className="w-4 h-4 stroke-[2.5]" />
-            <span>Approve & Switch to {suggestion.suggestedPresetName}</span>
+            <span>Approve & Switch to {safe.suggestedPresetName}</span>
           </button>
         </div>
       </div>
