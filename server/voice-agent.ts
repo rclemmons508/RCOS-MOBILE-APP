@@ -49,7 +49,10 @@ Your job on this call:
 5. When you know the caller's issue, call the route_to_representative tool ONCE
    to transfer the call to the right department. Do NOT say you are transferring
    the caller yourself — the department agent will greet them. After calling
-   the tool, say nothing more; the transfer happens automatically.
+   the tool, say nothing more; the transfer happens automatically. If the
+   department agent does not greet the caller, tell them plainly the transfer
+   is taking longer than expected, offer to take a message, and never leave
+   them on hold in silence.
 Keep replies short and speak naturally — this is a phone call, not an email.
 Never invent prices, arrival times, or promises. If you do not know, say you will
 have the right person call them back.`;
@@ -206,6 +209,23 @@ function handoffGreeting(
  * instructions), so it picks up where the receptionist left off instead of
  * starting amnesiac.
  */
+/**
+ * Race a promise against a timeout. A realtime generateReply can stall
+ * forever (model wedged, websocket hiccup) — without this, a stalled
+ * handoff greeting leaves the caller on hold with silence indefinitely
+ * (Oct 16, 2026: Ryan waited 5+ minutes). The timeout rejects so the
+ * caller always gets a fallback or at least a loud log line.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 class DepartmentAgent extends Agent {
   private handoffGreeting: string;
   constructor(
@@ -225,12 +245,25 @@ class DepartmentAgent extends Agent {
   }
   async onEnter() {
     try {
-      await this.session.generateReply({ instructions: this.handoffGreeting });
+      await withTimeout(this.session.generateReply({ instructions: this.handoffGreeting }), 15000, 'handoff greeting');
       console.log('[voice-agent] handoff succeeded — department agent greeting delivered.');
     } catch (e) {
       // Log, don't rethrow: the session is still alive and the caller can
       // speak; killing the transition here would drop the call.
-      console.error('[voice-agent] handoff greeting failed:', e);
+      console.error('[voice-agent] handoff greeting failed/timed out:', e);
+      // One short retry: the caller must hear SOMETHING after a transfer,
+      // never silence. If this also fails, the session stays alive and the
+      // caller can still speak — and the log line above names the failure.
+      try {
+        await withTimeout(
+          this.session.generateReply({ instructions: 'Say: "You are now connected. How can I help?"' }),
+          10000,
+          'handoff fallback greeting',
+        );
+        console.log('[voice-agent] handoff fallback greeting delivered.');
+      } catch (e2) {
+        console.error('[voice-agent] handoff fallback greeting also failed — caller may hear silence:', e2);
+      }
     }
   }
 }
