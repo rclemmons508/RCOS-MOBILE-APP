@@ -8,7 +8,8 @@
  * What it does: joins the LiveKit room created by POST /api/voice/token,
  * greets the caller, listens, thinks with Gemini (Live API), speaks back.
  * The room metadata carries a persona ('receptionist' | 'sales' | 'operations' |
- * 'marketing' | 'support'); the receptionist uses the route_to_representative
+ * 'marketing' | 'support' | 'executive' | 'technician' | 'finance'); the
+ * receptionist uses the route_to_representative
  * tool to HAND the call to the right department agent (a real mid-call handoff
  * via the SDK's handoff mechanism). The department agent carries the SAME
  * routing-tool instance as the receptionist, so the SDK can reuse the live
@@ -53,7 +54,7 @@ Keep replies short and speak naturally — this is a phone call, not an email.
 Never invent prices, arrival times, or promises. If you do not know, say you will
 have the right person call them back.`;
 
-type VoicePersona = 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support';
+type VoicePersona = 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support' | 'executive' | 'technician' | 'finance';
 
 const PERSONAS: Record<VoicePersona, { instructions: string; greeting: string; useRoutingTool: boolean }> = {
   receptionist: {
@@ -103,6 +104,38 @@ check.`,
     greeting: 'Greet the caller as the RC Solutions support agent and ask how you can help.',
     useRoutingTool: false,
   },
+  executive: {
+    instructions: `You are the Executive Assistant for RC Solutions, a service business,
+talking with the business owner on a voice call. Help with escalations, safety
+issues, and owner-level decisions — what needs the owner's call, what can
+wait, and what to do next. If something sounds like a safety issue, say so
+plainly and escalate right away. Keep replies short and speak naturally —
+this is a phone call, not an email. Never invent facts, decisions, or promises
+— if you do not know, say you will check.`,
+    greeting: 'Greet the caller as the RC Solutions executive assistant and ask what needs your attention.',
+    useRoutingTool: false,
+  },
+  technician: {
+    instructions: `You are the Field Technician agent for RC Solutions, a service business,
+talking with the business owner on a voice call. Help with Job Pack checklists
+— what to check, test, and record on the job — and walk through the safety
+steps before work starts. If something sounds unsafe, stop and say so plainly
+before anything else. Keep replies short and speak naturally — this is a
+phone call, not an email. Never invent job details, readings, or safety
+clearances — if you do not know, say you will check.`,
+    greeting: 'Greet the caller as the RC Solutions field technician and ask what job you are working on.',
+    useRoutingTool: false,
+  },
+  finance: {
+    instructions: `You are the Finance agent for RC Solutions, a service business,
+talking with the business owner on a voice call. Help with invoices, balances,
+and payments — what is owed, what has been paid, and what to follow up on.
+Never invent prices, balances, or payments — if you do not know a number,
+say you will check and come back with it. Keep replies short and speak
+naturally — this is a phone call, not an email.`,
+    greeting: 'Greet the caller as the RC Solutions finance agent and ask what you want to check.',
+    useRoutingTool: false,
+  },
 };
 
 /** Persona comes from the room metadata set by POST /api/voice/token; anything unknown falls back to receptionist. */
@@ -114,7 +147,10 @@ function personaFromMetadata(roomMetadata: unknown, jobMetadata: unknown): Voice
         parsed.persona === 'sales' ||
         parsed.persona === 'operations' ||
         parsed.persona === 'marketing' ||
-        parsed.persona === 'support'
+        parsed.persona === 'support' ||
+        parsed.persona === 'executive' ||
+        parsed.persona === 'technician' ||
+        parsed.persona === 'finance'
       ) {
         return parsed.persona;
       }
