@@ -216,7 +216,9 @@ function handoffGreeting(
  * (Oct 16, 2026: Ryan waited 5+ minutes). The timeout rejects so the
  * caller always gets a fallback or at least a loud log line.
  */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+// generateReply returns a SpeechHandle (thenable, not a full Promise),
+// so this accepts PromiseLike.
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     promise.then(
