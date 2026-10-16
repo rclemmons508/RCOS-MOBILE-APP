@@ -25,23 +25,24 @@ export const asStringList = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 
 /** Sanitize an industry-optimization suggestion payload (Gemini JSON). */
-export function asSafeSuggestion<T extends Record<string, unknown>>(s: T): T {
+export function asSafeSuggestion<T extends object>(s: T): T {
+  const v = s as unknown as Record<string, unknown>;
   return {
     ...s,
-    currentIndustryId: asText(s.currentIndustryId),
-    suggestedPresetId: asText(s.suggestedPresetId),
-    suggestedPresetName: asText(s.suggestedPresetName),
-    confidence: asScore(s.confidence),
-    matchScore: asScore(s.matchScore),
-    reason: asText(s.reason),
-    newServicesDetected: asStringList(s.newServicesDetected),
-    recommendedTone: asText(s.recommendedTone),
-    technicianRoleName: asText(s.technicianRoleName),
-    suggestedServices: asStringList(s.suggestedServices),
+    currentIndustryId: asText(v.currentIndustryId),
+    suggestedPresetId: asText(v.suggestedPresetId),
+    suggestedPresetName: asText(v.suggestedPresetName),
+    confidence: asScore(v.confidence),
+    matchScore: asScore(v.matchScore),
+    reason: asText(v.reason),
+    newServicesDetected: asStringList(v.newServicesDetected),
+    recommendedTone: asText(v.recommendedTone),
+    technicianRoleName: asText(v.technicianRoleName),
+    suggestedServices: asStringList(v.suggestedServices),
     activeEmployees:
-      typeof s.activeEmployees === 'object' && s.activeEmployees !== null && !Array.isArray(s.activeEmployees)
-        ? (s.activeEmployees as T['activeEmployees'])
-        : ({} as T['activeEmployees']),
-    triggers: asStringList(s.triggers),
-  };
+      typeof v.activeEmployees === 'object' && v.activeEmployees !== null && !Array.isArray(v.activeEmployees)
+        ? v.activeEmployees
+        : {},
+    triggers: asStringList(v.triggers),
+  } as T;
 }
