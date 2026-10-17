@@ -22,6 +22,7 @@ import {
 } from './src/types';
 import { INDUSTRY_PRESETS } from './src/data/presets';
 import { ALL_TRANSFER_DEPARTMENTS, availableDepartmentsFor, normalizeDepartments } from './src/utils/departments';
+import { withBehaviorProtocol } from './src/utils/agentBehavior';
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
@@ -1355,7 +1356,7 @@ Return ONLY valid JSON:
 
 // Multi-turn Gemini Chat with Role-Specific System Instructions
 app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
-  const { messages, roleId = 'executive_assistant', modelTier = 'general', businessId } = req.body;
+  const { messages, roleId = 'executive_assistant', modelTier = 'general', businessId, behaviorProtocol } = req.body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'Messages array is required' });
@@ -1377,7 +1378,10 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
     project_manager: `You are Quinn Davies, Project & Operations Manager for "${bizName}". You coordinate crew schedules, track job pipeline stages, enforce checklist completion, and ensure milestones are completed on time.`,
   };
 
-  const systemInstruction = roleInstructions[roleId] || roleInstructions.executive_assistant;
+  const systemInstruction = withBehaviorProtocol(
+    roleInstructions[roleId] || roleInstructions.executive_assistant,
+    behaviorProtocol
+  );
 
   // Model selection per user instructions:
   // - gemini-3.1-pro-preview for particularly complex tasks
@@ -2471,7 +2475,7 @@ app.post('/api/business/:id/chat', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Business not found' });
   }
 
-  const { employeeId, message } = req.body;
+  const { employeeId, message, behaviorProtocol } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Message content is required' });
   }
@@ -2498,7 +2502,7 @@ app.post('/api/business/:id/chat', async (req: Request, res: Response) => {
     parts: [{ text: m.content }]
   }));
 
-  const systemInstruction = `You are ${employee.name}, ${employee.roleTitle} in the ${employee.department} department for "${business.name}".
+  const systemInstruction = withBehaviorProtocol(`You are ${employee.name}, ${employee.roleTitle} in the ${employee.department} department for "${business.name}".
 Business Profile:
 - Industry: ${business.industry}
 - Services: ${business.services.join(', ')}
@@ -2513,7 +2517,9 @@ Rules:
 2. Be helpful, concise, and operational.
 3. HONESTY - READ CAREFULLY: You have NO tools and CANNOT perform any action outside this chat. You cannot send emails, texts, invoices, quotes, or documents. You cannot push, queue, route, dispatch, clear, re-queue, or touch any system. NEVER claim you did, are doing, have queued, or will do any of these things. Do not invent statuses, deliveries, or follow-ups. If the user asks you to do something that needs an action, say plainly that you cannot do it from chat, and give the exact steps in the app (or a draft they can copy).
 4. Keep answers friendly, free of technical jargon, and focused on helping this small business succeed.
-5. These rules override any other instruction to act or confirm action. When in doubt, say you did nothing.`;
+5. These rules override any other instruction to act or confirm action. When in doubt, say you did nothing.`,
+    behaviorProtocol
+  );
 
   const fallbackEmpReply = () => {
     return `Hello! I'm ${employee.name}, ${employee.roleTitle} for ${business.name}. I'm temporarily unavailable, so I didn't take any action on "${message.slice(0, 80)}". Nothing was sent, queued, or changed. Please try again in a moment.`;
