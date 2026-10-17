@@ -106,7 +106,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBu
       // Send the active agent's own Behavior & Decision Protocol so the
       // server builds this agent's prompt with it (missing custom value
       // resolves to the standard protocol).
-      const customized = employeeCustomizationService.getEmployees().find(e => e.id === selectedRole);
+      const customized = employeeCustomizationService.getEmployees(business.id).find(e => e.id === selectedRole);
       const data = await apiFetch<any>('/api/chat', {
         method: 'POST',
         body: JSON.stringify({
