@@ -57,6 +57,14 @@ import { ServiceManagerModal } from './components/ServiceManagerModal';
 import { ProactiveIndustrySuggestionModal } from './components/ProactiveIndustrySuggestionModal';
 import { authService } from './services/authService';
 import { APP_BUILD_ID } from './utils/buildInfo';
+import {
+  clearBusinessStateForUser,
+  getCachedBusiness,
+  getOnboardingCompleted,
+  setCachedBusiness,
+  setOnboardingCompleted,
+} from './utils/businessStorage';
+import { setCachedAccessToken } from './lib/gmail';
 import { firestoreService } from './services/firestoreService';
 import { userPreferencesService } from './services/userPreferencesService';
 import { apiFetch } from './lib/api';
@@ -77,11 +85,6 @@ import {
 } from './utils/followups';
 import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automation';
 import { haptic } from './utils/haptics';
-
-const toLocalStorageBusiness = (business: BusinessAccount): Omit<BusinessAccount, 'activeEmployees'> => {
-  const { activeEmployees: _activeEmployees, ...safeBusiness } = business;
-  return safeBusiness;
-};
 
 const BLANK_BUSINESS: BusinessAccount = {
   id: '',
@@ -158,8 +161,8 @@ export default function App() {
   // Authentication State - starts from scratch (no preloaded user profile)
   // A new install or a new build never starts logged in as anyone: if
   // the stored build marker does not match this build, clear the
-  // session and show the login screen. Bump APP_BUILD_ID on every
-  // release build so each new APK starts at login.
+  // session and show the login screen. The marker is automatic (CI
+  // commit SHA), so every new APK starts at login with no manual bump.
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       if (localStorage.getItem('rcos_app_build') !== APP_BUILD_ID) {
@@ -246,20 +249,12 @@ export default function App() {
   const pendingJobInvoiceRef = useRef<string | null>(null);
 
   // Business context for Chat & Enterprise operations - starts from scratch (no preloaded company)
+  // The cached company is scoped to the signed-in user (see
+  // businessStorage): a different user never inherits the previous
+  // user's cached company. With no session, nothing is restored.
   const [businessAccount, setBusinessAccount] = useState<BusinessAccount | null>(() => {
-    try {
-      const stored = localStorage.getItem('rcos_configured_business');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.id === 'biz_rc_solutions' || parsed?.id === 'biz_1790297242341') {
-          localStorage.removeItem('rcos_configured_business');
-          localStorage.removeItem('rcos_onboarding_completed');
-          return null;
-        }
-        return parsed;
-      }
-    } catch {}
-    return null;
+    if (!currentUser) return null;
+    return getCachedBusiness(currentUser);
   });
 
   const activeBusiness = businessAccount || BLANK_BUSINESS;
@@ -311,7 +306,9 @@ export default function App() {
 
   // Onboarding gate state - starts immediately if not completed or company not configured
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(() => {
-    return localStorage.getItem('rcos_onboarding_completed') !== 'true';
+    // Per-user flag: a new user never inherits "setup done" from the
+    // previous user's company. Corrected on every login.
+    return !getOnboardingCompleted(currentUser);
   });
 
   // Proactive AI Industry Profile Optimization Agent State
@@ -373,7 +370,7 @@ export default function App() {
     setIsSuggestionModalOpen(false);
 
     try {
-      localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(updatedBiz)));
+      setCachedBusiness(currentUser, updatedBiz);
       await apiFetch(`/api/business/${updatedBiz.id}`, {
         method: 'PUT',
         body: JSON.stringify(updatedBiz)
@@ -404,10 +401,10 @@ export default function App() {
 
   // Sync business account with server database on startup.
   // Prefer the company the signed-in operator belongs to (by saved
-  // business id, then by team membership) over the first company on
-  // file — with several companies on the server, businesses[0] is
-  // somebody else's company. Legacy single-company accounts without a
-  // member list keep the old businesses[0] behavior.
+  // business id, then by team membership). NEVER fall back to the
+  // first company on file — with several companies on the server,
+  // businesses[0] is somebody else's company. No match means no company
+  // is loaded; the login handler sends the operator to company setup.
   useEffect(() => {
     const sessionUser = authService.getActiveSession();
     apiFetch<BusinessAccount[]>('/api/businesses')
@@ -423,17 +420,13 @@ export default function App() {
         const target = byId || byMember;
         if (target) {
           setBusinessAccount(target);
-          try {
-            localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(target)));
-          } catch { /* storage unavailable */ }
+          if (sessionUser) setCachedBusiness(sessionUser, target);
           return;
         }
-        if (!businessAccount) {
-          const biz = businesses[0];
-          if (biz.id && biz.id !== 'biz_rc_solutions' && biz.id !== 'biz_1790297242341') {
-            setBusinessAccount(biz);
-          }
-        }
+        // No match: do nothing. The signed-in user's own cached company
+        // (already in state) stays, or the login handler sends them to
+        // company setup. Grabbing businesses[0] here used to hand every
+        // unmatched operator somebody else's company.
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -471,9 +464,7 @@ export default function App() {
           const serverNewer = (serverBiz.updatedAt || '') > (biz.updatedAt || '');
           if (serverNewer) {
             setBusinessAccount(serverBiz);
-            try {
-              localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(serverBiz)));
-            } catch { /* storage unavailable */ }
+            setCachedBusiness(authService.getActiveSession(), serverBiz);
           }
           return;
         }
@@ -589,7 +580,7 @@ export default function App() {
           updatedAt: new Date().toISOString(),
         };
         setActions((prev) => [action, ...prev]);
-        logAutomationFired('rule-emergency', 'Emergency escalation', action.title);
+        logAutomationFired('rule-emergency', 'Emergency escalation', action.title, bizId);
         bumpAutomationRun('rule-emergency');
         sendPushNotification({
           type: 'emergency_dispatch',
@@ -805,7 +796,7 @@ export default function App() {
           ...(sentViaVonage ? {} : { actionLabel: 'Send now', actionUrl: smsUrl }),
           dedupeKey: item.dedupeKey,
         });
-        logAutomationFired(item.ruleId, task.name, sentViaVonage ? `Sent via Vonage to ${item.toName || item.to}` : `Draft ready for ${item.toName || item.to}`);
+        logAutomationFired(item.ruleId, task.name, sentViaVonage ? `Sent via Vonage to ${item.toName || item.to}` : `Draft ready for ${item.toName || item.to}`, bizId);
         bumpAutomationRun(item.ruleId);
         handledThisTick.add(item.dedupeKey);
         return true;
@@ -1460,26 +1451,37 @@ export default function App() {
 
   const handleLoginSuccess = async (user: User) => {
     await haptic.success();
+    // A different operator signing in must never inherit the previous
+    // operator's company, Gmail token, or setup flag. The previous
+    // operator's own cached company stays on disk for their return; it
+    // is never loaded for this operator.
+    if (currentUser && currentUser.email.toLowerCase() !== user.email.toLowerCase()) {
+      setCachedAccessToken(null);
+    }
     authService.saveActiveSession(user);
     setCurrentUser(user);
     setIsAuthModalOpen(false);
 
-    // Load the company this operator belongs to. A team member signing in
-    // on a new phone has no local company yet — find theirs on the server
-    // by membership instead of opening company setup (which would make a
-    // second, separate company).
+    // Load the company THIS operator belongs to — always set, never
+    // left over from the previous operator. A team member signing in on
+    // a new phone has no local company yet — find theirs on the server
+    // by membership instead of opening company setup (which would make
+    // a second, separate company). Server match wins; the operator's
+    // own cached company covers a business the server cannot match
+    // (empty roster, unassigned owner) or an offline start. Otherwise
+    // this operator has no company yet and goes to company setup with
+    // a blank slate.
     const resolvedBiz = await resolveBusinessForUser(user);
-    if (resolvedBiz) {
-      setBusinessAccount(resolvedBiz);
-      try {
-        localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(resolvedBiz)));
-      } catch { /* storage unavailable */ }
-      localStorage.setItem('rcos_onboarding_completed', 'true');
-    }
-
-    // If onboarding not yet completed for user, open it
-    const completed = localStorage.getItem('rcos_onboarding_completed');
-    if (completed !== 'true' && !resolvedBiz) {
+    const cachedBiz = getCachedBusiness(user);
+    const nextBiz = resolvedBiz || cachedBiz;
+    if (nextBiz) {
+      setBusinessAccount(nextBiz);
+      setCachedBusiness(user, nextBiz);
+      if (resolvedBiz) setOnboardingCompleted(user);
+      setIsOnboardingOpen(!getOnboardingCompleted(user));
+    } else {
+      setBusinessAccount(null);
+      clearBusinessStateForUser(user);
       setIsOnboardingOpen(true);
     }
 
@@ -1516,9 +1518,7 @@ export default function App() {
       updatedAt: new Date().toISOString(),
     };
     setBusinessAccount(updatedBiz);
-    try {
-      localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(updatedBiz)));
-    } catch { /* storage unavailable */ }
+    setCachedBusiness(currentUser, updatedBiz);
     if (updatedBiz.id) {
       await apiFetch(`/api/business/${updatedBiz.id}`, {
         method: 'PUT',
@@ -1539,6 +1539,11 @@ export default function App() {
     // Remove the device's biometric enrollment too, so the login screen never
     // shows the previous operator's email after logout.
     unenrollBiometrics();
+    // Clear the ACTIVE company — the next operator must never see it.
+    // The signed-out operator's own cached company stays on disk for
+    // their return; it is scoped to them and never loads for anyone else.
+    setBusinessAccount(null);
+    setIsOnboardingOpen(true);
     setCurrentUser(null);
     setIsAuthModalOpen(false);
     sendPushNotification({
@@ -1562,8 +1567,7 @@ export default function App() {
     try {
       authService.updateStoredUser(email, { businessId: undefined });
     } catch { /* login record already gone */ }
-    localStorage.removeItem('rcos_configured_business');
-    localStorage.removeItem('rcos_onboarding_completed');
+    clearBusinessStateForUser(currentUser);
     setBusinessAccount(null);
     await authService.logout();
     unenrollBiometrics();
@@ -1958,7 +1962,7 @@ export default function App() {
               updatedAt: new Date().toISOString()
             };
             setBusinessAccount(updatedBiz);
-            localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(updatedBiz)));
+            setCachedBusiness(currentUser, updatedBiz);
             if (updatedBiz.id) {
               apiFetch(`/api/business/${updatedBiz.id}`, {
                 method: 'PUT',
@@ -2024,9 +2028,13 @@ export default function App() {
                     : []
               };
               setBusinessAccount(withOwner);
-              try {
-                localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(withOwner)));
-              } catch { /* storage unavailable */ }
+              setCachedBusiness(currentUser, withOwner);
+              // Stamp the company on the operator's login record so the
+              // next sign-in resolves it by id instead of re-running setup.
+              if (currentUser?.email) {
+                const updatedUser = authService.updateStoredUser(currentUser.email, { businessId: withOwner.id });
+                if (updatedUser) setCurrentUser(updatedUser);
+              }
               apiFetch(`/api/business/${withOwner.id}`, {
                 method: 'PUT',
                 body: JSON.stringify(withOwner)
@@ -2034,7 +2042,7 @@ export default function App() {
               firestoreService.saveBusiness(withOwner).catch(() => {});
               setIndustryProfile(withOwner.industry);
               setIsOnboardingOpen(false);
-              localStorage.setItem('rcos_onboarding_completed', 'true');
+              setOnboardingCompleted(currentUser);
               sendPushNotification({
                 type: 'system_alert',
                 title: 'Workspace Initialized',
