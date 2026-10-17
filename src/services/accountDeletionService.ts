@@ -6,6 +6,7 @@ import { authService } from './authService';
 import { auth } from '../lib/firebase';
 import { deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { setCachedAccessToken } from '../lib/gmail';
+import { clearBusinessStateForUser } from '../utils/businessStorage';
 
 export interface DeleteAccountResult {
   deletedBusinessIds: string[];
@@ -179,7 +180,7 @@ export async function deleteAccount(
       {
         method: 'POST',
         headers: { 'X-User-Email': email },
-        body: JSON.stringify({ confirm: 'DELETE', requesterEmail: email }),
+        body: JSON.stringify({ confirm: 'DELETE', requesterEmail: email, requesterUserId: sessionUser.id }),
       }
     );
     deletedBusinessIds = res.deletedBusinessIds || [];
@@ -259,21 +260,27 @@ export function unenrollBiometricsIfMine(email: string): void {
 
 /**
  * Remove only one user's own traces from this device: their fingerprint
- * link (when it is theirs), their session + configured business +
- * onboarding flags, their cached Gmail token, and session storage. The
- * company's business cache and other users' data stay — a member leaving
- * must never wipe the device the way a business deletion does.
+ * link (when it is theirs), their session + their own per-user company
+ * cache + setup flag, their cached Gmail token, and session storage.
+ * The company's business record and other users' data stay — a member
+ * leaving must never wipe the device the way a business deletion does.
  */
 export function wipeLocalDataForUser(email: string): void {
   unenrollBiometricsIfMine(email);
   try {
     setCachedAccessToken(null);
   } catch { /* noop */ }
-  for (const key of ['rcos_active_session', 'rcos_auth_user', 'rcos_configured_business', 'rcos_onboarding_completed']) {
+  // Only THIS user's own traces go: their session, plus their own
+  // per-user company cache + setup flag. The company's record and every
+  // other user's cache stay — the old code removed the SHARED company
+  // cache, which left the device with no company and the next load fell
+  // back to the first company on the server.
+  for (const key of ['rcos_active_session', 'rcos_auth_user']) {
     try {
       localStorage.removeItem(key);
     } catch { /* storage unavailable */ }
   }
+  clearBusinessStateForUser({ email });
   try {
     sessionStorage.clear();
   } catch { /* storage unavailable */ }
