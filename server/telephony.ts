@@ -7,6 +7,52 @@ import { requireAuth } from './auth';
 
 export const telephonyRouter = Router();
 
+/**
+ * Carrier-webhook check. Twilio signs every webhook call it makes with the
+ * account's auth token. Without this check, anyone on the internet could
+ * POST fake inbound calls, voicemails, and status updates into the call log.
+ *
+ * - Signature present + valid → the call really came from Twilio → accept.
+ * - Signature present + invalid → reject (403). A real Twilio call never
+ *   fails this unless the public address (APP_URL) no longer matches the
+ *   webhook address set in Twilio — in that case Twilio's own calls get
+ *   403s, which is fail-safe and visible in the logs.
+ * - No APP_URL set → the signature cannot be checked (there is no address
+ *   to check it against), so the call is accepted with a loud warning,
+ *   preserving today's behavior. Set APP_URL before re-enabling Twilio.
+ *
+ * These routes are carrier webhooks, not user routes, so they do not use
+ * the Firebase login gate — Twilio cannot sign in as a user. The
+ * signature IS the credential here.
+ */
+function requireTwilioSignature(req: Request, res: Response, next: () => void) {
+  const authToken = process.env.TWILIO_AUTH_TOKEN || '';
+  const signature = (req.headers['x-twilio-signature'] as string) || '';
+  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
+  if (!authToken || !signature) {
+    return res.status(403).json({ error: 'Missing carrier signature.' });
+  }
+  if (!appUrl) {
+    console.warn(
+      '[Twilio] APP_URL is not set — cannot verify the carrier signature. ' +
+      'Accepting this webhook unchecked. Set APP_URL before re-enabling Twilio.'
+    );
+    return next();
+  }
+  const url = `${appUrl}${req.originalUrl}`;
+  let valid = false;
+  try {
+    valid = twilio.validateRequest(authToken, signature, url, req.body || {});
+  } catch {
+    valid = false;
+  }
+  if (!valid) {
+    console.warn(`[Twilio] Rejected webhook with a bad carrier signature: ${req.method} ${req.originalUrl}`);
+    return res.status(403).json({ error: 'Bad carrier signature.' });
+  }
+  return next();
+}
+
 function getTwilioClient() {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -97,7 +143,7 @@ telephonyRouter.post('/test-carrier', requireAuth, async (req: Request, res: Res
  * Real PSTN Inbound Phone Call Webhook
  * Triggered by Twilio carrier whenever anyone dials the real phone number
  */
-telephonyRouter.post('/voice/incoming', (req: Request, res: Response) => {
+telephonyRouter.post('/voice/incoming', requireTwilioSignature, (req: Request, res: Response) => {
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
   const config = db.getTelephonyConfig();
@@ -184,7 +230,7 @@ telephonyRouter.post('/voice/incoming', (req: Request, res: Response) => {
  * POST /api/twilio/voice/human-fallback
  * Called if the human operator did not answer within the ring timeout
  */
-telephonyRouter.post('/voice/human-fallback', (req: Request, res: Response) => {
+telephonyRouter.post('/voice/human-fallback', requireTwilioSignature, (req: Request, res: Response) => {
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
   const config = db.getTelephonyConfig();
@@ -218,7 +264,7 @@ telephonyRouter.post('/voice/human-fallback', (req: Request, res: Response) => {
  * POST /api/twilio/voice/handle-speech
  * Processes real caller speech recognized by Twilio carrier STT
  */
-telephonyRouter.post('/voice/handle-speech', async (req: Request, res: Response) => {
+telephonyRouter.post('/voice/handle-speech', requireTwilioSignature, async (req: Request, res: Response) => {
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
   const config = db.getTelephonyConfig();
@@ -519,7 +565,7 @@ Respond in JSON format:
  * POST /api/twilio/voice/dial-status
  * Twilio callback when a department transfer finishes or if call was unanswered
  */
-telephonyRouter.post('/voice/dial-status', (req: Request, res: Response) => {
+telephonyRouter.post('/voice/dial-status', requireTwilioSignature, (req: Request, res: Response) => {
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
   const config = db.getTelephonyConfig();
@@ -556,7 +602,7 @@ telephonyRouter.post('/voice/dial-status', (req: Request, res: Response) => {
  * POST /api/twilio/voice/voicemail
  * Twilio carrier recording completed callback
  */
-telephonyRouter.post('/voice/voicemail', (req: Request, res: Response) => {
+telephonyRouter.post('/voice/voicemail', requireTwilioSignature, (req: Request, res: Response) => {
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
   const config = db.getTelephonyConfig();
@@ -609,7 +655,7 @@ telephonyRouter.post('/voice/voicemail', (req: Request, res: Response) => {
  * POST /api/twilio/voice/voicemail-transcription
  * Twilio carrier speech-to-text callback for completed voicemails
  */
-telephonyRouter.post('/voice/voicemail-transcription', (req: Request, res: Response) => {
+telephonyRouter.post('/voice/voicemail-transcription', requireTwilioSignature, (req: Request, res: Response) => {
   const transcriptionText = req.body.TranscriptionText || '';
   const recordingUrl = req.body.RecordingUrl;
   const callerNumber = req.body.From || '';
@@ -812,7 +858,7 @@ telephonyRouter.post('/voice/outbound-call', requireAuth, async (req: Request, r
  * POST /api/twilio/voice/status
  * Twilio Call status changes callback
  */
-telephonyRouter.post('/voice/status', (req: Request, res: Response) => {
+telephonyRouter.post('/voice/status', requireTwilioSignature, (req: Request, res: Response) => {
   const callSid = req.body.CallSid;
   const callStatus = req.body.CallStatus; // 'completed', 'busy', 'no-answer', etc.
   const callDuration = req.body.CallDuration;

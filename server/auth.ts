@@ -7,14 +7,31 @@ import admin from 'firebase-admin';
 // into your hosting provider's environment variables — never into the code).
 
 let authReady = false;
+// True when FIREBASE_SERVICE_ACCOUNT is set but unusable (not valid JSON
+// or not a service-account key). The gate stays OFF in that case too —
+// failing closed on a paste mistake would lock the owner out of their
+// own app — but the diagnostics check reports it as FAIL, and the
+// startup banner below makes it unmistakable.
+let authMisconfigured = false;
+
+function gateBanner(lines: string[]): void {
+  const edge = '='.repeat(72);
+  console.warn(`\n${edge}`);
+  for (const line of lines) console.warn(`[auth] ${line}`);
+  console.warn(`${edge}\n`);
+}
 
 export function initAuth(): void {
   const svc = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!svc) {
-    console.warn(
-      '[auth] FIREBASE_SERVICE_ACCOUNT is not set — the API login gate is OFF. ' +
-      'Set it to require login on all /api routes.'
-    );
+    gateBanner([
+      'LOGIN GATE IS OFF — THE API IS OPEN.',
+      'FIREBASE_SERVICE_ACCOUNT is not set, so every /api route accepts',
+      'calls with no login. Anyone who finds this server address can read',
+      'and change business data.',
+      'Set FIREBASE_SERVICE_ACCOUNT to turn the gate ON (see the login-gate',
+      'steps). Until then, do NOT treat this server as private.',
+    ]);
     return;
   }
   try {
@@ -22,12 +39,25 @@ export function initAuth(): void {
     authReady = true;
     console.log('[auth] Firebase Admin ready — API login gate is ON.');
   } catch (e) {
-    console.error('[auth] Could not start Firebase Admin. Login gate is OFF.', e);
+    authMisconfigured = true;
+    gateBanner([
+      'LOGIN GATE IS OFF — FIREBASE_SERVICE_ACCOUNT IS SET BUT UNUSABLE.',
+      'The value could not be read as a service-account key (not valid JSON',
+      'or not a key). The API is still accepting calls with no login.',
+      'Re-paste the key into the hosting variables exactly as downloaded',
+      '(one JSON object), then redeploy. Until the gate reports ON,',
+      'do NOT treat this server as private.',
+    ]);
+    console.error('[auth] Could not start Firebase Admin.', e);
   }
 }
 
 export function isAuthReady(): boolean {
   return authReady;
+}
+
+export function isAuthMisconfigured(): boolean {
+  return authMisconfigured;
 }
 
 export async function requireAuth(req: Request, res: Response, next: () => void) {
