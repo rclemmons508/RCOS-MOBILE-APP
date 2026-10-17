@@ -37,11 +37,6 @@ import { biometricService } from '../services/biometricService';
 
 const UPLOADED_FILE_SESSION_KEY = 'rcos_onboarding_uploaded_file';
 
-const toLocalStorageBusiness = (business: BusinessAccount): Omit<BusinessAccount, 'activeEmployees'> => {
-  const { activeEmployees: _activeEmployees, ...safeBusiness } = business;
-  return safeBusiness;
-};
-
 interface OnboardingModalProps {
   initialBusiness?: BusinessAccount | null;
   onComplete: (business: BusinessAccount) => void;
@@ -1175,9 +1170,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       updatedAt: new Date().toISOString()
     };
 
+    // No local cache writes here: App's onComplete owns the per-user
+    // company cache + setup flag. Writing the old global keys here used
+    // to hand the next operator this company. The server + Firestore
+    // syncs below stay — they create the company record.
     try {
-      localStorage.setItem('rcos_onboarding_completed', 'true');
-      localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(businessPayload)));
 
       // Synchronize with server backend and Firestore
       await apiFetch('/api/businesses', {
