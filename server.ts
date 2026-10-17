@@ -323,39 +323,43 @@ app.post('/api/business/:id/delete-account', deleteAccountLimiter, async (req: R
       return res.json({ ok: true, deletedBusinessIds: [], alreadyDeleted: true });
     }
     const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
-    const idsToDelete = [businessId];
-    // Defense-in-depth (Oct 16, 2026): a team member deleting THEIR account
-    // must never wipe the whole business. The client only calls this endpoint
-    // on the owner path, but the server enforces it too: when the caller
-    // identifies themself (X-User-Email, sent by the app with the signed-in
-    // user's email) and that email is not one of the business's owner
-    // identities, refuse. A missing header keeps legacy behavior for
-    // server-side callers with no user context; the login gate (still off)
-    // is what would make this check unforgeable. This guard exists to stop
-    // an accidental cross-account wipe, not to replace the gate.
+    // Ownership proof is REQUIRED to delete a whole business — no
+    // fail-open. Proof is any one of: the caller's email is one of the
+    // business's owner identities (roster owner, contact email, owner
+    // email); the client-sent requester user id matches the recorded
+    // owner id (covers businesses whose owner email is stale or
+    // missing); or, once the login gate is on, the verified Firebase
+    // uid / token email matches. An ownerless business (no owner
+    // identity at all) can therefore never be wiped through this
+    // endpoint — the client takes the member path for those and the
+    // business survives orphaned. These identities are client-asserted
+    // while the gate is off, so this is defense-in-depth against the
+    // app's own bugs (wrong company, stale id), not unforgeable auth.
     const callerEmail = String(
       (req.headers['x-user-email'] as string) || (req.body as any)?.requesterEmail || ''
     ).toLowerCase().trim();
+    const requesterUserId = String((req.body as any)?.requesterUserId || '').trim();
     const ownerMember = (business.members || []).find((m: any) => m?.role === 'owner');
     const ownerEmails = Array.from(new Set([
       String(ownerMember?.email || '').toLowerCase().trim(),
       String((business as any).contactEmail || '').toLowerCase().trim(),
       String((business as any).ownerEmail || '').toLowerCase().trim(),
     ].filter(Boolean)));
-    if (callerEmail && ownerEmails.length > 0 && !ownerEmails.includes(callerEmail)) {
+    const ownerId = business.ownerId;
+    const ownerIdProven = !!ownerId && ownerId !== 'unassigned_owner' && (
+      (requesterUserId !== '' && requesterUserId === ownerId) ||
+      (!!caller?.uid && caller.uid === ownerId)
+    );
+    const emailProven = callerEmail !== '' && ownerEmails.includes(callerEmail);
+    const tokenEmail = (caller?.email || '').toLowerCase().trim();
+    const tokenEmailProven = tokenEmail !== '' && ownerEmails.includes(tokenEmail);
+    if (!emailProven && !ownerIdProven && !tokenEmailProven) {
       return res.status(403).json({ error: 'Only the business owner can delete the whole business. Team members remove only their own login from Settings.' });
     }
-    if (caller?.uid) {
-      const ownerId = business.ownerId;
-      if (ownerId && ownerId !== 'unassigned_owner' && ownerId !== caller.uid) {
-        return res.status(403).json({ error: 'You can only delete your own account.' });
-      }
-      // Delete every other business this owner owns too — "all data" means all.
-      for (const b of db.getAllBusinesses()) {
-        if (b.id !== businessId && b.ownerId === caller.uid) idsToDelete.push(b.id);
-      }
-    }
-    const { deletedBusinessIds } = db.deleteBusinessData(idsToDelete);
+    // Delete ONLY the requested business. The old code also deleted
+    // every other business with the same owner id — with several
+    // companies per owner, deleting one account wiped all of them.
+    const { deletedBusinessIds } = db.deleteBusinessData([businessId]);
     for (const id of deletedBusinessIds) deleteGmailTokens(id);
     return res.json({ ok: true, deletedBusinessIds });
   } catch (e) {
