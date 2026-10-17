@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserPreferences } from '../../types';
-import { authService, SEED_USERS } from '../../services/authService';
+import { authService } from '../../services/authService';
+import { setCachedBusiness, setOnboardingCompleted } from '../../utils/businessStorage';
 import { BIOMETRICS_ENABLED } from '../../services/biometricService';
 import { teamService } from '../../services/teamService';
 import { useBiometrics } from '../../context/BiometricContext';
@@ -41,7 +42,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const isDemoAuthEnabled = import.meta.env?.VITE_ENABLE_DEMO_AUTH === 'true';
 
   // Google sign-in cannot run real OAuth inside the native WebView, so the
   // button is hidden there entirely (no fake fallback login exists anymore).
@@ -254,26 +254,14 @@ const [joinPin, setJoinPin] = useState('');
 
       // Point this phone at the joined company and skip company setup —
       // the company already exists, and onboarding would make a second one.
-      localStorage.setItem('rcos_configured_business', JSON.stringify(business));
-      localStorage.setItem('rcos_onboarding_completed', 'true');
+      // Scoped to the joining operator: the old global keys handed the
+      // next operator this company.
+      setCachedBusiness({ email: joinEmail.trim() }, business);
+      setOnboardingCompleted({ email: joinEmail.trim() });
       await haptic.success();
       onLoginSuccess(user);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not join that company.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickSeedLogin = async (user: User) => {
-    setIsLoading(true);
-    setErrorMsg(null);
-    try {
-      const logged = await authService.loginWithEmail(user.email);
-      await haptic.success();
-      onLoginSuccess(logged);
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Quick login failed.');
     } finally {
       setIsLoading(false);
     }
