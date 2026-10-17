@@ -152,7 +152,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   // Navigation: 3 clean client-facing sections
   const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>(initialSection ?? 'user');
-  const [fireLog] = useState<AutomationLogEntry[]>(() => getAutomationLog());
+  const [fireLog] = useState<AutomationLogEntry[]>(() => getAutomationLog(businessId));
 
   // User & Company Profile State (multi-company support)
   const [companyName, setCompanyName] = useState(currentUser?.organization || 'Apex Commercial Systems');
@@ -219,7 +219,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>('autonomous');
   const [agentTone, setAgentTone] = useState<'strategic' | 'customer' | 'technical'>('strategic');
   const [customEmployees, setCustomEmployees] = useState<CustomAIEmployee[]>(() =>
-    employeeCustomizationService.getEmployees()
+    employeeCustomizationService.getEmployees(businessId || '')
   );
   const [selectedEmployeeForCustomizer, setSelectedEmployeeForCustomizer] = useState<CustomAIEmployee | null>(null);
 
@@ -1870,6 +1870,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         isOpen={!!selectedEmployeeForCustomizer}
         onClose={() => setSelectedEmployeeForCustomizer(null)}
         employee={selectedEmployeeForCustomizer}
+        businessId={businessId}
         onSaved={(updated) => {
           setCustomEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
           setSelectedEmployeeForCustomizer(null);
