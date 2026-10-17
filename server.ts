@@ -27,7 +27,7 @@ import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { sendVonageSms } from './server/vonage';
-import { initAuth, requireAuth } from './server/auth';
+import { initAuth, isAuthMisconfigured, isAuthReady, requireAuth } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 
@@ -149,8 +149,46 @@ app.get('/api/firebase-config', (_req: Request, res: Response) => {
   });
 });
 
+// Gmail OAuth for the native app (public browser flow; bounces the user back into the app).
+registerGmailOAuthPublic(app);
+
+// ---- Login gate ----
+// Every /api route below this line requires a valid Firebase login token,
+// which the phone app already attaches (see src/lib/api.ts).
+// Public exceptions (registered above or skipped here):
+//   /api/health, /api/firebase-config, and the public intake form
+//   POST /api/business/:id/requests (customers must be able to reach you without an account).
+//   POST /api/voice/routing-log (worker only, secret-checked in its handler — GET is gated).
+// NOTE: inside app.use('/api', ...), Express strips the '/api' mount prefix, so
+// req.path here is the path WITHOUT '/api' (verified on Express 4.22). The old
+// checks matched '/api/...' and never fired, which wrongly gated the public
+// booking page and the voice routing log with a 401.
+app.use('/api', (req: Request, res: Response, next) => {
+  if (req.method === 'POST' && /^\/business\/[^/]+\/requests$/.test(req.path)) return next();
+  if (req.method === 'GET' && /^\/public\/business\/[^/]+$/.test(req.path)) return next();
+  if (req.method === 'POST' && req.path === '/public/demo-request') return next();
+  // Joining a company happens BEFORE sign-in (the joiner has no account
+  // yet), so it is public by design like the demo form. The invite code
+  // itself is the credential — and an invite locked to an email only
+  // works for that email.
+  if (req.method === 'POST' && req.path === '/team/join') return next();
+  // The voice-agent worker posts its routing log with VOICE_AGENT_SECRET,
+  // not a user token — POST skips here and is secret-checked in its
+  // handler. GET does NOT skip: reading the call routing log requires a
+  // signed-in user (the old blanket skip let anyone read it).
+  if (req.method === 'POST' && req.path === '/voice/routing-log') return next();
+  // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
+  if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
+    const secret = process.env.VOICE_AGENT_SECRET;
+    if (secret && req.headers['x-voice-secret'] === secret) return next();
+  }
+  return requireAuth(req, res, next);
+});
+
 // ---- Diagnostics (per RCOS Master Dashboard spec) ----
 // Returns system health checks with PASS/WARN/FAIL status.
+// Behind the login gate: it reports which services are configured,
+// which is not public information.
 app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   const checks: { id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }[] = [];
 
@@ -158,10 +196,16 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   checks.push({ id: 'server', label: 'Server Core', status: 'pass', detail: 'API responding normally' });
 
   // Firebase login gate
-  const gateOn = !!process.env.FIREBASE_SERVICE_ACCOUNT;
+  const gateOn = isAuthReady();
+  const gateBroken = isAuthMisconfigured();
   checks.push({
-    id: 'auth', label: 'Login Gate', status: gateOn ? 'pass' : 'warn',
-    detail: gateOn ? 'Firebase Admin active — API requires login' : 'FIREBASE_SERVICE_ACCOUNT not set — API open'
+    id: 'auth', label: 'Login Gate',
+    status: gateOn ? 'pass' : gateBroken ? 'fail' : 'warn',
+    detail: gateOn
+      ? 'Firebase Admin active — API requires login'
+      : gateBroken
+        ? 'FIREBASE_SERVICE_ACCOUNT is set but unusable — API still open'
+        : 'FIREBASE_SERVICE_ACCOUNT not set — API open'
   });
 
   // LiveKit voice
@@ -200,37 +244,6 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   res.json({ overall, score, checks, scannedAt: new Date().toISOString() });
 });
 
-// Gmail OAuth for the native app (public browser flow; bounces the user back into the app).
-registerGmailOAuthPublic(app);
-
-// ---- Login gate ----
-// Every /api route below this line requires a valid Firebase login token,
-// which the phone app already attaches (see src/lib/api.ts).
-// Public exceptions (registered above or skipped here):
-//   /api/health, /api/firebase-config, and the public intake form
-//   POST /api/business/:id/requests (customers must be able to reach you without an account).
-// NOTE: inside app.use('/api', ...), Express strips the '/api' mount prefix, so
-// req.path here is the path WITHOUT '/api' (verified on Express 4.22). The old
-// checks matched '/api/...' and never fired, which wrongly gated the public
-// booking page and the voice routing log with a 401.
-app.use('/api', (req: Request, res: Response, next) => {
-  if (req.method === 'POST' && /^\/business\/[^/]+\/requests$/.test(req.path)) return next();
-  if (req.method === 'GET' && /^\/public\/business\/[^/]+$/.test(req.path)) return next();
-  if (req.method === 'POST' && req.path === '/public/demo-request') return next();
-  // Joining a company happens BEFORE sign-in (the joiner has no account
-  // yet), so it is public by design like the demo form. The invite code
-  // itself is the credential — and an invite locked to an email only
-  // works for that email.
-  if (req.method === 'POST' && req.path === '/team/join') return next();
-  // The voice-agent worker authenticates with VOICE_AGENT_SECRET, not a user token.
-  if (req.path === '/voice/routing-log') return next();
-  // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
-  if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
-    const secret = process.env.VOICE_AGENT_SECRET;
-    if (secret && req.headers['x-voice-secret'] === secret) return next();
-  }
-  return requireAuth(req, res, next);
-});
 
   // --- Gmail send helpers (server-side only; the access token never leaves the server) ---
   const GMAIL_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -324,39 +337,43 @@ app.post('/api/business/:id/delete-account', deleteAccountLimiter, async (req: R
       return res.json({ ok: true, deletedBusinessIds: [], alreadyDeleted: true });
     }
     const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
-    const idsToDelete = [businessId];
-    // Defense-in-depth (Oct 16, 2026): a team member deleting THEIR account
-    // must never wipe the whole business. The client only calls this endpoint
-    // on the owner path, but the server enforces it too: when the caller
-    // identifies themself (X-User-Email, sent by the app with the signed-in
-    // user's email) and that email is not one of the business's owner
-    // identities, refuse. A missing header keeps legacy behavior for
-    // server-side callers with no user context; the login gate (still off)
-    // is what would make this check unforgeable. This guard exists to stop
-    // an accidental cross-account wipe, not to replace the gate.
+    // Ownership proof is REQUIRED to delete a whole business — no
+    // fail-open. Proof is any one of: the caller's email is one of the
+    // business's owner identities (roster owner, contact email, owner
+    // email); the client-sent requester user id matches the recorded
+    // owner id (covers businesses whose owner email is stale or
+    // missing); or, once the login gate is on, the verified Firebase
+    // uid / token email matches. An ownerless business (no owner
+    // identity at all) can therefore never be wiped through this
+    // endpoint — the client takes the member path for those and the
+    // business survives orphaned. These identities are client-asserted
+    // while the gate is off, so this is defense-in-depth against the
+    // app's own bugs (wrong company, stale id), not unforgeable auth.
     const callerEmail = String(
       (req.headers['x-user-email'] as string) || (req.body as any)?.requesterEmail || ''
     ).toLowerCase().trim();
+    const requesterUserId = String((req.body as any)?.requesterUserId || '').trim();
     const ownerMember = (business.members || []).find((m: any) => m?.role === 'owner');
     const ownerEmails = Array.from(new Set([
       String(ownerMember?.email || '').toLowerCase().trim(),
       String((business as any).contactEmail || '').toLowerCase().trim(),
       String((business as any).ownerEmail || '').toLowerCase().trim(),
     ].filter(Boolean)));
-    if (callerEmail && ownerEmails.length > 0 && !ownerEmails.includes(callerEmail)) {
+    const ownerId = business.ownerId;
+    const ownerIdProven = !!ownerId && ownerId !== 'unassigned_owner' && (
+      (requesterUserId !== '' && requesterUserId === ownerId) ||
+      (!!caller?.uid && caller.uid === ownerId)
+    );
+    const emailProven = callerEmail !== '' && ownerEmails.includes(callerEmail);
+    const tokenEmail = (caller?.email || '').toLowerCase().trim();
+    const tokenEmailProven = tokenEmail !== '' && ownerEmails.includes(tokenEmail);
+    if (!emailProven && !ownerIdProven && !tokenEmailProven) {
       return res.status(403).json({ error: 'Only the business owner can delete the whole business. Team members remove only their own login from Settings.' });
     }
-    if (caller?.uid) {
-      const ownerId = business.ownerId;
-      if (ownerId && ownerId !== 'unassigned_owner' && ownerId !== caller.uid) {
-        return res.status(403).json({ error: 'You can only delete your own account.' });
-      }
-      // Delete every other business this owner owns too — "all data" means all.
-      for (const b of db.getAllBusinesses()) {
-        if (b.id !== businessId && b.ownerId === caller.uid) idsToDelete.push(b.id);
-      }
-    }
-    const { deletedBusinessIds } = db.deleteBusinessData(idsToDelete);
+    // Delete ONLY the requested business. The old code also deleted
+    // every other business with the same owner id — with several
+    // companies per owner, deleting one account wiped all of them.
+    const { deletedBusinessIds } = db.deleteBusinessData([businessId]);
     for (const id of deletedBusinessIds) deleteGmailTokens(id);
     return res.json({ ok: true, deletedBusinessIds });
   } catch (e) {
