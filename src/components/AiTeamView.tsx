@@ -37,6 +37,7 @@ import { BusinessAccount } from '../types';
 import { CustomAIEmployee, employeeCustomizationService } from '../services/employeeCustomizationService';
 import { INDUSTRY_PRESETS } from '../data/presets';
 import { haptic } from '../utils/haptics';
+import { DEFAULT_BEHAVIOR_PROTOCOL, MAX_BEHAVIOR_PROTOCOL_LENGTH, resolveBehaviorProtocol } from '../utils/agentBehavior';
 import { apiFetch } from '../lib/api';
 import { AgentTalkConsole, TalkPersona } from './phone/AgentTalkConsole';
 
@@ -112,6 +113,9 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   const [editRoleTitle, setEditRoleTitle] = useState(selectedEmployee.roleTitle);
   const [editDepartment, setEditDepartment] = useState(selectedEmployee.department);
   const [editCoreJob, setEditCoreJob] = useState(selectedEmployee.customJobScope || selectedEmployee.coreJob);
+  const [editBehaviorProtocol, setEditBehaviorProtocol] = useState(
+    resolveBehaviorProtocol(selectedEmployee.behaviorProtocol)
+  );
   const [editAutonomy, setEditAutonomy] = useState<'autonomous' | 'supervised' | 'manual'>(
     selectedEmployee.autonomyLevel || 'autonomous'
   );
@@ -126,6 +130,8 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
     selectedEmployee.customRules || ['Always verify client identity and safety protocol.']
   );
   const [newRuleText, setNewRuleText] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Sync edit form whenever selected employee changes
   useEffect(() => {
@@ -134,6 +140,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       setEditRoleTitle(selectedEmployee.roleTitle);
       setEditDepartment(selectedEmployee.department);
       setEditCoreJob(selectedEmployee.customJobScope || selectedEmployee.coreJob);
+      setEditBehaviorProtocol(resolveBehaviorProtocol(selectedEmployee.behaviorProtocol));
       setEditAutonomy(selectedEmployee.autonomyLevel || 'autonomous');
       setEditApprovalAmount(selectedEmployee.maxApprovalAmount || 1500);
       setEditTone(selectedEmployee.tone || 'professional');
@@ -168,24 +175,69 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
     }
   };
 
+  // Unsaved-changes check: the form is dirty when any field differs from
+  // the selected employee's saved values (protocol resolves to the
+  // default when nothing custom is stored).
+  const isDirty =
+    editName !== selectedEmployee.name ||
+    editRoleTitle !== selectedEmployee.roleTitle ||
+    editDepartment !== selectedEmployee.department ||
+    editCoreJob !== (selectedEmployee.customJobScope || selectedEmployee.coreJob) ||
+    editBehaviorProtocol !== resolveBehaviorProtocol(selectedEmployee.behaviorProtocol) ||
+    editAutonomy !== (selectedEmployee.autonomyLevel || 'autonomous') ||
+    editApprovalAmount !== (selectedEmployee.maxApprovalAmount || 1500) ||
+    editTone !== (selectedEmployee.tone || 'professional') ||
+    editEscalatesTo !== (selectedEmployee.escalatesTo || 'Business Owner') ||
+    JSON.stringify(editRules) !== JSON.stringify(selectedEmployee.customRules || ['Always verify client identity and safety protocol.']);
+
+  // Switching employees with unsaved edits asks first (same confirm()
+  // pattern the reset actions already use) instead of silently dropping them.
+  const handleSelectEmployee = (empId: string) => {
+    if (empId === selectedEmployeeId) return;
+    if (isDirty && !confirm(`You have unsaved changes for ${selectedEmployee.name}. Switch without saving?`)) return;
+    haptic.light();
+    setSelectedEmployeeId(empId);
+  };
+
   // Save employee customization
   const handleSaveCustomization = async () => {
-    await haptic.success();
-    const updated = employeeCustomizationService.updateEmployee(selectedEmployee.id, {
-      name: editName,
-      roleTitle: editRoleTitle,
-      department: editDepartment,
-      customJobScope: editCoreJob,
-      coreJob: editCoreJob,
-      autonomyLevel: editAutonomy,
-      maxApprovalAmount: Number(editApprovalAmount),
-      tone: editTone,
-      escalatesTo: editEscalatesTo,
-      customRules: editRules
-    });
+    if (isSaving) return;
+    if (editBehaviorProtocol.length > MAX_BEHAVIOR_PROTOCOL_LENGTH) {
+      setFormError(`Behavior protocol is too long — keep it under ${MAX_BEHAVIOR_PROTOCOL_LENGTH.toLocaleString()} characters.`);
+      return;
+    }
+    // Blank, or untouched default text, stores as "no custom protocol" so
+    // the standard protocol keeps applying without persisting a copy of it.
+    const trimmedProtocol = editBehaviorProtocol.trim();
+    const protocolToSave = !trimmedProtocol || trimmedProtocol === DEFAULT_BEHAVIOR_PROTOCOL
+      ? undefined
+      : trimmedProtocol;
+    setFormError(null);
+    setIsSaving(true);
+    try {
+      await haptic.success();
+      const updated = employeeCustomizationService.updateEmployee(selectedEmployee.id, {
+        name: editName,
+        roleTitle: editRoleTitle,
+        department: editDepartment,
+        customJobScope: editCoreJob,
+        coreJob: editCoreJob,
+        behaviorProtocol: protocolToSave,
+        autonomyLevel: editAutonomy,
+        maxApprovalAmount: Number(editApprovalAmount),
+        tone: editTone,
+        escalatesTo: editEscalatesTo,
+        customRules: editRules
+      });
 
-    setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
-    showToast(`Saved customizations for ${updated.name}!`);
+      setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
+      showToast(`Saved customizations for ${updated.name}!`);
+    } catch (err) {
+      console.error('Failed to save employee customization', err);
+      setFormError('Could not save — please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Add rule
@@ -209,6 +261,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       setEditRoleTitle(reset.roleTitle);
       setEditDepartment(reset.department);
       setEditCoreJob(reset.coreJob);
+      setEditBehaviorProtocol(resolveBehaviorProtocol(reset.behaviorProtocol));
       setEditAutonomy('autonomous');
       setEditApprovalAmount(1500);
       setEditEscalatesTo(reset.escalatesTo);
@@ -311,8 +364,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               <div
                 key={emp.id}
                 onClick={() => {
-                  haptic.light();
-                  setSelectedEmployeeId(emp.id);
+                  handleSelectEmployee(emp.id);
                 }}
                 className={`p-3 rounded-2xl border transition cursor-pointer text-left flex items-center justify-between gap-3 ${
                   isSelected
@@ -404,6 +456,11 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
 
           {/* MODE 2: CUSTOMIZE JOB & RULES */}
           <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
+              {formError && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center gap-2">
+                  <span className="font-bold">{formError}</span>
+                </div>
+              )}
               {/* Identity & Role Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -443,6 +500,37 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
                   placeholder="Define the primary tasks and responsibilities this AI specialist owns..."
                 />
+              </div>
+
+              {/* Agent Behavior & Decision Protocol */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+                    Agent Behavior & Decision Protocol
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setEditBehaviorProtocol(DEFAULT_BEHAVIOR_PROTOCOL)}
+                    className="text-[10px] text-lime-400 hover:text-lime-300 font-semibold cursor-pointer"
+                  >
+                    Restore standard protocol
+                  </button>
+                </div>
+                <textarea
+                  rows={6}
+                  value={editBehaviorProtocol}
+                  onChange={(e) => setEditBehaviorProtocol(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
+                  placeholder="How this agent reasons through tasks, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
+                />
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-[10px] text-zinc-500">
+                    Used when this agent works. Leave the standard text in place unless you want this agent to behave differently.
+                  </p>
+                  <span className={`text-[10px] font-mono shrink-0 ml-2 ${editBehaviorProtocol.length > MAX_BEHAVIOR_PROTOCOL_LENGTH ? 'text-red-400' : 'text-zinc-500'}`}>
+                    {editBehaviorProtocol.length.toLocaleString()} / {MAX_BEHAVIOR_PROTOCOL_LENGTH.toLocaleString()}
+                  </span>
+                </div>
               </div>
 
               {/* Autonomy Level */}
@@ -610,10 +698,11 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveCustomization}
-                  className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-lime-500/20 cursor-pointer"
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-lime-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span>Save Job Configuration</span>
+                  <span>{isSaving ? 'Saving…' : 'Save Job Configuration'}</span>
                 </button>
               </div>
             </div>

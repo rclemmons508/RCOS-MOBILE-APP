@@ -31,6 +31,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { CustomAIEmployee, employeeCustomizationService } from '../../services/employeeCustomizationService';
+import { DEFAULT_BEHAVIOR_PROTOCOL, MAX_BEHAVIOR_PROTOCOL_LENGTH, resolveBehaviorProtocol } from '../../utils/agentBehavior';
 
 interface EmployeeJobCustomizerModalProps {
   isOpen: boolean;
@@ -51,6 +52,9 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
   const [roleTitle, setRoleTitle] = useState(employee.roleTitle);
   const [department, setDepartment] = useState(employee.department);
   const [coreJob, setCoreJob] = useState(employee.customJobScope || employee.coreJob);
+  const [behaviorProtocol, setBehaviorProtocol] = useState(
+    resolveBehaviorProtocol(employee.behaviorProtocol)
+  );
   const [tagline, setTagline] = useState(employee.tagline);
   const [autonomyLevel, setAutonomyLevel] = useState<'autonomous' | 'supervised' | 'manual'>(
     employee.autonomyLevel || 'autonomous'
@@ -67,6 +71,45 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
   const [newRuleInput, setNewRuleInput] = useState('');
   const [customPromptNotes, setCustomPromptNotes] = useState(employee.customPromptNotes || '');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Last saved values — the baseline the unsaved-changes check compares
+  // against. Updated on save and on reset so a fresh save never warns.
+  const [savedBaseline, setSavedBaseline] = useState({
+    name: employee.name,
+    roleTitle: employee.roleTitle,
+    department: employee.department,
+    coreJob: employee.customJobScope || employee.coreJob,
+    behaviorProtocol: resolveBehaviorProtocol(employee.behaviorProtocol),
+    tagline: employee.tagline,
+    autonomyLevel: employee.autonomyLevel || 'autonomous',
+    maxApprovalAmount: employee.maxApprovalAmount || 1500,
+    escalatesTo: employee.escalatesTo || 'Business Owner',
+    rules: employee.customRules && employee.customRules.length > 0
+      ? [...employee.customRules]
+      : ['Always uphold company safety protocols', 'Prompt operator for approval on scope variations'],
+    customPromptNotes: employee.customPromptNotes || '',
+  });
+
+  const isDirty =
+    name !== savedBaseline.name ||
+    roleTitle !== savedBaseline.roleTitle ||
+    department !== savedBaseline.department ||
+    coreJob !== savedBaseline.coreJob ||
+    behaviorProtocol !== savedBaseline.behaviorProtocol ||
+    tagline !== savedBaseline.tagline ||
+    autonomyLevel !== savedBaseline.autonomyLevel ||
+    maxApprovalAmount !== savedBaseline.maxApprovalAmount ||
+    escalatesTo !== savedBaseline.escalatesTo ||
+    JSON.stringify(rules) !== JSON.stringify(savedBaseline.rules) ||
+    customPromptNotes !== savedBaseline.customPromptNotes;
+
+  // Closing with unsaved edits asks first (same confirm() pattern the
+  // reset action already uses) instead of silently dropping them.
+  const handleClose = () => {
+    if (isDirty && !confirm(`You have unsaved changes for ${employee.name}. Close without saving?`)) return;
+    onClose();
+  };
 
   const handleAddRule = () => {
     if (!newRuleInput.trim()) return;
@@ -79,23 +122,59 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
   };
 
   const handleSave = () => {
-    const updated = employeeCustomizationService.updateEmployee(employee.id, {
+    if (isSaving) return;
+    if (behaviorProtocol.length > MAX_BEHAVIOR_PROTOCOL_LENGTH) {
+      setSaveError(`Behavior protocol is too long — keep it under ${MAX_BEHAVIOR_PROTOCOL_LENGTH.toLocaleString()} characters.`);
+      return;
+    }
+    // Blank, or untouched default text, stores as "no custom protocol" so
+    // the standard protocol keeps applying without persisting a copy of it.
+    const trimmedProtocol = behaviorProtocol.trim();
+    const protocolToSave = !trimmedProtocol || trimmedProtocol === DEFAULT_BEHAVIOR_PROTOCOL
+      ? undefined
+      : trimmedProtocol;
+    setSaveError(null);
+    setIsSaving(true);
+    let updated: CustomAIEmployee;
+    try {
+      updated = employeeCustomizationService.updateEmployee(employee.id, {
+        name,
+        roleTitle,
+        department,
+        customJobScope: coreJob,
+        coreJob,
+        behaviorProtocol: protocolToSave,
+        tagline,
+        autonomyLevel,
+        maxApprovalAmount: Number(maxApprovalAmount),
+        escalatesTo,
+        customRules: rules,
+        customPromptNotes
+      });
+    } catch (err) {
+      console.error('Failed to save employee customization', err);
+      setSaveError('Could not save — please try again.');
+      setIsSaving(false);
+      return;
+    }
+
+    setSavedBaseline({
       name,
       roleTitle,
       department,
-      customJobScope: coreJob,
       coreJob,
+      behaviorProtocol: resolveBehaviorProtocol(updated.behaviorProtocol),
       tagline,
       autonomyLevel,
       maxApprovalAmount: Number(maxApprovalAmount),
       escalatesTo,
-      customRules: rules,
-      customPromptNotes
+      rules: [...rules],
+      customPromptNotes,
     });
-
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
+      setIsSaving(false);
       onSaved(updated);
       onClose();
     }, 600);
@@ -108,12 +187,26 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
       setRoleTitle(reset.roleTitle);
       setDepartment(reset.department);
       setCoreJob(reset.coreJob);
+      setBehaviorProtocol(resolveBehaviorProtocol(reset.behaviorProtocol));
       setTagline(reset.tagline);
       setAutonomyLevel('autonomous');
       setMaxApprovalAmount(1500);
       setEscalatesTo(reset.escalatesTo);
       setRules([...(reset.customRules || [])]);
       setCustomPromptNotes('');
+      setSavedBaseline({
+        name: reset.name,
+        roleTitle: reset.roleTitle,
+        department: reset.department,
+        coreJob: reset.coreJob,
+        behaviorProtocol: resolveBehaviorProtocol(reset.behaviorProtocol),
+        tagline: reset.tagline,
+        autonomyLevel: 'autonomous',
+        maxApprovalAmount: 1500,
+        escalatesTo: reset.escalatesTo,
+        rules: [...(reset.customRules || [])],
+        customPromptNotes: '',
+      });
     }
   };
 
@@ -155,7 +248,7 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -164,6 +257,11 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
 
         {/* Modal Body - Scrollable */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-5 text-xs">
+          {saveError && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center gap-2">
+              <span className="font-bold">{saveError}</span>
+            </div>
+          )}
           {saveSuccess && (
             <div className="p-3 rounded-xl bg-lime-500/10 border border-lime-500/30 text-lime-400 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -252,6 +350,37 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
               className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
               placeholder="Describe the primary responsibilities and tasks this AI employee handles..."
             />
+          </div>
+
+          {/* Agent Behavior & Decision Protocol */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+                Agent Behavior & Decision Protocol
+              </label>
+              <button
+                type="button"
+                onClick={() => setBehaviorProtocol(DEFAULT_BEHAVIOR_PROTOCOL)}
+                className="text-[10px] text-lime-400 hover:text-lime-300 font-semibold cursor-pointer"
+              >
+                Restore standard protocol
+              </button>
+            </div>
+            <textarea
+              rows={6}
+              value={behaviorProtocol}
+              onChange={(e) => setBehaviorProtocol(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
+              placeholder="How this agent reasons through tasks, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
+            />
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-[10px] text-zinc-500">
+                Used when this agent works. Leave the standard text in place unless you want this agent to behave differently.
+              </p>
+              <span className={`text-[10px] font-mono shrink-0 ml-2 ${behaviorProtocol.length > MAX_BEHAVIOR_PROTOCOL_LENGTH ? 'text-red-400' : 'text-zinc-500'}`}>
+                {behaviorProtocol.length.toLocaleString()} / {MAX_BEHAVIOR_PROTOCOL_LENGTH.toLocaleString()}
+              </span>
+            </div>
           </div>
 
           {/* Autonomy Level Selection */}
@@ -404,18 +533,20 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold transition cursor-pointer"
+              onClick={handleClose}
+              disabled={isSaving}
+              className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-lime-500/20 transition cursor-pointer"
+              disabled={isSaving}
+              className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-lime-500/20 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>Save Job Configuration</span>
+              <span>{isSaving ? 'Saving…' : 'Save Job Configuration'}</span>
             </button>
           </div>
         </div>
