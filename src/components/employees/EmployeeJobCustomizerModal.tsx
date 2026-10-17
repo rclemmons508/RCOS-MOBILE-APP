@@ -139,21 +139,25 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
     setSaveError(null);
     setIsSaving(true);
     let updated: CustomAIEmployee;
+    // NOTE: the save body below intentionally keeps its original
+    // indentation inside the try block, so this change applies cleanly on
+    // top of the per-business update without re-indenting shared lines.
     try {
-      updated = employeeCustomizationService.updateEmployee(employee.id, {
-        name,
-        roleTitle,
-        department,
-        customJobScope: coreJob,
-        coreJob,
-        behaviorProtocol: protocolToSave,
-        tagline,
-        autonomyLevel,
-        maxApprovalAmount: Number(maxApprovalAmount),
-        escalatesTo,
-        customRules: rules,
-        customPromptNotes
-      }, businessId || '');
+    updated = employeeCustomizationService.updateEmployee(employee.id, {
+      name,
+      roleTitle,
+      department,
+      customJobScope: coreJob,
+      coreJob,
+      behaviorProtocol: protocolToSave,
+      tagline,
+      autonomyLevel,
+      maxApprovalAmount: Number(maxApprovalAmount),
+      escalatesTo,
+      customRules: rules,
+      customPromptNotes
+    }, businessId || '');
+
     } catch (err) {
       console.error('Failed to save employee customization', err);
       setSaveError('Could not save — please try again.');
