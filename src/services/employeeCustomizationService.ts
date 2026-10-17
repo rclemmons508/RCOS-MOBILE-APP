@@ -3,6 +3,20 @@ import { AI_EMPLOYEES } from '../data/employees';
 
 const STORAGE_KEY_CUSTOM_EMPLOYEES = 'rcos_custom_ai_employees';
 
+/**
+ * Agent customizations are company data: Company B must never see
+ * Company A's customized job scopes, rules, or approval limits. The
+ * store is therefore keyed per business. The old global key is never
+ * read again (it cannot be attributed to a company without risking a
+ * leak), so pre-existing customizations stored there reset to defaults
+ * once per company — the owner re-applies them. An empty business id
+ * returns defaults instead of the legacy key.
+ */
+function keyFor(businessId: string | undefined | null): string | null {
+  const clean = (businessId || '').trim();
+  return clean ? `${STORAGE_KEY_CUSTOM_EMPLOYEES}_${clean}` : null;
+}
+
 export interface CustomAIEmployee extends AIEmployee {
   customJobScope?: string;
   customRules?: string[];
@@ -18,9 +32,11 @@ class EmployeeCustomizationService {
   /**
    * Get all AI employees merged with user custom modifications
    */
-  getEmployees(): CustomAIEmployee[] {
+  getEmployees(businessId: string): CustomAIEmployee[] {
+    const key = keyFor(businessId);
+    if (!key) return this.defaultEmployees();
     try {
-      const raw = localStorage.getItem(STORAGE_KEY_CUSTOM_EMPLOYEES);
+      const raw = localStorage.getItem(key);
       if (raw) {
         const stored: CustomAIEmployee[] = JSON.parse(raw);
         if (stored && Array.isArray(stored) && stored.length > 0) {
@@ -50,7 +66,11 @@ class EmployeeCustomizationService {
       console.warn('[EmployeeService] Error reading customized employees:', e);
     }
 
-    // Default initialization
+    return this.defaultEmployees();
+  }
+
+  /** Factory defaults — no stored customizations for this company. */
+  private defaultEmployees(): CustomAIEmployee[] {
     return AI_EMPLOYEES.map(e => ({
       ...e,
       customJobScope: e.coreJob,
@@ -68,9 +88,11 @@ class EmployeeCustomizationService {
   /**
    * Save full employees list
    */
-  saveEmployees(employees: CustomAIEmployee[]): void {
+  saveEmployees(employees: CustomAIEmployee[], businessId: string): void {
+    const key = keyFor(businessId);
+    if (!key) return;
     try {
-      localStorage.setItem(STORAGE_KEY_CUSTOM_EMPLOYEES, JSON.stringify(employees));
+      localStorage.setItem(key, JSON.stringify(employees));
     } catch (e) {
       console.error('[EmployeeService] Failed to save employees:', e);
     }
@@ -79,8 +101,8 @@ class EmployeeCustomizationService {
   /**
    * Update a specific employee's job scope, rules, autonomy, or details
    */
-  updateEmployee(id: string, updates: Partial<CustomAIEmployee>): CustomAIEmployee {
-    const list = this.getEmployees();
+  updateEmployee(id: string, updates: Partial<CustomAIEmployee>, businessId: string): CustomAIEmployee {
+    const list = this.getEmployees(businessId);
     const index = list.findIndex(e => e.id === id);
     if (index === -1) {
       throw new Error(`AI Employee ${id} not found.`);
@@ -92,14 +114,14 @@ class EmployeeCustomizationService {
     };
 
     list[index] = updated;
-    this.saveEmployees(list);
+    this.saveEmployees(list, businessId);
     return updated;
   }
 
   /**
    * Reset a specific employee to system factory defaults
    */
-  resetEmployee(id: string): CustomAIEmployee {
+  resetEmployee(id: string, businessId: string): CustomAIEmployee {
     const defaultEmp = AI_EMPLOYEES.find(e => e.id === id);
     if (!defaultEmp) {
       throw new Error(`Default AI Employee ${id} not found.`);
@@ -116,11 +138,11 @@ class EmployeeCustomizationService {
       maxApprovalAmount: 1500
     };
 
-    const list = this.getEmployees();
+    const list = this.getEmployees(businessId);
     const index = list.findIndex(e => e.id === id);
     if (index !== -1) {
       list[index] = resetEmp;
-      this.saveEmployees(list);
+      this.saveEmployees(list, businessId);
     }
     return resetEmp;
   }
@@ -128,7 +150,7 @@ class EmployeeCustomizationService {
   /**
    * Add a brand new custom specialist to the AI employee fleet
    */
-  addCustomEmployee(newEmp: Omit<CustomAIEmployee, 'id'>): CustomAIEmployee {
+  addCustomEmployee(newEmp: Omit<CustomAIEmployee, 'id'>, businessId: string): CustomAIEmployee {
     const id = `custom_agent_${Date.now()}`;
     const employee: CustomAIEmployee = {
       ...newEmp,
@@ -139,24 +161,24 @@ class EmployeeCustomizationService {
       maxApprovalAmount: newEmp.maxApprovalAmount || 1000
     };
 
-    const list = this.getEmployees();
+    const list = this.getEmployees(businessId);
     list.push(employee);
-    this.saveEmployees(list);
+    this.saveEmployees(list, businessId);
     return employee;
   }
 
   /**
    * Delete a custom employee (defaults cannot be deleted, only paused)
    */
-  deleteCustomEmployee(id: string): boolean {
-    const list = this.getEmployees();
+  deleteCustomEmployee(id: string, businessId: string): boolean {
+    const list = this.getEmployees(businessId);
     const target = list.find(e => e.id === id);
     if (!target || !target.isCustom) {
       return false;
     }
 
     const filtered = list.filter(e => e.id !== id);
-    this.saveEmployees(filtered);
+    this.saveEmployees(filtered, businessId);
     return true;
   }
 }
