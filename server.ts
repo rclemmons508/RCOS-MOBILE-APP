@@ -26,7 +26,7 @@ import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { sendVonageSms } from './server/vonage';
-import { initAuth, requireAuth } from './server/auth';
+import { initAuth, isAuthMisconfigured, isAuthReady, requireAuth } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 
@@ -148,8 +148,46 @@ app.get('/api/firebase-config', (_req: Request, res: Response) => {
   });
 });
 
+// Gmail OAuth for the native app (public browser flow; bounces the user back into the app).
+registerGmailOAuthPublic(app);
+
+// ---- Login gate ----
+// Every /api route below this line requires a valid Firebase login token,
+// which the phone app already attaches (see src/lib/api.ts).
+// Public exceptions (registered above or skipped here):
+//   /api/health, /api/firebase-config, and the public intake form
+//   POST /api/business/:id/requests (customers must be able to reach you without an account).
+//   POST /api/voice/routing-log (worker only, secret-checked in its handler — GET is gated).
+// NOTE: inside app.use('/api', ...), Express strips the '/api' mount prefix, so
+// req.path here is the path WITHOUT '/api' (verified on Express 4.22). The old
+// checks matched '/api/...' and never fired, which wrongly gated the public
+// booking page and the voice routing log with a 401.
+app.use('/api', (req: Request, res: Response, next) => {
+  if (req.method === 'POST' && /^\/business\/[^/]+\/requests$/.test(req.path)) return next();
+  if (req.method === 'GET' && /^\/public\/business\/[^/]+$/.test(req.path)) return next();
+  if (req.method === 'POST' && req.path === '/public/demo-request') return next();
+  // Joining a company happens BEFORE sign-in (the joiner has no account
+  // yet), so it is public by design like the demo form. The invite code
+  // itself is the credential — and an invite locked to an email only
+  // works for that email.
+  if (req.method === 'POST' && req.path === '/team/join') return next();
+  // The voice-agent worker posts its routing log with VOICE_AGENT_SECRET,
+  // not a user token — POST skips here and is secret-checked in its
+  // handler. GET does NOT skip: reading the call routing log requires a
+  // signed-in user (the old blanket skip let anyone read it).
+  if (req.method === 'POST' && req.path === '/voice/routing-log') return next();
+  // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
+  if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
+    const secret = process.env.VOICE_AGENT_SECRET;
+    if (secret && req.headers['x-voice-secret'] === secret) return next();
+  }
+  return requireAuth(req, res, next);
+});
+
 // ---- Diagnostics (per RCOS Master Dashboard spec) ----
 // Returns system health checks with PASS/WARN/FAIL status.
+// Behind the login gate: it reports which services are configured,
+// which is not public information.
 app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   const checks: { id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }[] = [];
 
@@ -157,10 +195,16 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   checks.push({ id: 'server', label: 'Server Core', status: 'pass', detail: 'API responding normally' });
 
   // Firebase login gate
-  const gateOn = !!process.env.FIREBASE_SERVICE_ACCOUNT;
+  const gateOn = isAuthReady();
+  const gateBroken = isAuthMisconfigured();
   checks.push({
-    id: 'auth', label: 'Login Gate', status: gateOn ? 'pass' : 'warn',
-    detail: gateOn ? 'Firebase Admin active — API requires login' : 'FIREBASE_SERVICE_ACCOUNT not set — API open'
+    id: 'auth', label: 'Login Gate',
+    status: gateOn ? 'pass' : gateBroken ? 'fail' : 'warn',
+    detail: gateOn
+      ? 'Firebase Admin active — API requires login'
+      : gateBroken
+        ? 'FIREBASE_SERVICE_ACCOUNT is set but unusable — API still open'
+        : 'FIREBASE_SERVICE_ACCOUNT not set — API open'
   });
 
   // LiveKit voice
@@ -199,37 +243,6 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   res.json({ overall, score, checks, scannedAt: new Date().toISOString() });
 });
 
-// Gmail OAuth for the native app (public browser flow; bounces the user back into the app).
-registerGmailOAuthPublic(app);
-
-// ---- Login gate ----
-// Every /api route below this line requires a valid Firebase login token,
-// which the phone app already attaches (see src/lib/api.ts).
-// Public exceptions (registered above or skipped here):
-//   /api/health, /api/firebase-config, and the public intake form
-//   POST /api/business/:id/requests (customers must be able to reach you without an account).
-// NOTE: inside app.use('/api', ...), Express strips the '/api' mount prefix, so
-// req.path here is the path WITHOUT '/api' (verified on Express 4.22). The old
-// checks matched '/api/...' and never fired, which wrongly gated the public
-// booking page and the voice routing log with a 401.
-app.use('/api', (req: Request, res: Response, next) => {
-  if (req.method === 'POST' && /^\/business\/[^/]+\/requests$/.test(req.path)) return next();
-  if (req.method === 'GET' && /^\/public\/business\/[^/]+$/.test(req.path)) return next();
-  if (req.method === 'POST' && req.path === '/public/demo-request') return next();
-  // Joining a company happens BEFORE sign-in (the joiner has no account
-  // yet), so it is public by design like the demo form. The invite code
-  // itself is the credential — and an invite locked to an email only
-  // works for that email.
-  if (req.method === 'POST' && req.path === '/team/join') return next();
-  // The voice-agent worker authenticates with VOICE_AGENT_SECRET, not a user token.
-  if (req.path === '/voice/routing-log') return next();
-  // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
-  if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
-    const secret = process.env.VOICE_AGENT_SECRET;
-    if (secret && req.headers['x-voice-secret'] === secret) return next();
-  }
-  return requireAuth(req, res, next);
-});
 
   // --- Gmail send helpers (server-side only; the access token never leaves the server) ---
   const GMAIL_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
