@@ -41,8 +41,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     currentUser?.authenticated ? 'profile' : 'login'
   );
 
-  const isDemoAuthEnabled = import.meta.env?.VITE_ENABLE_DEMO_AUTH === 'true';
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -81,50 +79,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     return { score: 100, label: 'Strong Security', color: 'bg-lime-500' };
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setErrorMsg('Please enter email and password.');
       return;
     }
-    const authenticatedUser: User = {
-      id: 'usr-' + Date.now(),
-      email,
-      fullName: fullName || email.split('@')[0].toUpperCase() + ' (RCOS Op)',
-      role,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-      organization,
-      authenticated: true,
-      biometricsEnabled: true,
-      lastLogin: 'Just now'
-    };
     setErrorMsg('');
-    setSuccessMsg('Authentication successful!');
-    setTimeout(() => {
-      onLoginSuccess(authenticatedUser);
-      setSuccessMsg('');
-      onClose();
-    }, 500);
-  };
-
-  const handleQuickOperatorLogin = () => {
-    const defaultUser: User = {
-      id: 'usr-rcos-lead',
-      email: 'rcsoulutions@gmail.com',
-      fullName: 'RC Solutions Lead Operator',
-      role: 'System Administrator',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-      organization: 'RC Solutions Enterprise Systems',
-      authenticated: true,
-      biometricsEnabled: true,
-      lastLogin: 'Just now'
-    };
-    setSuccessMsg('Authenticated as Lead Operator!');
-    setTimeout(() => {
-      onLoginSuccess(defaultUser);
-      setSuccessMsg('');
-      onClose();
-    }, 400);
+    try {
+      // Real sign-in: authService CHECKS the password. The old code
+      // fabricated a signed-in user for any typed email, so anyone
+      // could become any operator — including the RC Solutions owner —
+      // and the app then loaded that company's data.
+      const user = await authService.loginWithEmail(email, password);
+      setSuccessMsg('Authentication successful!');
+      setTimeout(() => {
+        onLoginSuccess(user);
+        setSuccessMsg('');
+        onClose();
+      }, 500);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Sign-in failed. Please try again.');
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -142,7 +118,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName || !email || !password) {
       setErrorMsg('Please complete all registration fields.');
@@ -152,26 +128,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMsg('Please set a 4-digit backup PIN in case biometrics fail.');
       return;
     }
-    const newUser: User = {
-      id: 'usr-' + Date.now(),
-      email,
-      fullName,
-      role,
-      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=120&q=80',
-      organization,
-      authenticated: true,
-      biometricsEnabled: true,
-      lastLogin: 'Account Created'
-    };
     setErrorMsg('');
-    setSuccessMsg('Account registered successfully!');
-    // Save the user's own backup PIN — the only PIN that can unlock the app.
-    biometricService.setOperatorPin(backupPin);
-    setTimeout(() => {
-      onLoginSuccess(newUser);
-      setSuccessMsg('');
-      onClose();
-    }, 600);
+    try {
+      // Real registration: salted password hash is stored, so the next
+      // sign-in checks it. The old code fabricated an account with no
+      // password at all.
+      const user = await authService.registerUser({
+        fullName,
+        email,
+        password,
+        role,
+        organization,
+        backupPin,
+        preferences: { industryProfile: industryId },
+      });
+      setSuccessMsg('Account registered successfully!');
+      // Save the user's own backup PIN — the only PIN that can unlock the app.
+      biometricService.setOperatorPin(backupPin);
+      setTimeout(() => {
+        onLoginSuccess(user);
+        setSuccessMsg('');
+        onClose();
+      }, 600);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Registration failed. Please try again.');
+    }
   };
 
   const handleSendRecoveryOTP = () => {
@@ -410,16 +391,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </button>
                 )}
 
-                {isDemoAuthEnabled && (
-                  <button
-                    type="button"
-                    onClick={handleQuickOperatorLogin}
-                    className="w-full py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer font-mono"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Demo Fast Login (Dev Only)</span>
-                  </button>
-                )}
               </div>
 
               <div className="pt-2 border-t border-zinc-800/80 text-center text-xs text-zinc-400">
