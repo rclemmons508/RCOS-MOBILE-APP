@@ -68,7 +68,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   // instead of crashing on the first employee read.
   const activeEmployees = business?.activeEmployees ?? {};
   const [employees, setEmployees] = useState<CustomAIEmployee[]>(() => 
-    employeeCustomizationService.getEmployees()
+    employeeCustomizationService.getEmployees(business.id)
   );
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('executive_assistant');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -228,7 +228,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
         tone: editTone,
         escalatesTo: editEscalatesTo,
         customRules: editRules
-      });
+      }, business.id);
 
       setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
       showToast(`Saved customizations for ${updated.name}!`);
@@ -255,7 +255,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   // Reset employee
   const handleResetEmployee = () => {
     if (confirm(`Reset ${selectedEmployee.name} back to default system instructions?`)) {
-      const reset = employeeCustomizationService.resetEmployee(selectedEmployee.id);
+      const reset = employeeCustomizationService.resetEmployee(selectedEmployee.id, business.id);
       setEmployees(prev => prev.map(e => e.id === reset.id ? reset : e));
       setEditName(reset.name);
       setEditRoleTitle(reset.roleTitle);
@@ -281,7 +281,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       escalatesTo: 'Executive Assistant',
       tagline: 'Custom specialist agent',
       systemPromptRole: 'You are a specialized RCOS AI Operations Consultant. You follow dedicated user guidelines and execute tasks accurately.'
-    });
+    }, business.id);
 
     setEmployees(prev => [...prev, newSpec]);
     setSelectedEmployeeId(newSpec.id);
