@@ -38,13 +38,16 @@ interface EmployeeJobCustomizerModalProps {
   onClose: () => void;
   employee: CustomAIEmployee | null;
   onSaved: (updated: CustomAIEmployee) => void;
+  /** Company the customization belongs to — customizations are stored per business. */
+  businessId?: string;
 }
 
 export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProps> = ({
   isOpen,
   onClose,
   employee,
-  onSaved
+  onSaved,
+  businessId,
 }) => {
   if (!isOpen || !employee) return null;
 
@@ -150,7 +153,7 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
         escalatesTo,
         customRules: rules,
         customPromptNotes
-      });
+      }, businessId || '');
     } catch (err) {
       console.error('Failed to save employee customization', err);
       setSaveError('Could not save — please try again.');
@@ -182,7 +185,7 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
 
   const handleResetToDefault = () => {
     if (confirm(`Reset ${employee.name} back to default operational specifications?`)) {
-      const reset = employeeCustomizationService.resetEmployee(employee.id);
+      const reset = employeeCustomizationService.resetEmployee(employee.id, businessId || '');
       setName(reset.name);
       setRoleTitle(reset.roleTitle);
       setDepartment(reset.department);
