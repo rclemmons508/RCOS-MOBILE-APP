@@ -214,24 +214,27 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       : trimmedProtocol;
     setFormError(null);
     setIsSaving(true);
+    // NOTE: the save body below intentionally keeps its original
+    // indentation inside the try block, so this change applies cleanly on
+    // top of the per-business update without re-indenting shared lines.
     try {
-      await haptic.success();
-      const updated = employeeCustomizationService.updateEmployee(selectedEmployee.id, {
-        name: editName,
-        roleTitle: editRoleTitle,
-        department: editDepartment,
-        customJobScope: editCoreJob,
-        coreJob: editCoreJob,
-        behaviorProtocol: protocolToSave,
-        autonomyLevel: editAutonomy,
-        maxApprovalAmount: Number(editApprovalAmount),
-        tone: editTone,
-        escalatesTo: editEscalatesTo,
-        customRules: editRules
-      }, business.id);
+    await haptic.success();
+    const updated = employeeCustomizationService.updateEmployee(selectedEmployee.id, {
+      name: editName,
+      roleTitle: editRoleTitle,
+      department: editDepartment,
+      customJobScope: editCoreJob,
+      coreJob: editCoreJob,
+      behaviorProtocol: protocolToSave,
+      autonomyLevel: editAutonomy,
+      maxApprovalAmount: Number(editApprovalAmount),
+      tone: editTone,
+      escalatesTo: editEscalatesTo,
+      customRules: editRules
+    }, business.id);
 
-      setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
-      showToast(`Saved customizations for ${updated.name}!`);
+    setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
+    showToast(`Saved customizations for ${updated.name}!`);
     } catch (err) {
       console.error('Failed to save employee customization', err);
       setFormError('Could not save — please try again.');
