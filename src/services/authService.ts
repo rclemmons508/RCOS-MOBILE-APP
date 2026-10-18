@@ -1,13 +1,40 @@
 import { User, UserPreferences } from '../types';
 import { userPreferencesService, DEFAULT_USER_PREFERENCES } from './userPreferencesService';
 import { biometricService, BIOMETRICS_ENABLED } from './biometricService';
-import { auth, googleProvider } from '../lib/firebase';
-import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
+import {
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from 'firebase/auth';
 import { setCachedAccessToken } from '../lib/gmail';
 import { Capacitor } from '@capacitor/core';
 
 const STORAGE_KEY_SESSION = 'rcos_active_session';
 const STORAGE_KEY_USERS = 'rcos_registered_users';
+/**
+ * One entry per email: a password-reset email was already sent for the
+ * Firebase drift case. The drift recovery must never spam the user's
+ * inbox on every login — one reset email per account, ever.
+ */
+const FIREBASE_RESET_SENT_PREFIX = 'rcos_firebase_reset_sent:';
+
+function firebaseResetAlreadySent(email: string): boolean {
+  try {
+    return localStorage.getItem(`${FIREBASE_RESET_SENT_PREFIX}${email.toLowerCase()}`) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markFirebaseResetSent(email: string): void {
+  try {
+    localStorage.setItem(`${FIREBASE_RESET_SENT_PREFIX}${email.toLowerCase()}`, '1');
+  } catch { /* storage unavailable — the email may be sent again next login */ }
+}
 
 /**
  * SHA-256 hex digest of `salt:password`. Only the hash is ever stored —
@@ -138,6 +165,102 @@ class AuthService {
   }
 
   /**
+   * Mirror the just-verified local login into Firebase Auth, so the phone
+   * app holds a real Firebase session (and apiFetch can attach its ID
+   * token). The local login NEVER depends on this: every Firebase
+   * failure is swallowed here with a warning and local login proceeds,
+   * because the login gate is off and the app must keep working.
+   *
+   * How each case is handled (password is already verified locally
+   * before this runs):
+   * - Already signed into Firebase as this user → nothing to do.
+   * - Signed into Firebase as someone else (e.g. switch-user) → sign
+   *   out first, then sign in as this user.
+   * - Sign-in fails with user-not-found / invalid-credential → legacy
+   *   account (predates Firebase): create the Firebase user with the
+   *   JUST-VERIFIED password, then the session exists. With email
+   *   enumeration protection on, Firebase reports a missing account as
+   *   invalid-credential, so both codes take this path and the create
+   *   call tells them apart.
+   * - Create fails with email-already-in-use → the Firebase password
+   *   drifted (it was changed without the local record): send ONE
+   *   password-reset email for this account (tracked in localStorage so
+   *   it never spams) and proceed with local login. Next login, after
+   *   the reset, works.
+   * - Sign-in fails with wrong-password (older Firebase behavior) →
+   *   same drift recovery as above.
+   * - Network / rate-limit / any other Firebase error → warn and
+   *   proceed with local login. The session heals on the next login.
+   */
+  private async syncFirebaseSession(email: string, password?: string): Promise<void> {
+    if (!isFirebaseConfigured) return;
+    if (!password) return; // No password (e.g. PIN/biometric login) — nothing to mirror.
+    const cleanEmail = (email || '').trim().toLowerCase();
+    try {
+      const current = auth.currentUser;
+      if (current?.email?.toLowerCase() === cleanEmail) {
+        return; // Already signed into Firebase as this user.
+      }
+      if (current) {
+        // Signed in as someone else (switch-user) — sign out first.
+        await signOut(auth).catch(() => {});
+      }
+      try {
+        await signInWithEmailAndPassword(auth, cleanEmail, password);
+        return;
+      } catch (signInErr: any) {
+        const code = String(signInErr?.code || '');
+        if (code === 'auth/wrong-password') {
+          // Drift (older Firebase behavior): Firebase password differs.
+          await this.sendDriftResetEmail(cleanEmail);
+          return;
+        }
+        if (code !== 'auth/user-not-found' && code !== 'auth/invalid-credential') {
+          // Network, rate-limit, or anything else — local login proceeds.
+          console.warn('[AuthService] Firebase sign-in skipped (local login continues):', code || signInErr?.message);
+          return;
+        }
+        // user-not-found / invalid-credential: legacy account (or
+        // enumeration protection hiding a missing account). Create it
+        // with the just-verified password.
+        try {
+          await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          return;
+        } catch (createErr: any) {
+          const createCode = String(createErr?.code || '');
+          if (createCode === 'auth/email-already-in-use') {
+            // The Firebase account exists but its password differs —
+            // drift. One reset email, then local login proceeds.
+            await this.sendDriftResetEmail(cleanEmail);
+            return;
+          }
+          console.warn('[AuthService] Firebase account creation skipped (local login continues):', createCode || createErr?.message);
+          return;
+        }
+      }
+    } catch (e: any) {
+      console.warn('[AuthService] Firebase session sync skipped (local login continues):', e?.message || e);
+    }
+  }
+
+  /**
+   * Drift recovery: the Firebase password no longer matches the local
+   * one. Send ONE password-reset email for this account — tracked in
+   * localStorage so it never spams on every login. The user resets via
+   * email; the next login works.
+   */
+  private async sendDriftResetEmail(email: string): Promise<void> {
+    if (firebaseResetAlreadySent(email)) return;
+    try {
+      await sendPasswordResetEmail(auth, email);
+      markFirebaseResetSent(email);
+      console.warn('[AuthService] Firebase password differs from local password — a password-reset email was sent once for this account.');
+    } catch (e: any) {
+      console.warn('[AuthService] Could not send Firebase password-reset email:', e?.message || e);
+    }
+  }
+
+  /**
    * Sign In with Email and Password.
    *
    * The password IS checked (it used to be ignored) and unknown emails do
@@ -174,6 +297,8 @@ class AuthService {
       };
       this.upsertUser(migrated);
       this.saveActiveSession(migrated);
+      // Mirror into Firebase with the just-verified password (best effort).
+      await this.syncFirebaseSession(cleanEmail, password);
       return migrated;
     }
 
@@ -185,6 +310,8 @@ class AuthService {
     };
     this.upsertUser(loggedIn);
     this.saveActiveSession(loggedIn);
+    // Mirror into Firebase with the just-verified password (best effort).
+    await this.syncFirebaseSession(cleanEmail, password);
     return loggedIn;
   }
 
@@ -303,6 +430,13 @@ class AuthService {
 
     this.upsertUser(newUser);
     this.saveActiveSession(newUser);
+    // Mirror the new account into Firebase Auth (best effort): the phone
+    // app needs a Firebase session so its API calls can carry a token
+    // once the login gate turns on. A Firebase failure must never fail
+    // the local registration — the next login heals it.
+    if (data.password) {
+      await this.syncFirebaseSession(cleanEmail, data.password);
+    }
     return newUser;
   }
 

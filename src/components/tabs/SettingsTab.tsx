@@ -276,6 +276,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   // Two-step: warning screen, then type DELETE to enable the final button.
   // Server delete first; local data is only wiped after the server confirms.
   const [deleteStep, setDeleteStep] = useState<'idle' | 'warn' | 'confirm' | 'done'>('idle');
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
   const [deleteInput, setDeleteInput] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteDeleting, setDeleteDeleting] = useState(false);
@@ -431,9 +432,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     }
     setDeleteDeleting(true);
     setDeleteError(null);
+    setDeleteNotice(null);
     try {
-      await deleteAccount(businessId || '', { password: deletePassword });
+      const result = await deleteAccount(businessId || '', { password: deletePassword });
       setDeletePassword('');
+      // The delete completed — but the Firebase sign-in may not have
+      // been removable (e.g. no Firebase session to delete from, or the
+      // Firebase password drifted). That is reported, never hidden.
+      if (result.firebaseDeleteNote) {
+        setDeleteNotice(result.firebaseDeleteNote);
+      }
       setDeleteStep('done');
       // Reload to a clean login screen — guarantees no stale in-memory data.
       setTimeout(() => {
@@ -1860,6 +1868,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         {deleteStep === 'done' && (
           <>
             <p className="text-sm text-white font-bold">Your account and all data have been deleted.</p>
+            {deleteNotice && (
+              <p className="text-xs text-amber-300 mt-2">{deleteNotice}</p>
+            )}
             <p className="text-xs text-zinc-400">Taking you to the login screen…</p>
           </>
         )}

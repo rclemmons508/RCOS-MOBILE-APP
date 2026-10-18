@@ -4,7 +4,7 @@ import { firestoreService } from './firestoreService';
 import { biometricService } from './biometricService';
 import { authService } from './authService';
 import { auth } from '../lib/firebase';
-import { deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { deleteUser, EmailAuthProvider, reauthenticateWithCredential, signInWithEmailAndPassword } from 'firebase/auth';
 import { setCachedAccessToken } from '../lib/gmail';
 import { clearBusinessStateForUser } from '../utils/businessStorage';
 
@@ -13,6 +13,15 @@ export interface DeleteAccountResult {
   alreadyDeleted: boolean;
   /** True when the deleter was a team member: they left the team instead of wiping the company. */
   leftTeam?: boolean;
+  /**
+   * Set when the Firebase sign-in could not be removed (e.g. no Firebase
+   * session to delete from, or the Firebase password drifted). The
+   * business data and local login are still deleted — but the Firebase
+   * account for this email may still exist, and the UI must show this
+   * note. Never silently claim the Firebase login is gone when it
+   * might not be.
+   */
+  firebaseDeleteNote?: string;
 }
 
 /** True when Firebase refused because the sign-in is too old. */
@@ -37,7 +46,12 @@ export function isReauthRequired(err: unknown): boolean {
  *      requested business id even when the server says it was already
  *      gone, so a retry after a Firestore failure still finishes the job.
  *      Any failure throws: no success screen, no local wipe.
- *   3. Firebase Auth user, only when one is signed in.
+ *   3. Firebase Auth user. Best effort, never silent: when no Firebase
+ *      session is signed in, sign in with the just-verified password and
+ *      delete the Firebase account too; a failure is recorded in the
+ *      result (shown to the user) and the delete still completes.
+ *      Google-only accounts need no password; their Firebase user is
+ *      deleted directly in step 3.
  *   4. Saved login record — removed from this device and verified gone.
  *   5. Local data — owner path: biometrics, cached tokens, ALL local/session
  *      storage (the business is gone). Member path: only the deleted user's
@@ -65,7 +79,8 @@ export async function deleteAccount(
   const email = sessionUser.email;
   const password = opts?.password || '';
 
-  const fbUser = auth.currentUser;
+  let fbUser = auth.currentUser;
+  let firebaseDeleteNote: string | undefined;
   const hasPasswordProvider = !!fbUser?.providerData.some((p) => p.providerId === 'password');
 
   // 0. Password confirmation. Nothing is deleted until this passes.
@@ -211,7 +226,38 @@ export async function deleteAccount(
     }
   }
 
-  // 3. Firebase Auth user, if one is signed in.
+  // 3. Firebase Auth user. Best effort, but never silent: a failure is
+  // recorded in the result so the UI reports it ("no fake deletions").
+  // The delete itself still completes — the business data and local
+  // login are gone either way.
+  // - A Firebase session exists: delete it. A requires-recent-login
+  //   failure still throws (nothing local is wiped yet, so the owner can
+  //   re-log-in and retry cleanly) — the one retryable case.
+  // - No Firebase session: a Firebase account may still exist for this
+  //   email (created on another device, or before this device ever
+  //   signed into Firebase). Sign in with the just-verified password
+  //   and delete it. If sign-in fails because no Firebase account
+  //   exists, there is nothing to delete. Any other sign-in failure
+  //   (drifted password, offline) is recorded, not hidden.
+  if (!fbUser && password) {
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      fbUser = cred.user;
+    } catch (e: any) {
+      const code = String(e?.code || '');
+      if (code === 'auth/user-not-found') {
+        fbUser = null; // No Firebase account — nothing to delete.
+      } else {
+        // invalid-credential (ambiguous: no account, or drifted
+        // password), network, rate-limit, anything else: cannot reach
+        // the Firebase account to delete it. Record it; the delete
+        // continues. The note says "may still exist" because with
+        // enumeration protection we cannot tell the two apart.
+        firebaseDeleteNote = 'Your business data and local login were deleted, but your Firebase sign-in could not be removed (could not sign into Firebase to delete it). The Firebase account for this email may still exist.';
+        fbUser = null;
+      }
+    }
+  }
   if (fbUser) {
     try {
       await deleteUser(fbUser);
@@ -219,10 +265,10 @@ export async function deleteAccount(
       if (isReauthRequired(e)) {
         throw new Error('Your business data was deleted, but your login could not be removed because your sign-in is too old. Please log out, log back in, then delete again to remove the login.');
       }
-      throw new Error('Your business data was deleted, but your login could not be removed. Please log out, log back in, then delete again to remove the login.');
+      firebaseDeleteNote = 'Your business data and local login were deleted, but your Firebase sign-in could not be removed. The Firebase account for this email may still exist.';
     }
-    if (auth.currentUser) {
-      throw new Error('Your business data was deleted, but your login could not be removed. Please log out, log back in, then delete again to remove the login.');
+    if (auth.currentUser && !firebaseDeleteNote) {
+      firebaseDeleteNote = 'Your business data and local login were deleted, but your Firebase sign-in could not be removed. The Firebase account for this email may still exist.';
     }
   }
 
@@ -243,7 +289,7 @@ export async function deleteAccount(
     wipeLocalDataForUser(email);
   }
 
-  return { deletedBusinessIds, alreadyDeleted, leftTeam };
+  return { deletedBusinessIds, alreadyDeleted, leftTeam, firebaseDeleteNote };
 }
 
 /** Remove the fingerprint enrollment, but only when it belongs to the
