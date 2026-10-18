@@ -7,6 +7,7 @@ import { timeAgoShort, describeFollowupWindow } from '../../utils/automation';
 import { asText, asScore, asStringList } from '../../utils/safeRender';
 import { FOLLOWUP_META, isFollowupRuleId } from '../../utils/followups';
 import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
+import { AppCheckPanel } from '../diagnostics/AppCheckPanel';
 import { TrainingChecklist } from '../training/TrainingChecklist';
 import { employeeCustomizationService, CustomAIEmployee } from '../../services/employeeCustomizationService';
 import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
@@ -1541,6 +1542,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
           {/* Diagnostics — RCOS Master Dashboard spec */}
           <DiagnosticsPanel />
+
+          {/* Guided first-run app check — read-only, changes nothing */}
+          <AppCheckPanel
+            currentUser={currentUser}
+            businessId={businessId}
+            business={business}
+            automationTasks={automationTasks}
+            automationMasterOn={automationMasterOn}
+          />
 
           {/* Training — RCOS onboarding funnel spec */}
           <TrainingChecklist />
