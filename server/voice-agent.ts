@@ -29,6 +29,7 @@ import { realtime } from '@livekit/agents-plugin-google';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
 import { ALL_TRANSFER_DEPARTMENTS, DEPARTMENT_LABELS, isTransferDepartment, type TransferDepartment } from '../src/utils/departments';
+import { withBehaviorProtocol } from '../src/utils/agentBehavior';
 
 const AGENT_NAME = 'rcos-receptionist';
 
@@ -442,6 +443,11 @@ export default defineAgent({
       (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
     );
     const config = PERSONAS[persona];
+    // Every voice persona follows the standard Agent Behavior & Decision
+    // Protocol. The worker has no per-employee config channel (same as job
+    // scope and tone today), so a customized protocol from the AI Team
+    // screen does not reach phone calls — the standard one applies here.
+    const personaInstructions = withBehaviorProtocol(config.instructions);
     const availableDepartments = departmentsFromMetadata(
       (ctx.room as unknown as { metadata?: unknown }).metadata,
       (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
@@ -450,7 +456,7 @@ export default defineAgent({
     const model = new realtime.RealtimeModel({
       apiKey: process.env.GEMINI_API_KEY,
       voice: 'Kore',
-      instructions: config.instructions,
+      instructions: personaInstructions,
     });
 
     // Only the departments this business offers — a business with no
@@ -459,7 +465,7 @@ export default defineAgent({
       ? `\n\nOnly transfer to these departments: ${availableDepartments.map((d) => DEPARTMENT_LABELS[d]).join(', ')}. Never offer or transfer to any other department.`
       : '';
     const agent = new Agent({
-      instructions: `${config.instructions}${transferLine}`,
+      instructions: `${personaInstructions}${transferLine}`,
       // Array form: preserves the tool's object identity, which is what the
       // SDK's handoff session-reuse check compares (see DepartmentAgent).
       ...(config.useRoutingTool ? { tools: [createRouteToRepresentativeTool(availableDepartments)] } : {}),

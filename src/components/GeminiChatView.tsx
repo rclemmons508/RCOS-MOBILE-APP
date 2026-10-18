@@ -13,6 +13,8 @@ import {
 import { BusinessAccount } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
 import { apiFetch } from '../lib/api';
+import { employeeCustomizationService } from '../services/employeeCustomizationService';
+import { resolveBehaviorProtocol } from '../utils/agentBehavior';
 
 interface ChatMessageItem {
   id: string;
@@ -101,13 +103,18 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({ business: propBu
     setLoading(true);
 
     try {
+      // Send the active agent's own Behavior & Decision Protocol so the
+      // server builds this agent's prompt with it (missing custom value
+      // resolves to the standard protocol).
+      const customized = employeeCustomizationService.getEmployees(business.id).find(e => e.id === selectedRole);
       const data = await apiFetch<any>('/api/chat', {
         method: 'POST',
         body: JSON.stringify({
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
           roleId: selectedRole,
           modelTier,
-          businessId: business.id
+          businessId: business.id,
+          behaviorProtocol: resolveBehaviorProtocol(customized?.behaviorProtocol)
         })
       });
 

@@ -26,6 +26,14 @@ export interface CustomAIEmployee extends AIEmployee {
   customPromptNotes?: string;
   phoneExtension?: string;
   isCustom?: boolean;
+  /**
+   * Agent Behavior & Decision Protocol: how this agent reasons, decides,
+   * handles uncertainty, collaborates, and verifies its work. Optional —
+   * a missing value falls back to the shared default at prompt time
+   * (see resolveBehaviorProtocol), so older saved configs keep working
+   * without a migration.
+   */
+  behaviorProtocol?: string;
 }
 
 class EmployeeCustomizationService {
@@ -135,7 +143,10 @@ class EmployeeCustomizationService {
         'Escalate unexpected equipment failures or safety hazards immediately.'
       ],
       autonomyLevel: 'autonomous',
-      maxApprovalAmount: 1500
+      maxApprovalAmount: 1500,
+      // Factory reset restores the standard protocol: clearing the custom
+      // value makes the default apply again.
+      behaviorProtocol: undefined
     };
 
     const list = this.getEmployees(businessId);

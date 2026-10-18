@@ -11,6 +11,7 @@ import {
 import { executeGeminiWithFallback, FAST_MODEL, PRIMARY_MODEL } from './gemini';
 import { db } from './db';
 import { AI_EMPLOYEES } from '../src/data/employees';
+import { withBehaviorProtocol } from '../src/utils/agentBehavior';
 
 interface RoutingClassification {
   employeeId: string;
@@ -235,7 +236,11 @@ Return ONLY valid JSON with this exact structure:
   static async executeAction(
     business: BusinessAccount,
     action: ActionRecord,
-    instruction: string
+    instruction: string,
+    // The assigned employee's Behavior & Decision Protocol. Callers that
+    // run without client context (automatic intake routing, command bar)
+    // pass nothing and the standard protocol applies.
+    behaviorProtocol?: unknown
   ): Promise<ActionRecord> {
     const employee = AI_EMPLOYEES.find(e => e.id === action.employeeId) || AI_EMPLOYEES[0];
     
@@ -253,7 +258,7 @@ Return ONLY valid JSON with this exact structure:
     action.stepSummary = `Checking ${business.name} service records and requirements...`;
     db.saveAction(action);
 
-    const executionPrompt = `You are ${employee.name}, ${employee.roleTitle} for "${business.name}" in the ${business.industry} industry.
+    const executionPrompt = withBehaviorProtocol(`You are ${employee.name}, ${employee.roleTitle} for "${business.name}" in the ${business.industry} industry.
 Brand Tone: ${business.brandTone}
 Pricing Approach: ${business.pricingApproach}
 Services Offered: ${business.services.join(', ')}
@@ -323,7 +328,9 @@ Format your response as valid JSON matching this schema:
     }
   }
 }
-Note: Only populate the specific details relevant to this actionType (e.g. quoteDetails for generate_quote, invoiceDetails for send_invoice, scheduleDetails for schedule_job, etc.). Always include summary and text.`;
+Note: Only populate the specific details relevant to this actionType (e.g. quoteDetails for generate_quote, invoiceDetails for send_invoice, scheduleDetails for schedule_job, etc.). Always include summary and text.`,
+      behaviorProtocol
+    );
 
     const fallbackExecution = (): string => {
       const isQuote = action.actionType === 'generate_quote';
