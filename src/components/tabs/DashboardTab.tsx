@@ -28,6 +28,7 @@ import {
 import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
 import { haptic } from '../../utils/haptics';
+import { buildPublicBookingLink } from '../../config/api';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
 import { RequestDetailModal } from '../RequestDetailModal';
 
@@ -132,7 +133,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   };
   const [linkCopied, setLinkCopied] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<CustomerRequest | null>(null);
-  const bookingLink = businessId ? `${window.location.origin}/#/book/${businessId}` : '';
+  const bookingLink = buildPublicBookingLink(businessId);
   const shareBookingLink = async () => {
     if (!bookingLink) return;
     haptic.light();
