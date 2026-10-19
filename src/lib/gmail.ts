@@ -68,6 +68,30 @@ export const onTokenChange = (listener: (token: string | null) => void) => {
   };
 };
 
+/**
+ * Silently restore the Gmail access token from the server, without OAuth.
+ * The server holds the Gmail refresh token and mints a fresh access token.
+ * The restored token stays in memory only — it is never written to
+ * localStorage or sessionStorage, same as every other token in this file.
+ * Returns the token, or null when Gmail is not connected or the restore
+ * failed. Never throws: callers treat null as "show the Connect flow".
+ */
+export async function restoreGmailToken(businessId: string): Promise<string | null> {
+  if (getCachedAccessToken()) return getCachedAccessToken();
+  if (!businessId) return null;
+  try {
+    const tok = await apiFetch<{ accessToken: string; email: string }>(
+      `/api/business/${encodeURIComponent(businessId)}/gmail-token`
+    );
+    if (!tok?.accessToken) return null;
+    setCachedAccessToken(tok.accessToken);
+    return tok.accessToken;
+  } catch (e) {
+    console.warn('[GmailAuth] Silent token restore failed:', (e as any)?.message);
+    return null;
+  }
+}
+
 // Clear token on sign out
 onAuthStateChanged(auth, (user) => {
   if (!user) {

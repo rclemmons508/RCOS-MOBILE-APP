@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Mail, 
   Search, 
@@ -36,6 +36,7 @@ import {
   setCachedAccessToken,
   onTokenChange,
   authenticateGmail,
+  restoreGmailToken,
   INITIAL_PREVIEW_MESSAGES
 } from '../../lib/gmail';
 import { apiFetch } from '../../lib/api';
@@ -120,6 +121,18 @@ export const GmailTab: React.FC<GmailTabProps> = ({
     });
     return unsub;
   }, []);
+
+  // Silent restore: if the in-memory Gmail token is empty (app restarted,
+  // tab remounted, auth state flickered), fetch a fresh one from the
+  // server instead of forcing full OAuth. One attempt per mount — no
+  // retry loops. If the server has no Gmail token, the Connect banner
+  // stays up, exactly as before.
+  const restoreAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (token || !businessId || restoreAttemptedRef.current) return;
+    restoreAttemptedRef.current = true;
+    restoreGmailToken(businessId);
+  }, [token, businessId]);
 
   const loadLiveMailbox = useCallback(async (authToken: string) => {
     setIsLoading(true);
