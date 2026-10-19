@@ -28,3 +28,16 @@ export function buildApiUrl(endpoint: string): string {
   const base = getApiBaseUrl();
   return `${base}${cleanEndpoint}`;
 }
+
+// Public booking page (owner's Netlify site). Customers open this link to
+// request service — never build a share link from window.location.origin,
+// which is https://localhost inside the native app and goes nowhere.
+// Per-business booking addresses are future work when the app is sold to
+// other businesses.
+export const PUBLIC_BOOKING_PAGE_URL = 'https://rcsolutionsai.netlify.app/book.html';
+
+/** Customer-facing booking link for a business. Empty when no business. */
+export function buildPublicBookingLink(businessId: string | undefined | null): string {
+  if (!businessId) return '';
+  return `${PUBLIC_BOOKING_PAGE_URL}?businessId=${encodeURIComponent(businessId)}`;
+}
