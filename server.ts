@@ -396,69 +396,69 @@ app.get('/api/public/business/:id', (req: Request, res: Response) => {
     services: business.services || [],
     brandTone: business.brandTone || '',
   });
+});
 
-  // Send a real email from the business's connected Gmail account.
-  // The access token stays server-side; the sender is whichever Gmail
-  // account the owner connected in Settings.
-  app.post('/api/business/:id/gmail/send', gmailSendLimiter, async (req: Request, res: Response) => {
-    try {
-      const business = db.getBusiness(req.params.id);
-      if (!business) return res.status(404).json({ error: 'Business not found' });
-      const { to, cc, bcc, subject, body, html, threadId } = (req.body as any) || {};
-      const recipientError = validateGmailRecipients(to, cc, bcc);
-      if (recipientError) return res.status(400).json({ error: recipientError });
-      if (!String(subject || '').trim()) {
-        return res.status(400).json({ error: 'Subject is required.' });
-      }
-      const tok = await getGmailAccessToken(req.params.id);
-      if (!tok) {
-        return res.status(400).json({ error: 'Connect Gmail in Settings first' });
-      }
-      const raw = buildGmailRaw({ to, cc, bcc, subject, body: String(body || ''), html: typeof html === 'string' ? html : undefined });
-      const { ok, status, data } = await callGmailApi(tok.accessToken, '/users/me/messages/send', {
-        raw,
-        ...(threadId ? { threadId: String(threadId) } : {}),
-      });
-      if (!ok) {
-        if (status === 0) return res.status(502).json({ error: 'Could not reach Gmail. Check your connection and try again.' });
-        return res.status(502).json({ error: data?.error?.message || `Gmail send failed (HTTP ${status}).` });
-      }
-      res.json({ success: true, id: data?.id, threadId: data?.threadId });
-    } catch (e) {
-      console.error('[gmail] send failed:', (e as Error)?.message);
-      res.status(500).json({ error: 'Could not send the email right now.' });
+// Send a real email from the business's connected Gmail account.
+// The access token stays server-side; the sender is whichever Gmail
+// account the owner connected in Settings.
+app.post('/api/business/:id/gmail/send', gmailSendLimiter, async (req: Request, res: Response) => {
+  try {
+    const business = db.getBusiness(req.params.id);
+    if (!business) return res.status(404).json({ error: 'Business not found' });
+    const { to, cc, bcc, subject, body, html, threadId } = (req.body as any) || {};
+    const recipientError = validateGmailRecipients(to, cc, bcc);
+    if (recipientError) return res.status(400).json({ error: recipientError });
+    if (!String(subject || '').trim()) {
+      return res.status(400).json({ error: 'Subject is required.' });
     }
-  });
+    const tok = await getGmailAccessToken(req.params.id);
+    if (!tok) {
+      return res.status(400).json({ error: 'Connect Gmail in Settings first' });
+    }
+    const raw = buildGmailRaw({ to, cc, bcc, subject, body: String(body || ''), html: typeof html === 'string' ? html : undefined });
+    const { ok, status, data } = await callGmailApi(tok.accessToken, '/users/me/messages/send', {
+      raw,
+      ...(threadId ? { threadId: String(threadId) } : {}),
+    });
+    if (!ok) {
+      if (status === 0) return res.status(502).json({ error: 'Could not reach Gmail. Check your connection and try again.' });
+      return res.status(502).json({ error: data?.error?.message || `Gmail send failed (HTTP ${status}).` });
+    }
+    res.json({ success: true, id: data?.id, threadId: data?.threadId });
+  } catch (e) {
+    console.error('[gmail] send failed:', (e as Error)?.message);
+    res.status(500).json({ error: 'Could not send the email right now.' });
+  }
+});
 
-  // Save a real draft to the business's connected Gmail account.
-  app.post('/api/business/:id/gmail/drafts', gmailSendLimiter, async (req: Request, res: Response) => {
-    try {
-      const business = db.getBusiness(req.params.id);
-      if (!business) return res.status(404).json({ error: 'Business not found' });
-      const { to, cc, bcc, subject, body, html, threadId } = (req.body as any) || {};
-      const recipientError = validateGmailRecipients(to, cc, bcc);
-      if (recipientError) return res.status(400).json({ error: recipientError });
-      if (!String(subject || '').trim()) {
-        return res.status(400).json({ error: 'Subject is required.' });
-      }
-      const tok = await getGmailAccessToken(req.params.id);
-      if (!tok) {
-        return res.status(400).json({ error: 'Connect Gmail in Settings first' });
-      }
-      const raw = buildGmailRaw({ to, cc, bcc, subject, body: String(body || ''), html: typeof html === 'string' ? html : undefined });
-      const { ok, status, data } = await callGmailApi(tok.accessToken, '/users/me/drafts', {
-        message: { raw, ...(threadId ? { threadId: String(threadId) } : {}) },
-      });
-      if (!ok) {
-        if (status === 0) return res.status(502).json({ error: 'Could not reach Gmail. Check your connection and try again.' });
-        return res.status(502).json({ error: data?.error?.message || `Gmail draft failed (HTTP ${status}).` });
-      }
-      res.json({ success: true, id: data?.id });
-    } catch (e) {
-      console.error('[gmail] draft failed:', (e as Error)?.message);
-      res.status(500).json({ error: 'Could not save the draft right now.' });
+// Save a real draft to the business's connected Gmail account.
+app.post('/api/business/:id/gmail/drafts', gmailSendLimiter, async (req: Request, res: Response) => {
+  try {
+    const business = db.getBusiness(req.params.id);
+    if (!business) return res.status(404).json({ error: 'Business not found' });
+    const { to, cc, bcc, subject, body, html, threadId } = (req.body as any) || {};
+    const recipientError = validateGmailRecipients(to, cc, bcc);
+    if (recipientError) return res.status(400).json({ error: recipientError });
+    if (!String(subject || '').trim()) {
+      return res.status(400).json({ error: 'Subject is required.' });
     }
-  });
+    const tok = await getGmailAccessToken(req.params.id);
+    if (!tok) {
+      return res.status(400).json({ error: 'Connect Gmail in Settings first' });
+    }
+    const raw = buildGmailRaw({ to, cc, bcc, subject, body: String(body || ''), html: typeof html === 'string' ? html : undefined });
+    const { ok, status, data } = await callGmailApi(tok.accessToken, '/users/me/drafts', {
+      message: { raw, ...(threadId ? { threadId: String(threadId) } : {}) },
+    });
+    if (!ok) {
+      if (status === 0) return res.status(502).json({ error: 'Could not reach Gmail. Check your connection and try again.' });
+      return res.status(502).json({ error: data?.error?.message || `Gmail draft failed (HTTP ${status}).` });
+    }
+    res.json({ success: true, id: data?.id });
+  } catch (e) {
+    console.error('[gmail] draft failed:', (e as Error)?.message);
+    res.status(500).json({ error: 'Could not save the draft right now.' });
+  }
 });
 
 // Build the CustomerRequest a website demo submission becomes. Shared by the
