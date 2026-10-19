@@ -3,6 +3,7 @@ import { Inbox, ChevronRight, Share2, Link2 } from 'lucide-react';
 import { CustomerRequest } from '../../types';
 import { RequestDetailModal } from '../RequestDetailModal';
 import { haptic } from '../../utils/haptics';
+import { buildPublicBookingLink } from '../../config/api';
 
 interface RequestsViewProps {
   customerRequests?: CustomerRequest[];
@@ -44,7 +45,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
 
   const [linkCopied, setLinkCopied] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<CustomerRequest | null>(null);
-  const bookingLink = businessId ? `${window.location.origin}/#/book/${businessId}` : '';
+  const bookingLink = buildPublicBookingLink(businessId);
   const shareBookingLink = async () => {
     if (!bookingLink) return;
     haptic.light();
