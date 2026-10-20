@@ -7,12 +7,17 @@
  * "rcosmobile://gmail-connected"), so nobody gets stuck in a separate window.
  *
  * Flow:
- *   1. App opens  GET /oauth/gmail/start?businessId=..&state=..
+ *   1. App opens  GET /oauth/gmail/start?businessId=..&userEmail=..&state=..
  *   2. Server redirects to Google's consent screen (scopes = GMAIL_SCOPES).
  *   3. Google redirects to GET /oauth/gmail/callback?code=..&state=..
  *   4. Server swaps the code for tokens (client secret never leaves the server),
- *      saves them per business, and bounces the user back into the app.
+ *      saves them per business AND per user, and bounces the user back into the app.
  *   5. App calls GET /api/business/:id/gmail-token for a fresh access token.
+ *
+ * Tokens are stored per user: the store key is "businessId::userEmail", so
+ * every person on a team connects and sees ONLY their own Gmail. A pre-fix
+ * record stored under the bare businessId is honored ONLY for the user whose
+ * email matches the address recorded on it (see getGmailAccessToken).
  *
  * Needs in the environment:
  *   GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET  (Google Cloud, "Web application" client)
@@ -55,9 +60,19 @@ interface GmailTokenRecord {
   updatedAt: string;
 }
 
-// One-time login states: state -> { businessId, createdAt }. Single-use, 10-min TTL.
-const pendingStates = new Map<string, { businessId: string; createdAt: number }>();
+// One-time login states: state -> { businessId, userEmail, createdAt }. Single-use, 10-min TTL.
+const pendingStates = new Map<string, { businessId: string; userEmail: string; createdAt: number }>();
 const STATE_TTL_MS = 10 * 60 * 1000;
+
+/** Normalizes an email for storage keys and comparisons. */
+function normalizeEmail(email: unknown): string {
+  return String(email || '').trim().toLowerCase();
+}
+
+/** Per-user token record key: every person on a team gets their own record. */
+function tokenKey(businessId: string, userEmail: string): string {
+  return `${businessId}::${normalizeEmail(userEmail)}`;
+}
 
 function getOAuthConfig() {
   const clientId = (process.env.GMAIL_OAUTH_CLIENT_ID || '').trim();
@@ -98,6 +113,7 @@ export function registerGmailOAuthPublic(app: Express) {
   app.get('/oauth/gmail/start', (req: Request, res: Response) => {
     const { clientId, redirectUri } = getOAuthConfig();
     const businessId = String(req.query.businessId || '').trim();
+    const userEmail = normalizeEmail(req.query.userEmail);
     const state = String(req.query.state || '').trim();
     if (!clientId || !redirectUri) {
       return res.status(500).send(setupMissingPage());
@@ -105,7 +121,15 @@ export function registerGmailOAuthPublic(app: Express) {
     if (!businessId || !state) {
       return res.status(400).send('Missing businessId or state.');
     }
-    pendingStates.set(state, { businessId, createdAt: Date.now() });
+    // The token must be stored for the person connecting it — never for the
+    // business as a whole. Without the connecting user's email there is
+    // nowhere safe to save the result, so refuse rather than fall back to
+    // the old business-only storage (that is what leaked one person's
+    // Gmail to every teammate).
+    if (!userEmail) {
+      return res.status(400).send('Missing userEmail. Sign in to the app first, then tap "Connect Gmail" again.');
+    }
+    pendingStates.set(state, { businessId, userEmail, createdAt: Date.now() });
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -170,10 +194,20 @@ export function registerGmailOAuthPublic(app: Express) {
       } catch { /* email is nice-to-have */ }
 
       const store = loadTokens();
-      const prev = store[pending.businessId];
-      store[pending.businessId] = {
+      const key = tokenKey(pending.businessId, pending.userEmail);
+      const prev = store[key];
+      // Refresh-token continuity: Google only sends a refresh token on some
+      // logins. Reuse the previous per-user record's token; as a last resort,
+      // the pre-fix business-only record — but ONLY when that record's email
+      // matches the Gmail account that was just connected (never hand one
+      // person's refresh token to another).
+      const legacy = store[pending.businessId];
+      const legacyOk =
+        legacy && normalizeEmail(legacy.email) !== '' &&
+        normalizeEmail(legacy.email) === normalizeEmail(email);
+      store[key] = {
         accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || prev?.refreshToken || '',
+        refreshToken: tokens.refresh_token || prev?.refreshToken || (legacyOk ? legacy.refreshToken : '') || '',
         expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
         email,
         updatedAt: new Date().toISOString(),
@@ -200,23 +234,24 @@ export function registerGmailOAuthPublic(app: Express) {
   });
 }
 
-/**
- * Returns a fresh access token for the business, refreshing it with Google
- * when it is expired (or about to expire). Used by the gated API route below.
- */
-/** Remove the stored Gmail tokens for one business (used by account deletion). */
+/** Remove the stored Gmail tokens for one business (used by account deletion).
+ * Deletes the pre-fix business-only record AND every per-user record for
+ * the business, so nobody's Gmail token is left behind. */
 export function deleteGmailTokens(businessId: string): void {
   const store = loadTokens();
-  if (businessId in store) {
-    delete store[businessId];
-    saveTokens(store);
-  }
+  const prefix = `${businessId}::`;
+  const keys = Object.keys(store).filter((k) => k === businessId || k.startsWith(prefix));
+  if (keys.length === 0) return;
+  for (const k of keys) delete store[k];
+  saveTokens(store);
 }
 
-export async function getGmailAccessToken(businessId: string): Promise<{ accessToken: string; email: string } | null> {
-  const store = loadTokens();
-  const rec = store[businessId];
-  if (!rec || !rec.accessToken) return null;
+/** Freshens one record's access token when expired, saving under its own key. */
+async function freshAccessToken(
+  store: Record<string, GmailTokenRecord>,
+  key: string,
+  rec: GmailTokenRecord
+): Promise<{ accessToken: string; email: string }> {
   if (rec.expiresAt - Date.now() > 60_000) {
     return { accessToken: rec.accessToken, email: rec.email };
   }
@@ -239,9 +274,39 @@ export async function getGmailAccessToken(businessId: string): Promise<{ accessT
     const t = (await r.json()) as any;
     rec.accessToken = t.access_token;
     rec.expiresAt = Date.now() + (t.expires_in || 3600) * 1000;
-    saveTokens({ ...store, [businessId]: rec });
+    saveTokens({ ...store, [key]: rec });
   } catch (e) {
     console.warn('[gmail-oauth] token refresh failed:', (e as Error)?.message);
   }
   return { accessToken: rec.accessToken, email: rec.email };
+}
+
+/**
+ * Returns a fresh access token for ONE person's connected Gmail in this
+ * business — never another user's. The lookup is the per-user record
+ * (businessId::userEmail). A pre-fix record stored under the bare
+ * businessId is honored ONLY when its stored email matches the requester,
+ * so the existing owner keeps their connection while teammates get
+ * nothing of it. Returns null for an unknown/empty requester or when the
+ * requester has not connected Gmail.
+ */
+export async function getGmailAccessToken(
+  businessId: string,
+  userEmail: string
+): Promise<{ accessToken: string; email: string } | null> {
+  const requester = normalizeEmail(userEmail);
+  if (!requester) return null;
+  const store = loadTokens();
+  const perUser = store[tokenKey(businessId, requester)];
+  if (perUser && perUser.accessToken) {
+    return freshAccessToken(store, tokenKey(businessId, requester), perUser);
+  }
+  // Legacy migration: the old record belongs to exactly one Gmail address.
+  // Hand it back only to that same person — never to a different teammate.
+  const legacy = store[businessId];
+  if (legacy && legacy.accessToken && normalizeEmail(legacy.email) !== '') {
+    if (normalizeEmail(legacy.email) !== requester) return null;
+    return freshAccessToken(store, businessId, legacy);
+  }
+  return null;
 }
