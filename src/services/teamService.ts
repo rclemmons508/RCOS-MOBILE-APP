@@ -7,7 +7,7 @@ import { BusinessAccount, BusinessMember, TeamInvite, TeamMessage } from '../typ
  * header so the server can check team membership while the Firebase
  * login gate is OFF. Once the gate is ON, the verified token takes over.
  */
-function teamHeaders(email: string): Record<string, string> {
+export function teamHeaders(email: string): Record<string, string> {
   return { 'X-User-Email': (email || '').trim().toLowerCase() };
 }
 
