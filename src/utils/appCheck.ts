@@ -14,10 +14,14 @@
  * - The Gmail probe uses only the HTTP status of the token endpoint
  *   (connected = 200, not connected = 404). The token itself is
  *   discarded and never stored or shown.
+ * - The team probes identify as the signed-in user, sending the same
+ *   X-User-Email header Team Chat itself sends. Without it the server
+ *   refuses the probe with a 403 that says nothing about Team Chat.
  * - Every verdict and fix uses plain, jargon-free words.
  */
 import { apiFetch } from '../lib/api';
 import { employeeCustomizationService } from '../services/employeeCustomizationService';
+import { teamHeaders } from '../services/teamService';
 import type { AutomationTask, BusinessAccount, User } from '../types';
 
 export type AppCheckVerdict = 'working' | 'wrong-step' | 'system-error' | 'not-yet';
@@ -41,9 +45,9 @@ export interface AppCheckInput {
 
 type Probe = { ok: boolean; status: number | null; count: number | null };
 
-async function probeGet(endpoint: string): Promise<Probe> {
+async function probeGet(endpoint: string, headers?: Record<string, string>): Promise<Probe> {
   try {
-    const data = await apiFetch<unknown>(endpoint, { timeoutMs: 8000 });
+    const data = await apiFetch<unknown>(endpoint, { timeoutMs: 8000, headers });
     return { ok: true, status: 200, count: Array.isArray(data) ? data.length : null };
   } catch (e: any) {
     const status = typeof e?.status === 'number' ? e.status : null;
@@ -119,13 +123,20 @@ export async function runAppCheck(input: AppCheckInput): Promise<AppCheckResult[
   }
 
   const skipped: Probe = { ok: false, status: null, count: null };
+  // The team endpoints check membership by the X-User-Email header while
+  // the login gate is off — the same header Team Chat itself sends (see
+  // teamHeaders in teamService). A probe with no email is refused with a
+  // 403 even when Team Chat works, so the team probes must say who is
+  // asking. With no signed-in email the probes are skipped and the
+  // Messages verdict reports "not yet" instead of a false system error.
+  const teamEmail = currentUser?.email || '';
   const [businessRecord, requests, actions, teamMessages, team, gmail] = hasBusiness
     ? await Promise.all([
         probeGet(`/api/business/${enc}`),
         probeGet(`/api/business/${enc}/requests`),
         probeGet(`/api/business/${enc}/actions`),
-        probeGet(`/api/business/${enc}/team-messages`),
-        probeGet(`/api/business/${enc}/team`),
+        teamEmail ? probeGet(`/api/business/${enc}/team-messages`, teamHeaders(teamEmail)) : skipped,
+        teamEmail ? probeGet(`/api/business/${enc}/team`, teamHeaders(teamEmail)) : skipped,
         probeGet(`/api/business/${enc}/gmail-token`),
       ])
     : [skipped, skipped, skipped, skipped, skipped, skipped];
@@ -295,6 +306,14 @@ export async function runAppCheck(input: AppCheckInput): Promise<AppCheckResult[
       verdict: 'not-yet',
       detail: 'Needs a company first.',
       fix: notYetFix(),
+    });
+  } else if (!teamEmail) {
+    results.push({
+      id: 'messages',
+      title: 'Messages / Team Chat',
+      verdict: 'not-yet',
+      detail: 'Needs a sign-in first.',
+      fix: ['Sign in with your account.', 'Run the check again.'],
     });
   } else if (teamMessages.ok && team.ok) {
     results.push({
