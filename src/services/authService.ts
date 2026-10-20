@@ -469,7 +469,7 @@ class AuthService {
       const googleUser = result.user;
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
-        setCachedAccessToken(credential.accessToken);
+        setCachedAccessToken(credential.accessToken, { userEmail: googleUser.email || '' });
       }
 
       if (!googleUser.email) {

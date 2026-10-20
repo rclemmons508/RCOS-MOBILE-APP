@@ -305,12 +305,19 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   }
 
 // Fresh Gmail access token for the app's Gmail tab (auto-refreshes when expired).
-// Gated: only a logged-in operator can pull tokens for their business.
+// Per user: returns only the CALLER's own connected Gmail token, identified
+// the same way the team endpoints identify callers (verified token email
+// once the login gate is on, else the X-User-Email header). A caller with
+// no identity gets nothing — never another user's Gmail.
 app.get('/api/business/:id/gmail-token', async (req: Request, res: Response) => {
   try {
-    const tok = await getGmailAccessToken(req.params.id);
+    const requesterEmail = teamRequesterEmail(req);
+    if (!requesterEmail) {
+      return res.status(401).json({ error: 'Sign in first, then open Gmail.' });
+    }
+    const tok = await getGmailAccessToken(req.params.id, requesterEmail);
     if (!tok) {
-      return res.status(404).json({ error: 'Gmail is not connected for this business yet.' });
+      return res.status(404).json({ error: 'Gmail is not connected for this user yet.' });
     }
     res.json(tok);
   } catch (e) {
@@ -398,9 +405,9 @@ app.get('/api/public/business/:id', (req: Request, res: Response) => {
   });
 });
 
-// Send a real email from the business's connected Gmail account.
+// Send a real email from the caller's OWN connected Gmail account.
 // The access token stays server-side; the sender is whichever Gmail
-// account the owner connected in Settings.
+// account the calling user connected — never a teammate's.
 app.post('/api/business/:id/gmail/send', gmailSendLimiter, async (req: Request, res: Response) => {
   try {
     const business = db.getBusiness(req.params.id);
@@ -411,9 +418,13 @@ app.post('/api/business/:id/gmail/send', gmailSendLimiter, async (req: Request, 
     if (!String(subject || '').trim()) {
       return res.status(400).json({ error: 'Subject is required.' });
     }
-    const tok = await getGmailAccessToken(req.params.id);
+    const requesterEmail = teamRequesterEmail(req);
+    if (!requesterEmail) {
+      return res.status(401).json({ error: 'Sign in first, then send.' });
+    }
+    const tok = await getGmailAccessToken(req.params.id, requesterEmail);
     if (!tok) {
-      return res.status(400).json({ error: 'Connect Gmail in Settings first' });
+      return res.status(400).json({ error: 'Connect your Gmail first' });
     }
     const raw = buildGmailRaw({ to, cc, bcc, subject, body: String(body || ''), html: typeof html === 'string' ? html : undefined });
     const { ok, status, data } = await callGmailApi(tok.accessToken, '/users/me/messages/send', {
@@ -431,7 +442,7 @@ app.post('/api/business/:id/gmail/send', gmailSendLimiter, async (req: Request, 
   }
 });
 
-// Save a real draft to the business's connected Gmail account.
+// Save a real draft to the caller's OWN connected Gmail account.
 app.post('/api/business/:id/gmail/drafts', gmailSendLimiter, async (req: Request, res: Response) => {
   try {
     const business = db.getBusiness(req.params.id);
@@ -442,9 +453,13 @@ app.post('/api/business/:id/gmail/drafts', gmailSendLimiter, async (req: Request
     if (!String(subject || '').trim()) {
       return res.status(400).json({ error: 'Subject is required.' });
     }
-    const tok = await getGmailAccessToken(req.params.id);
+    const requesterEmail = teamRequesterEmail(req);
+    if (!requesterEmail) {
+      return res.status(401).json({ error: 'Sign in first, then save a draft.' });
+    }
+    const tok = await getGmailAccessToken(req.params.id, requesterEmail);
     if (!tok) {
-      return res.status(400).json({ error: 'Connect Gmail in Settings first' });
+      return res.status(400).json({ error: 'Connect your Gmail first' });
     }
     const raw = buildGmailRaw({ to, cc, bcc, subject, body: String(body || ''), html: typeof html === 'string' ? html : undefined });
     const { ok, status, data } = await callGmailApi(tok.accessToken, '/users/me/drafts', {

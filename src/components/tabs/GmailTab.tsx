@@ -40,6 +40,7 @@ import {
   INITIAL_PREVIEW_MESSAGES
 } from '../../lib/gmail';
 import { apiFetch } from '../../lib/api';
+import { teamHeaders } from '../../services/teamService';
 import { GmailComposeModal } from '../gmail/GmailComposeModal';
 import { GmailMessageDetailModal } from '../gmail/GmailMessageDetailModal';
 import { GmailConfirmModal, GmailActionType } from '../gmail/GmailConfirmModal';
@@ -131,7 +132,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
   useEffect(() => {
     if (token || !businessId || restoreAttemptedRef.current) return;
     restoreAttemptedRef.current = true;
-    restoreGmailToken(businessId);
+    restoreGmailToken(businessId, currentUser?.email || '');
   }, [token, businessId]);
 
   const loadLiveMailbox = useCallback(async (authToken: string) => {
@@ -194,7 +195,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
     setIsAuthenticating(true);
     setAuthError(null);
     try {
-      const { user, accessToken } = await authenticateGmail(businessId);
+      const { user, accessToken } = await authenticateGmail(businessId, currentUser?.email || '');
       setToken(accessToken);
       setIsLiveConnected(true);
       setStatusNotice(`Authenticated with Google as ${user.email}. Live Gmail synced.`);
@@ -250,7 +251,11 @@ export const GmailTab: React.FC<GmailTabProps> = ({
     }
     await apiFetch<{ success: boolean; id: string }>(
       `/api/business/${encodeURIComponent(businessId)}/gmail/send`,
-      { method: 'POST', body: JSON.stringify(params) }
+      {
+        method: 'POST',
+        headers: teamHeaders(currentUser?.email || ''),
+        body: JSON.stringify(params),
+      }
     );
     setStatusNotice(`Email successfully sent to ${params.to}`);
     if (token) {
@@ -267,7 +272,11 @@ export const GmailTab: React.FC<GmailTabProps> = ({
     }
     await apiFetch<{ success: boolean; id: string }>(
       `/api/business/${encodeURIComponent(businessId)}/gmail/drafts`,
-      { method: 'POST', body: JSON.stringify(params) }
+      {
+        method: 'POST',
+        headers: teamHeaders(currentUser?.email || ''),
+        body: JSON.stringify(params),
+      }
     );
     setStatusNotice('Draft saved to Gmail.');
     if (token) {
