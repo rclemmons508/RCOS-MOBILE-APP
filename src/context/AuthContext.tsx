@@ -101,7 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await signInWithPopup(auth, googleProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
-        setCachedAccessToken(credential.accessToken);
+        setCachedAccessToken(credential.accessToken, { userEmail: result.user?.email || '' });
       }
       setUser(result.user);
       setIsSigningIn(false);
