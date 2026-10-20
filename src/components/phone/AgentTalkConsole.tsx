@@ -117,6 +117,9 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
   const audioElRef = useRef<HTMLElement | null>(null);
   const timerRef = useRef<number | null>(null);
   const agentTimeoutRef = useRef<number | null>(null);
+  // Set the moment the agent's audio track is heard — including during
+  // room.connect(), before the no-agent watchdog below is armed.
+  const agentHeardRef = useRef(false);
   const closedRef = useRef(false);
   const lastPointerTypeRef = useRef<string>('touch');
 
@@ -150,6 +153,8 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
   };
 
   const failNoAgent = () => {
+    // Never kill a call the agent actually answered.
+    if (agentHeardRef.current) return;
     agentTimeoutRef.current = null;
     cleanupRoom();
     setPhase('error');
@@ -163,6 +168,7 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
     let cancelled = false;
     const connect = async () => {
       try {
+        agentHeardRef.current = false;
         const { token, url } = await apiFetch<VoiceTokenResponse>('/api/voice/token', {
           method: 'POST',
           body: JSON.stringify({ businessId: businessId || 'default', persona }),
@@ -173,6 +179,7 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
         roomRef.current = room;
         room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
           if (track.kind === Track.Kind.Audio && !participant.isLocal) {
+            agentHeardRef.current = true;
             if (agentTimeoutRef.current) window.clearTimeout(agentTimeoutRef.current);
             agentTimeoutRef.current = null;
             const el = track.attach();
@@ -227,7 +234,14 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
         setCallSeconds(0);
         timerRef.current = window.setInterval(() => setCallSeconds((s) => s + 1), 1000);
         // If no agent audio arrives within 25s, the worker is down — fail loudly.
-        agentTimeoutRef.current = window.setTimeout(failNoAgent, 25000);
+        // Arm ONLY if the agent has not already been heard: the agent is
+        // dispatched into the room before this client connects, so its audio
+        // track can subscribe during room.connect() — before this line runs.
+        // Arming the watchdog anyway left nothing to cancel it, and it killed
+        // healthy calls at exactly 25s (Oct 20, 2026).
+        if (!agentHeardRef.current) {
+          agentTimeoutRef.current = window.setTimeout(failNoAgent, 25000);
+        }
       } catch (e: any) {
         if (cancelled) return;
         setPhase('error');
