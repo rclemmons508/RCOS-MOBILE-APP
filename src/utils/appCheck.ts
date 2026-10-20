@@ -137,7 +137,9 @@ export async function runAppCheck(input: AppCheckInput): Promise<AppCheckResult[
         probeGet(`/api/business/${enc}/actions`),
         teamEmail ? probeGet(`/api/business/${enc}/team-messages`, teamHeaders(teamEmail)) : skipped,
         teamEmail ? probeGet(`/api/business/${enc}/team`, teamHeaders(teamEmail)) : skipped,
-        probeGet(`/api/business/${enc}/gmail-token`),
+        // Gmail tokens are per user too: the probe must say who is asking,
+        // or the endpoint refuses it and the check cries wolf.
+        teamEmail ? probeGet(`/api/business/${enc}/gmail-token`, teamHeaders(teamEmail)) : skipped,
       ])
     : [skipped, skipped, skipped, skipped, skipped, skipped];
 
@@ -356,6 +358,14 @@ export async function runAppCheck(input: AppCheckInput): Promise<AppCheckResult[
       verdict: 'not-yet',
       detail: 'Needs a company first.',
       fix: notYetFix(),
+    });
+  } else if (!teamEmail) {
+    results.push({
+      id: 'gmail',
+      title: 'Gmail',
+      verdict: 'not-yet',
+      detail: 'Needs a sign-in first.',
+      fix: ['Sign in with your account.', 'Run the check again.'],
     });
   } else if (gmail.ok) {
     results.push({
