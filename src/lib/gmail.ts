@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { apiFetch } from './api';
 import { getApiBaseUrl } from '../config/api';
+import { teamHeaders } from '../services/teamService';
 
 export interface GmailMessageSummary {
   id: string;
@@ -51,13 +52,41 @@ export interface GmailLabel {
 }
 
 // In-Memory Token Cache (MANDATORY: Never stored in localStorage or sessionStorage)
-let cachedAccessToken: string | null = null;
+// The cached token is tagged with WHOSE Gmail it is (businessId + userEmail),
+// so one person's token can never be served to a teammate who signs in on
+// the same device. A token with no userEmail is treated as unbound.
+interface CachedGmailToken {
+  token: string;
+  businessId: string; // '' when not tied to a business (web popup sign-in)
+  userEmail: string; // normalized lowercase; whose Gmail this token opens
+}
+
+let cachedGmailToken: CachedGmailToken | null = null;
 let tokenListeners: ((token: string | null) => void)[] = [];
 
-export const getCachedAccessToken = (): string | null => cachedAccessToken;
+function normalizeGmailEmail(email: unknown): string {
+  return String(email || '').trim().toLowerCase();
+}
 
-export const setCachedAccessToken = (token: string | null) => {
-  cachedAccessToken = token;
+export const getCachedAccessToken = (): string | null => cachedGmailToken?.token ?? null;
+
+export const getCachedGmailIdentity = (): { businessId: string; userEmail: string } | null =>
+  cachedGmailToken
+    ? { businessId: cachedGmailToken.businessId, userEmail: cachedGmailToken.userEmail }
+    : null;
+
+export const setCachedAccessToken = (
+  token: string | null,
+  identity?: { businessId?: string; userEmail?: string }
+) => {
+  cachedGmailToken =
+    token === null
+      ? null
+      : {
+          token,
+          businessId: identity?.businessId || '',
+          userEmail: normalizeGmailEmail(identity?.userEmail),
+        };
   tokenListeners.forEach((listener) => listener(token));
 };
 
@@ -70,21 +99,36 @@ export const onTokenChange = (listener: (token: string | null) => void) => {
 
 /**
  * Silently restore the Gmail access token from the server, without OAuth.
- * The server holds the Gmail refresh token and mints a fresh access token.
- * The restored token stays in memory only — it is never written to
+ * Per user: restores ONLY the signed-in user's own Gmail token — the
+ * server stores one token record per person, and the request says who is
+ * asking (the same X-User-Email header Team Chat sends). The restored
+ * token stays in memory only — it is never written to
  * localStorage or sessionStorage, same as every other token in this file.
- * Returns the token, or null when Gmail is not connected or the restore
- * failed. Never throws: callers treat null as "show the Connect flow".
+ * Returns the token, or null when this user has not connected Gmail or the
+ * restore failed. Never throws: callers treat null as "show the Connect flow".
  */
-export async function restoreGmailToken(businessId: string): Promise<string | null> {
-  if (getCachedAccessToken()) return getCachedAccessToken();
-  if (!businessId) return null;
+export async function restoreGmailToken(businessId: string, userEmail: string): Promise<string | null> {
+  const requester = normalizeGmailEmail(userEmail);
+  if (!businessId || !requester) return null;
+  const cached = cachedGmailToken;
+  if (cached && cached.userEmail === requester && (cached.businessId === businessId || cached.businessId === '')) {
+    // Same person's token. A cached token not yet tied to a business
+    // (the web popup sign-in path) gets bound here so later checks are exact.
+    if (cached.businessId === '') {
+      cachedGmailToken = { ...cached, businessId };
+    }
+    return cached.token;
+  }
+  // A cached token for someone else must never ride along into this user's
+  // session — drop it before asking the server for this user's own.
+  if (cachedGmailToken) setCachedAccessToken(null);
   try {
     const tok = await apiFetch<{ accessToken: string; email: string }>(
-      `/api/business/${encodeURIComponent(businessId)}/gmail-token`
+      `/api/business/${encodeURIComponent(businessId)}/gmail-token`,
+      { headers: teamHeaders(requester) }
     );
     if (!tok?.accessToken) return null;
-    setCachedAccessToken(tok.accessToken);
+    setCachedAccessToken(tok.accessToken, { businessId, userEmail: requester });
     return tok.accessToken;
   } catch (e) {
     console.warn('[GmailAuth] Silent token restore failed:', (e as any)?.message);
@@ -107,7 +151,16 @@ onAuthStateChanged(auth, (user) => {
  * On Android this uses a real Google login in a system browser tab and
  * returns the user straight back into the app — no separate window left behind.
  */
-export async function authenticateGmail(businessId?: string): Promise<{ user: any; accessToken: string }> {
+export async function authenticateGmail(
+  businessId?: string,
+  userEmail?: string
+): Promise<{ user: any; accessToken: string }> {
+  // The person connecting must be identified so the server stores the token
+  // under THEIR account, not the business as a whole.
+  const requester = normalizeGmailEmail(userEmail);
+  if (!requester) {
+    throw new Error('Sign in first, then connect Gmail.');
+  }
   if (Capacitor.isNativePlatform()) {
     // Google does not allow logins inside an app's embedded browser, so we
     // open Google's own login page in a proper system browser tab. When the
@@ -117,7 +170,7 @@ export async function authenticateGmail(businessId?: string): Promise<{ user: an
     const biz = businessId || 'default';
     const state = `g${Date.now()}${Math.floor(Math.random() * 1000000)}`;
     const startUrl =
-      `${getApiBaseUrl()}/oauth/gmail/start?businessId=${encodeURIComponent(biz)}&state=${encodeURIComponent(state)}`;
+      `${getApiBaseUrl()}/oauth/gmail/start?businessId=${encodeURIComponent(biz)}&userEmail=${encodeURIComponent(requester)}&state=${encodeURIComponent(state)}`;
 
     return new Promise((resolve, reject) => {
       let done = false;
@@ -132,9 +185,10 @@ export async function authenticateGmail(businessId?: string): Promise<{ user: an
         }
         try {
           const tok = await apiFetch<{ accessToken: string; email: string }>(
-            `/api/business/${encodeURIComponent(biz)}/gmail-token`
+            `/api/business/${encodeURIComponent(biz)}/gmail-token`,
+            { headers: teamHeaders(requester) }
           );
-          setCachedAccessToken(tok.accessToken);
+          setCachedAccessToken(tok.accessToken, { businessId: biz, userEmail: requester });
           resolve({ user: { email: tok.email || '' } as any, accessToken: tok.accessToken });
         } catch (e) {
           reject(e);
@@ -164,7 +218,10 @@ export async function authenticateGmail(businessId?: string): Promise<{ user: an
       throw new Error('No access token returned from Google authentication.');
     }
 
-    setCachedAccessToken(token);
+    setCachedAccessToken(token, {
+      businessId: businessId || '',
+      userEmail: (result.user as any)?.email || requester,
+    });
     return { user: result.user, accessToken: token };
   } catch (err: any) {
     console.warn('[GmailAuth] Popup authentication failed:', err?.code, err?.message);
