@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
+import { PipelineHealthCard } from '../dashboard/PipelineHealthCard';
 import { haptic } from '../../utils/haptics';
 import { buildPublicBookingLink } from '../../config/api';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
@@ -189,6 +190,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         clients={clients}
         customerRequests={customerRequests}
         actions={actions}
+        onNavigateTab={onNavigateTab}
+      />
+
+      {/* Pipeline health — stalled quotes, aging invoices, quiet customers */}
+      <PipelineHealthCard
+        actions={actions}
+        clients={clients}
         onNavigateTab={onNavigateTab}
       />
 
