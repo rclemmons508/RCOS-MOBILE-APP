@@ -1645,6 +1645,7 @@ export default function App() {
               pendingApprovals={actions.filter((x) => x.status === 'awaiting_approval').length}
               activeEmployees={activeBusiness.activeEmployees}
               customerRequests={customerRequests}
+              clients={clients}
               automationsOn={automationTasks.filter((t) => t.isAutomated).length}
               automationsTotal={automationTasks.length}
               proactiveSuggestion={proactiveSuggestion}

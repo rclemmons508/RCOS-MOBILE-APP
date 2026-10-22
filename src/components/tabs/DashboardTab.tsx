@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PhoneCall, Job, ActionRecord, SystemMetric, TabType, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
+import { PhoneCall, Job, Client, ActionRecord, SystemMetric, TabType, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
 import { 
   PhoneCall as PhoneIcon, 
   Briefcase, 
@@ -31,6 +31,7 @@ import { haptic } from '../../utils/haptics';
 import { buildPublicBookingLink } from '../../config/api';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
 import { RequestDetailModal } from '../RequestDetailModal';
+import { GlobalSearchBar } from '../GlobalSearchBar';
 
 interface DashboardTabProps {
   calls: PhoneCall[];
@@ -51,6 +52,7 @@ interface DashboardTabProps {
   pendingApprovals?: number;
   activeEmployees?: Record<string, boolean>;
   customerRequests?: CustomerRequest[];
+  clients?: Client[];
   automationsOn?: number;
   automationsTotal?: number;
   onNavigateTab: (tab: TabType) => void;
@@ -83,6 +85,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   pendingApprovals = 0,
   activeEmployees = {},
   customerRequests = [],
+  clients = [],
   automationsOn = 0,
   automationsTotal = 0,
   onNavigateTab,
@@ -178,6 +181,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         onNavigateTab={onNavigateTab}
         industry={industry}
         industryModifierOn={industryModifierOn}
+      />
+
+      {/* Global search — one box that finds jobs, clients, requests, quotes, invoices */}
+      <GlobalSearchBar
+        jobs={jobs}
+        clients={clients}
+        customerRequests={customerRequests}
+        actions={actions}
+        onNavigateTab={onNavigateTab}
       />
 
       {/* Friendly Header with Business & Operator Status */}
