@@ -6,6 +6,7 @@ import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog'
 import { timeAgoShort, describeFollowupWindow } from '../../utils/automation';
 import { asText, asScore, asStringList } from '../../utils/safeRender';
 import { FOLLOWUP_META, isFollowupRuleId } from '../../utils/followups';
+import { MAX_BUSINESS_KNOWLEDGE_LENGTH } from '../../utils/agentBehavior';
 import { DiagnosticsPanel } from '../diagnostics/DiagnosticsPanel';
 import { AppCheckPanel } from '../diagnostics/AppCheckPanel';
 import { TrainingChecklist } from '../training/TrainingChecklist';
@@ -57,6 +58,7 @@ import {
   MessageSquare,
   Copy,
   UserPlus,
+  GraduationCap,
 } from 'lucide-react';
 
  /** Values from the Settings → My Profile editor. */
@@ -72,6 +74,7 @@ interface SettingsTabProps {
   businessId?: string;
   business?: BusinessAccount | null;
   onUpdateProfile?: (profile: ProfileUpdate) => Promise<void>;
+  onUpdateBusinessKnowledge?: (knowledge: string) => Promise<void>;
   onLogout?: () => void;
   automationTasks: AutomationTask[];
   onToggleAutomation: (taskId: string, isAutomated: boolean) => void;
@@ -116,6 +119,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   businessId,
   business,
   onUpdateProfile,
+  onUpdateBusinessKnowledge,
   onLogout,
   automationTasks,
   onToggleAutomation,
@@ -199,6 +203,34 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       setProfileError(e?.message || 'Could not save your profile. Please try again.');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  // ---- Teach Your Team (business knowledge every AI agent reads) ----
+  const [knowledgeText, setKnowledgeText] = useState(business?.businessKnowledge || '');
+  const [knowledgeSaving, setKnowledgeSaving] = useState(false);
+  const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
+  // When a different business loads, reset the editor to its saved text.
+  useEffect(() => {
+    setKnowledgeText(business?.businessKnowledge || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business?.id]);
+
+  const handleSaveKnowledge = async () => {
+    if (knowledgeText.length > MAX_BUSINESS_KNOWLEDGE_LENGTH) {
+      setKnowledgeError(`That's over the ${MAX_BUSINESS_KNOWLEDGE_LENGTH.toLocaleString()} character limit — please shorten it a little.`);
+      return;
+    }
+    if (!onUpdateBusinessKnowledge) { setKnowledgeError('Saving is not available right now.'); return; }
+    setKnowledgeSaving(true);
+    setKnowledgeError(null);
+    try {
+      await onUpdateBusinessKnowledge(knowledgeText);
+      showToast('Saved — your AI team will use this.');
+    } catch (e: any) {
+      setKnowledgeError(e?.message || 'Could not save. Please try again.');
+    } finally {
+      setKnowledgeSaving(false);
     }
   };
 
@@ -681,6 +713,38 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               {profileSaving ? 'Saving…' : 'Save profile'}
             </button>
+          </div>
+
+          {/* Teach Your Team — business knowledge every AI agent reads */}
+          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3.5">
+            <div className="flex items-center gap-2">
+              <GraduationCap className="w-4 h-4 text-lime-400" />
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Teach Your Team</h3>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Write what your business knows — prices, policies, common questions — and your whole AI team will use it: the assistants in chat and your receptionist on calls. Write it once; they all read the same page.
+            </p>
+            <textarea
+              value={knowledgeText}
+              onChange={(e) => setKnowledgeText(e.target.value)}
+              rows={10}
+              maxLength={MAX_BUSINESS_KNOWLEDGE_LENGTH}
+              autoComplete="off"
+              placeholder={'Services & prices\nWhat you offer and what it costs.\n\nOur policies\nHow you handle deposits, cancellations, warranties…\n\nCommon questions & answers\nThe things customers ask you every week.\n\nGood to know\nAnything else your team should know.'}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-lime-500 leading-relaxed"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] text-zinc-500">{knowledgeText.length.toLocaleString()} / {MAX_BUSINESS_KNOWLEDGE_LENGTH.toLocaleString()} characters</span>
+              <button
+                type="button"
+                onClick={handleSaveKnowledge}
+                disabled={knowledgeSaving}
+                className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
+              >
+                {knowledgeSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            {knowledgeError && <p className="text-xs text-red-300">{knowledgeError}</p>}
           </div>
 
           {/* Company Profile (Multi-Company Configuration) */}

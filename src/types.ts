@@ -286,6 +286,14 @@ export interface BusinessAccount {
   availableDepartments?: string[];
   pricingApproach: string;
   brandTone: string;
+  /**
+   * "Teach Your Team": free-text business knowledge the owner writes once
+   * in Settings (prices, policies, common questions) and every AI agent
+   * reads as reference — agent chat, the automation engine, and the voice
+   * receptionist. Optional; blank/absent means agents work exactly as
+   * before. Capped at 8,000 characters (see utils/agentBehavior).
+   */
+  businessKnowledge?: string;
   painPoints: string[];
   autonomyMode: AutonomyMode;
   /**

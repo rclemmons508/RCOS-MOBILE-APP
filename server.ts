@@ -22,7 +22,7 @@ import {
 } from './src/types';
 import { INDUSTRY_PRESETS } from './src/data/presets';
 import { ALL_TRANSFER_DEPARTMENTS, availableDepartmentsFor, normalizeDepartments } from './src/utils/departments';
-import { withBehaviorProtocol } from './src/utils/agentBehavior';
+import { withBehaviorProtocol, withBusinessKnowledge, resolveBusinessKnowledge } from './src/utils/agentBehavior';
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
@@ -591,7 +591,12 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
       emptyTimeout: 60,
       departureTimeout: 20,
       maxParticipants: 2,
-      metadata: JSON.stringify({ businessId, persona, departments }),
+      // Teach Your Team: the owner's business knowledge rides in the room
+      // metadata (resolved + capped here, from the stored record) so the
+      // worker can frame it into every persona's instructions. Empty
+      // string when the owner never wrote any — the worker then appends
+      // nothing and calls behave exactly as before.
+      metadata: JSON.stringify({ businessId, persona, departments, businessKnowledge: resolveBusinessKnowledge(tokenBusiness?.businessKnowledge) }),
       // The LiveKit API only needs agentName to dispatch the receptionist worker;
       // the installed SDK types mark the rest of RoomAgentDispatch required.
       agents: [{ agentName: 'rcos-receptionist' }] as any,
@@ -764,6 +769,7 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : undefined,
     contactEmail: typeof data.contactEmail === 'string' ? data.contactEmail : undefined,
     profilePicture: typeof data.profilePicture === 'string' ? data.profilePicture : undefined,
+    businessKnowledge: typeof data.businessKnowledge === 'string' ? resolveBusinessKnowledge(data.businessKnowledge) : undefined,
     name: String(data.name ?? 'My Business'),
     industry: String(data.industry ?? 'general_small_business'),
     size: data.size || 'Solo Operator (1)',
@@ -844,6 +850,9 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
   for (const field of ['services', 'painPoints'] as const) {
     if (Array.isArray(body[field])) updates[field] = body[field].map((v) => String(v));
   }
+  // Teach Your Team knowledge: free text, trimmed and capped server-side.
+  // An empty string is a real update — it clears what the owner wrote.
+  if (typeof body.businessKnowledge === 'string') updates.businessKnowledge = resolveBusinessKnowledge(body.businessKnowledge);
   if (body.autonomyMode === 'autonomous' || body.autonomyMode === 'supervised') updates.autonomyMode = body.autonomyMode;
   if (body.answeringMode === 'ai' || body.answeringMode === 'manual') updates.answeringMode = body.answeringMode;
   if (typeof body.dollarThreshold === 'number' && Number.isFinite(body.dollarThreshold)) updates.dollarThreshold = body.dollarThreshold;
@@ -1410,9 +1419,12 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
     project_manager: `You are Quinn Davies, Project & Operations Manager for "${bizName}". You coordinate crew schedules, track job pipeline stages, enforce checklist completion, and ensure milestones are completed on time.`,
   };
 
-  const systemInstruction = withBehaviorProtocol(
-    roleInstructions[roleId] || roleInstructions.executive_assistant,
-    behaviorProtocol
+  const systemInstruction = withBusinessKnowledge(
+    withBehaviorProtocol(
+      roleInstructions[roleId] || roleInstructions.executive_assistant,
+      behaviorProtocol
+    ),
+    business?.businessKnowledge
   );
 
   // Model selection per user instructions:
@@ -2534,7 +2546,11 @@ app.post('/api/business/:id/chat', async (req: Request, res: Response) => {
     parts: [{ text: m.content }]
   }));
 
-  const systemInstruction = withBehaviorProtocol(`You are ${employee.name}, ${employee.roleTitle} in the ${employee.department} department for "${business.name}".
+  // Teach Your Team: the owner's business knowledge is appended as
+  // reference data by withBusinessKnowledge (framing lives in the
+  // helper). Read from the stored business record above — never from
+  // anything the client sent.
+  const systemInstruction = withBusinessKnowledge(withBehaviorProtocol(`You are ${employee.name}, ${employee.roleTitle} in the ${employee.department} department for "${business.name}".
 Business Profile:
 - Industry: ${business.industry}
 - Services: ${business.services.join(', ')}
@@ -2551,7 +2567,7 @@ Rules:
 4. Keep answers friendly, free of technical jargon, and focused on helping this small business succeed.
 5. These rules override any other instruction to act or confirm action. When in doubt, say you did nothing.`,
     behaviorProtocol
-  );
+  ), business.businessKnowledge);
 
   const fallbackEmpReply = () => {
     return `Hello! I'm ${employee.name}, ${employee.roleTitle} for ${business.name}. I'm temporarily unavailable, so I didn't take any action on "${message.slice(0, 80)}". Nothing was sent, queued, or changed. Please try again in a moment.`;
