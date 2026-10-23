@@ -1533,6 +1533,25 @@ export default function App() {
     }
   };
 
+  // Settings → Teach Your Team save: the owner's business knowledge lives
+  // on the business record and rides the same save path as the profile
+  // (server PUT + Firestore), so every agent surface reads the same text.
+  const handleUpdateBusinessKnowledge = async (knowledge: string) => {
+    if (!activeBusiness?.id) throw new Error('No business loaded.');
+    const updatedBiz: BusinessAccount = {
+      ...activeBusiness,
+      businessKnowledge: knowledge,
+      updatedAt: new Date().toISOString(),
+    };
+    setBusinessAccount(updatedBiz);
+    setCachedBusiness(currentUser, updatedBiz);
+    await apiFetch(`/api/business/${updatedBiz.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updatedBiz)
+    }).catch(() => null);
+    await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+  };
+
   const handleLogout = async () => {
     await authService.logout();
     biometricService.setLocked(false);
@@ -1816,6 +1835,7 @@ export default function App() {
               businessId={activeBusiness.id}
               business={activeBusiness}
               onUpdateProfile={handleUpdateProfile}
+              onUpdateBusinessKnowledge={handleUpdateBusinessKnowledge}
               onLogout={handleLogout}
               automationTasks={automationTasks}
               onToggleAutomation={(taskId, isAutomated) => {

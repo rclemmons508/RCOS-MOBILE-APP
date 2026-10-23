@@ -29,7 +29,7 @@ import { realtime } from '@livekit/agents-plugin-google';
 import { z } from 'zod';
 import { fileURLToPath } from 'url';
 import { ALL_TRANSFER_DEPARTMENTS, DEPARTMENT_LABELS, isTransferDepartment, type TransferDepartment } from '../src/utils/departments';
-import { withBehaviorProtocol } from '../src/utils/agentBehavior';
+import { withBehaviorProtocol, withBusinessKnowledge, resolveBusinessKnowledge } from '../src/utils/agentBehavior';
 
 const AGENT_NAME = 'rcos-receptionist';
 
@@ -177,6 +177,18 @@ function departmentsFromMetadata(roomMetadata: unknown, jobMetadata: unknown): T
     } catch { /* not JSON — try the next source */ }
   }
   return [...ALL_TRANSFER_DEPARTMENTS];
+}
+
+/** Teach Your Team knowledge for this call, from the room metadata set by POST /api/voice/token (read there from the stored business record, already trimmed + capped). Anything missing or malformed resolves to '' — no knowledge block is appended and the call behaves exactly as before. */
+function businessKnowledgeFromMetadata(roomMetadata: unknown, jobMetadata: unknown): string {
+  for (const raw of [roomMetadata, jobMetadata]) {
+    try {
+      const parsed = JSON.parse(typeof raw === 'string' ? raw : '{}') as { businessKnowledge?: unknown };
+      const resolved = resolveBusinessKnowledge(parsed.businessKnowledge);
+      if (resolved) return resolved;
+    } catch { /* not JSON — try the next source */ }
+  }
+  return '';
 }
 
 /** Where each routing department lands. Billing and emergency both go to Support: there is no billing persona, and Support's instructions include safety escalation. */
@@ -348,7 +360,7 @@ function logRoutingDecision(input: {
  * dashboard record is unchanged); it then returns an SDK handoff, which swaps
  * the live session to the department agent — the same agent does NOT keep talking.
  */
-function createRouteToRepresentativeTool(availableDepartments: TransferDepartment[]) {
+function createRouteToRepresentativeTool(availableDepartments: TransferDepartment[], businessKnowledge = '') {
   // Shared transfer state for this one call. `requested` flips when the
   // tool hands off; `completed` flips when the department agent's onEnter
   // runs (the switch actually happened). A previous attempt that was
@@ -416,7 +428,9 @@ function createRouteToRepresentativeTool(availableDepartments: TransferDepartmen
       }
       console.log(`[voice-agent] handoff starting — department=${department} urgency=${urgency} persona=${persona}`);
       const agent = new DepartmentAgent(
-        `${base.instructions}${context}`,
+        // The department agent reads the same Teach Your Team knowledge
+        // as the receptionist, framed as reference data the same way.
+        `${withBusinessKnowledge(base.instructions, businessKnowledge)}${context}`,
         handoffGreeting(department, summary),
         { tools: [routeTool], chatCtx, transferState },
       );
@@ -447,7 +461,15 @@ export default defineAgent({
     // Protocol. The worker has no per-employee config channel (same as job
     // scope and tone today), so a customized protocol from the AI Team
     // screen does not reach phone calls — the standard one applies here.
-    const personaInstructions = withBehaviorProtocol(config.instructions);
+    // Teach Your Team: the owner's business knowledge (from the room
+    // metadata) is appended to the persona instructions as reference
+    // data — the receptionist can answer from it, but it never overrides
+    // the protocol or any safety rule. Blank = instructions unchanged.
+    const businessKnowledge = businessKnowledgeFromMetadata(
+      (ctx.room as unknown as { metadata?: unknown }).metadata,
+      (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
+    );
+    const personaInstructions = withBusinessKnowledge(withBehaviorProtocol(config.instructions), businessKnowledge);
     const availableDepartments = departmentsFromMetadata(
       (ctx.room as unknown as { metadata?: unknown }).metadata,
       (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
@@ -468,7 +490,7 @@ export default defineAgent({
       instructions: `${personaInstructions}${transferLine}`,
       // Array form: preserves the tool's object identity, which is what the
       // SDK's handoff session-reuse check compares (see DepartmentAgent).
-      ...(config.useRoutingTool ? { tools: [createRouteToRepresentativeTool(availableDepartments)] } : {}),
+      ...(config.useRoutingTool ? { tools: [createRouteToRepresentativeTool(availableDepartments, businessKnowledge)] } : {}),
     });
 
     const session = new AgentSession({ llm: model });
