@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../../types';
 import { authService } from '../../services/authService';
-import { biometricService } from '../../services/biometricService';
+import { biometricService, BIOMETRICS_ENABLED } from '../../services/biometricService';
 import { INDUSTRY_PRESETS, getStaffRolesForIndustry } from '../../data/presets';
 import { Capacitor } from '@capacitor/core';
 import { 
@@ -64,6 +64,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Real biometric state — never a hard-coded label. The kill switch
+  // (BIOMETRICS_ENABLED, off since Oct 16, 2026) wins over stored
+  // settings and enrollment: getSettings()/getEnrolledInfo() already
+  // report the off state while it is off, and the switch is checked
+  // explicitly here too, matching LoginView's pattern.
+  const biometricUnlockActive =
+    BIOMETRICS_ENABLED &&
+    biometricService.getSettings().enabled &&
+    biometricService.getEnrolledInfo().enrolled;
 
   if (!isOpen) return null;
 
@@ -283,10 +293,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <Fingerprint className="w-4 h-4 text-lime-400" />
                     <span>Biometric Quick Unlock</span>
                   </div>
-                  <span className="text-xs text-lime-400 font-bold">ACTIVE</span>
+                  {biometricUnlockActive ? (
+                    <span className="text-xs text-lime-400 font-bold">ACTIVE</span>
+                  ) : (
+                    <span className="text-xs text-zinc-500 font-bold">OFF</span>
+                  )}
                 </div>
                 <p className="text-[11px] text-zinc-400">
-                  TouchID / FaceID enabled for instant RCOS system access.
+                  {biometricUnlockActive
+                    ? 'TouchID / FaceID enabled for instant RCOS system access.'
+                    : 'Biometric unlock is turned off. Sign in with your email and password.'}
                 </p>
               </div>
 

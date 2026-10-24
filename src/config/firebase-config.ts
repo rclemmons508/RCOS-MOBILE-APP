@@ -18,6 +18,20 @@ function resolveFirestoreDatabaseId(): string {
   return candidate;
 }
 
+// The bundled config ships with a placeholder API key
+// ('__SET_VIA_VITE_FIREBASE_API_KEY__') that only a build-time env var
+// can replace. A placeholder is NOT a key: Firebase must not be
+// reported as "configured" while it is in place, or the app silently
+// ends up with no Firebase session and no token on its API calls.
+// validateFirebaseConfig (src/lib/firebase.ts) checks for it via this
+// helper. The raw value still flows into initializeApp untouched —
+// emptying it would make getAuth() throw at startup and take the
+// whole app down, which is worse than an honestly-reported gap.
+export function hasPlaceholderApiKey(): boolean {
+  const candidate = env.VITE_FIREBASE_API_KEY || rawConfig.apiKey || '';
+  return candidate.startsWith('__SET_VIA_');
+}
+
 export const firebaseConfig = {
   projectId: env.VITE_FIREBASE_PROJECT_ID || rawConfig.projectId || 'rcos-mobile',
   appId: env.VITE_FIREBASE_APP_ID || rawConfig.appId || '',
