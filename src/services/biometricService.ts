@@ -179,6 +179,9 @@ class BiometricService {
     biometryType: 'fingerprint' | 'face' = 'fingerprint',
     pin?: string
   ): Promise<{ success: boolean; error?: string }> {
+    if (!BIOMETRICS_ENABLED) {
+      return { success: false, error: 'Biometric login is turned off for now.' };
+    }
     const isNative = Capacitor.isNativePlatform();
 
     try {
@@ -285,6 +288,9 @@ class BiometricService {
     allowDeviceCredential?: boolean;
     requireEnrolled?: boolean;
   }): Promise<{ success: boolean; error?: string; userEmail?: string }> {
+    if (!BIOMETRICS_ENABLED) {
+      return { success: false, error: 'Biometric login is turned off for now. Please sign in with your email and password.' };
+    }
     const isNative = Capacitor.isNativePlatform();
     const reason = options?.reason || 'Touch your phone fingerprint sensor or look at the camera';
     const cancelTitle = options?.cancelTitle || 'Use PIN';
@@ -342,11 +348,12 @@ class BiometricService {
         }
       }
 
-      // Record successful verification
+      // Record successful verification. Only the enrolled account's
+      // email is ever reported — no hard-coded fallback identity.
       this.recordActiveTimestamp();
       return {
         success: true,
-        userEmail: enrolledInfo.userEmail || 'rcsoulutions@gmail.com'
+        userEmail: enrolledInfo.userEmail
       };
     } catch (err: any) {
       console.warn('[Biometrics] Device authentication error:', err);

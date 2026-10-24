@@ -22,12 +22,18 @@ import {
   onSnapshot,
   FirestoreError
 } from 'firebase/firestore';
-import { firebaseConfig, googleServicesConfig } from '../config/firebase-config';
+import { firebaseConfig, googleServicesConfig, hasPlaceholderApiKey } from '../config/firebase-config';
 
 // Validate Firebase configuration to avoid runtime crashes when env variables are unset
 export const validateFirebaseConfig = (): boolean => {
   const required: (keyof typeof firebaseConfig)[] = ['apiKey', 'projectId', 'authDomain', 'appId'];
-  const missing = required.filter((key) => !firebaseConfig[key]);
+  const missing: string[] = required.filter((key) => !firebaseConfig[key]);
+  // A placeholder key ('__SET_VIA_...') counts as missing: with it,
+  // every Firebase Auth call fails, so reporting "configured" would
+  // hide the fact that the app has no real Firebase session.
+  if (hasPlaceholderApiKey() && !missing.includes('apiKey')) {
+    missing.push('apiKey (placeholder — set VITE_FIREBASE_API_KEY at build time)');
+  }
   if (missing.length > 0) {
     console.warn(
       `[Firebase] Missing configuration keys: ${missing.join(', ')}. Configure in .env.local or consult SETUP.md.`

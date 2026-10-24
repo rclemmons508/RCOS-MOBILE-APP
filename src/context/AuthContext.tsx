@@ -24,7 +24,6 @@ interface AuthContextType {
   authError: AuthErrorInfo | null;
   clearAuthError: () => void;
   signInWithGoogle: () => Promise<boolean>;
-  signInWithDirectAccount: (email?: string, name?: string) => void;
   logout: () => Promise<void>;
   googleServicesInfo: {
     mobileProjectId: string;
@@ -41,7 +40,6 @@ const AuthContext = createContext<AuthContextType>({
   authError: null,
   clearAuthError: () => {},
   signInWithGoogle: async () => false,
-  signInWithDirectAccount: () => {},
   logout: async () => {},
   googleServicesInfo: {
     mobileProjectId: '',
@@ -58,7 +56,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authError, setAuthError] = useState<AuthErrorInfo | null>(null);
 
   useEffect(() => {
-    // Check for saved local or active session on initialization
+    // Purge any legacy preloaded mock session entries on initialization.
+    // This context's user comes ONLY from Firebase Auth state below —
+    // a stored local record must never be turned into a signed-in user
+    // here (the app's real session lives in authService).
     const stored = localStorage.getItem('rcos_auth_user') || localStorage.getItem('rcos_active_session');
     if (stored) {
       try {
@@ -66,9 +67,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (parsed?.uid === 'usr-rcos-lead' || parsed?.uid === 'usr-rcos-admin' || parsed?.id === 'usr-rcos-lead') {
           localStorage.removeItem('rcos_auth_user');
           localStorage.removeItem('rcos_active_session');
-        } else if (parsed?.email) {
-          const derivedName = parsed.displayName || parsed.fullName || parsed.email.split('@')[0];
-          signInWithDirectAccount(parsed.email, derivedName);
         }
       } catch {}
     }
@@ -118,31 +116,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Direct authentication helper ensuring users can sign in with any account
-  const signInWithDirectAccount = (email?: string, name?: string) => {
-    const cleanEmail = email || 'operator@company.com';
-    const cleanName = name || cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const syntheticUser = {
-      uid: `usr_${Date.now()}`,
-      email: cleanEmail,
-      displayName: cleanName,
-      emailVerified: true,
-      photoURL: `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(cleanEmail)}`,
-      isAnonymous: false,
-      metadata: {},
-      providerData: [{
-        providerId: 'google.com',
-        uid: cleanEmail,
-        displayName: cleanName,
-        email: cleanEmail
-      }]
-    } as unknown as User;
-
-    setUser(syntheticUser);
-    setAuthError(null);
-    localStorage.setItem('rcos_auth_user', JSON.stringify({ email: cleanEmail, displayName: cleanName, uid: syntheticUser.uid }));
-  };
-
   const logout = async () => {
     try {
       localStorage.removeItem('rcos_auth_user');
@@ -171,8 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isSigningIn, 
       authError, 
       clearAuthError, 
-      signInWithGoogle, 
-      signInWithDirectAccount, 
+      signInWithGoogle,
       logout,
       googleServicesInfo 
     }}>
