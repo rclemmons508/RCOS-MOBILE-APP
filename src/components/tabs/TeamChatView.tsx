@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Send, Users, MessageSquare } from 'lucide-react';
 import { BusinessAccount, BusinessMember, TeamMessage, User } from '../../types';
 import { teamService } from '../../services/teamService';
+import { markTeamSeen } from '../../services/teamUnread';
+import { useTeamLiveEvents } from '../../hooks/useTeamLiveEvents';
 import {
   loadOutbox,
   enqueueTeamMessage,
@@ -20,7 +22,10 @@ interface TeamChatViewProps {
   onBack?: () => void;
 }
 
-const POLL_MS = 5000;
+// Safety-net poll only. New messages normally arrive instantly over the
+// live stream; this slow tick is the fallback while the stream is down,
+// and it stays until the live path is proven on a real phone build.
+const SAFETY_NET_POLL_MS = 30000;
 
 function formatTime(ts: string): string {
   try {
@@ -63,9 +68,10 @@ const MemberAvatar: React.FC<{ member?: BusinessMember | null; name: string; ema
 /**
  * Team Chat — messages between real people on the same company account.
  * Separate from the AI chat (GeminiChatView): these messages go to the
- * other humans on the team, not to an AI assistant. Refreshes every few
- * seconds while the screen is open, so both phones see new messages
- * without tapping anything.
+ * other humans on the team, not to an AI assistant. New messages arrive
+ * live over the server stream while the screen is open, with a slow
+ * 30-second safety-net refresh as fallback, so both phones see new
+ * messages without tapping anything.
  */
 export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business, currentUser, onBack }) => {
   const [messages, setMessages] = useState<TeamMessage[]>([]);
@@ -86,17 +92,25 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
   const listRef = useRef<HTMLDivElement>(null);
   const myEmail = (currentUser?.email || '').toLowerCase();
 
+  // The chat is open, so everything loaded here counts as seen — this
+  // is what clears the unread badge on the Messages tab.
+  const applyMessages = useCallback((msgs: TeamMessage[]) => {
+    const list = Array.isArray(msgs) ? msgs : [];
+    setMessages(list);
+    if (list.length > 0) markTeamSeen(businessId, list[list.length - 1].id);
+  }, [businessId]);
+
   const loadMessages = useCallback(async () => {
     if (!businessId || !currentUser?.email) return;
     try {
       const msgs = await teamService.getTeamMessages(businessId, currentUser.email);
-      setMessages(Array.isArray(msgs) ? msgs : []);
+      applyMessages(msgs);
       setSyncState('saved');
     } catch {
       /* keep the last good list — a blip must not blank the chat */
       setSyncState('unknown');
     }
-  }, [businessId, currentUser?.email]);
+  }, [businessId, currentUser?.email, applyMessages]);
 
   const loadAll = useCallback(async () => {
     if (!businessId || !currentUser?.email) {
@@ -111,7 +125,7 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
         teamService.getTeamMessages(businessId, currentUser.email),
         teamService.getTeam(businessId, currentUser.email)
       ]);
-      setMessages(Array.isArray(msgs) ? msgs : []);
+      applyMessages(msgs);
       setSyncState('saved');
       if (roster?.members) setMembers(roster.members);
     } catch (e: any) {
@@ -120,7 +134,7 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
     } finally {
       setLoading(false);
     }
-  }, [businessId, currentUser?.email]);
+  }, [businessId, currentUser?.email, applyMessages]);
 
   /**
    * Send queued messages. With autoOnly, only items that failed while
@@ -156,13 +170,19 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
     loadAll();
   }, [loadAll]);
 
-  // Poll while the chat is open, and refresh the moment the app comes back into view.
+  // Live first: a teammate's message refreshes this list the moment it
+  // lands on the server. The slow poll below is only the safety net.
+  useTeamLiveEvents(businessId, currentUser?.email, loadMessages);
+
+  // Safety-net poll while the chat is open, plus a refresh the moment
+  // the app comes back into view. Kept on purpose until the live path
+  // is proven on a real phone build — do not remove it yet.
   // Coming back into view also retries anything queued while offline.
   useEffect(() => {
     if (!businessId) return;
     const timer = setInterval(() => {
       if (!document.hidden) loadMessages();
-    }, POLL_MS);
+    }, SAFETY_NET_POLL_MS);
     const onVisible = () => {
       if (!document.hidden) {
         flushOutbox(true);
