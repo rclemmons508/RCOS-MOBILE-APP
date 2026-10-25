@@ -1578,31 +1578,91 @@ export default function App() {
   // login user record (name + avatar shown in headers), and the Firebase
   // display name when a Firebase user is signed in. The login email itself
   // never changes here.
+  // Settings → My Profile save: this edits ONLY the signed-in person's
+  // own record — their name, picture, phone, and contact email. It must
+  // NEVER touch the business record's contact fields: the old version
+  // wrote every profile save into contactName/contactPhone/contactEmail/
+  // profilePicture, so a team member saving their own profile overwrote
+  // the company's contact info for everyone, and every member's form
+  // was prefilled with the owner's info. The business record is only
+  // sent to the server when the member's roster entry actually changed;
+  // the company contact fields ride along untouched via the spread.
   const handleUpdateProfile = async (p: ProfileUpdate) => {
     const email = currentUser?.email;
     if (!email) throw new Error('No signed-in account found.');
+    const updatedUser = authService.updateStoredUser(email, {
+      fullName: p.fullName,
+      avatar: p.profilePicture,
+      phone: p.phone,
+      contactEmail: p.contactEmail,
+    });
+    if (updatedUser) setCurrentUser(updatedUser);
+    const myEmail = email.toLowerCase();
+    const members = activeBusiness.members || [];
+    const memberIndex = members.findIndex((m) => (m.email || '').toLowerCase() === myEmail);
+    if (memberIndex >= 0) {
+      const updatedMembers = members.map((m, i) => (i === memberIndex ? {
+        ...m,
+        name: p.fullName,
+        avatar: p.profilePicture,
+        phone: p.phone,
+        contactEmail: p.contactEmail,
+      } : m));
+      const updatedBiz: BusinessAccount = {
+        ...activeBusiness,
+        members: updatedMembers,
+        updatedAt: new Date().toISOString(),
+      };
+      setBusinessAccount(updatedBiz);
+      setCachedBusiness(currentUser, updatedBiz);
+      if (updatedBiz.id) {
+        await apiFetch(`/api/business/${updatedBiz.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(updatedBiz)
+        }).catch(() => null);
+        await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+      }
+    }
+    if (auth.currentUser) {
+      await updateProfile(auth.currentUser, { displayName: p.fullName }).catch(() => null);
+    }
+  };
+
+  // Settings → Company contact save (owner only): the ONLY path that
+  // edits the business record's contactPhone/contactEmail — the phone
+  // and email customers see. Positive owner proof only, mirroring the
+  // team backfill guard: a roster entry with role 'owner', or a match
+  // against the business's own owner identity. An empty roster alone
+  // proves nothing. While the login gate is off this check runs on the
+  // device, like the other Settings saves; when the gate is on, the
+  // server already restricts business saves to the owner.
+  const handleUpdateCompanyContact = async (c: { contactPhone: string; contactEmail: string }) => {
+    const email = currentUser?.email;
+    if (!email) throw new Error('No signed-in account found.');
+    if (!activeBusiness.id) throw new Error('No company loaded.');
+    const myEmail = email.toLowerCase();
+    const ownMember = (activeBusiness.members || []).find((m) => (m.email || '').toLowerCase() === myEmail);
+    const isOwner = ownMember
+      ? ownMember.role === 'owner'
+      : ([
+          (activeBusiness.contactEmail || '').toLowerCase(),
+          ((activeBusiness as unknown as { ownerEmail?: string } | null)?.ownerEmail || '').toLowerCase(),
+        ].filter(Boolean).includes(myEmail) ||
+        (!!activeBusiness.ownerId && activeBusiness.ownerId !== 'unassigned_owner' && activeBusiness.ownerId === currentUser?.id));
+    if (!isOwner) throw new Error('Only the company owner can change the company contact info.');
     const updatedBiz: BusinessAccount = {
       ...activeBusiness,
-      contactName: p.fullName,
-      contactPhone: p.phone,
-      contactEmail: p.contactEmail,
-      profilePicture: p.profilePicture,
+      contactPhone: c.contactPhone,
+      contactEmail: c.contactEmail,
       updatedAt: new Date().toISOString(),
     };
     setBusinessAccount(updatedBiz);
     setCachedBusiness(currentUser, updatedBiz);
-    if (updatedBiz.id) {
-      await apiFetch(`/api/business/${updatedBiz.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(updatedBiz)
-      }).catch(() => null);
-      await firestoreService.saveBusiness(updatedBiz).catch(() => null);
-    }
-    const updatedUser = authService.updateStoredUser(email, { fullName: p.fullName, avatar: p.profilePicture });
-    if (updatedUser) setCurrentUser(updatedUser);
-    if (auth.currentUser) {
-      await updateProfile(auth.currentUser, { displayName: p.fullName }).catch(() => null);
-    }
+    await apiFetch(`/api/business/${updatedBiz.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updatedBiz)
+    }).catch(() => null);
+    await firestoreService.saveBusiness(updatedBiz).catch(() => null);
   };
 
   // Settings → Teach Your Team save: the owner's business knowledge lives
@@ -1949,6 +2009,7 @@ export default function App() {
               businessId={activeBusiness.id}
               business={activeBusiness}
               onUpdateProfile={handleUpdateProfile}
+              onUpdateCompanyContact={handleUpdateCompanyContact}
               onUpdateBusinessKnowledge={handleUpdateBusinessKnowledge}
               onLogout={handleLogout}
               automationTasks={automationTasks}
