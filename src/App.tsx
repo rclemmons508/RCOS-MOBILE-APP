@@ -26,6 +26,7 @@ import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { JobsHubSwitcher } from './components/nav/JobsHubSwitcher';
 import { MessagesHubSwitcher } from './components/nav/MessagesHubSwitcher';
+import { InboxView } from './components/InboxView';
 import { MoreMenu } from './components/nav/MoreMenu';
 import { RequestsView } from './components/nav/RequestsView';
 import { FloatingAIAssistant } from './components/FloatingAIAssistant';
@@ -153,6 +154,17 @@ async function resolveBusinessForUser(user: User): Promise<BusinessAccount | nul
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  // One Inbox deep-link targets. Set when an Inbox row is tapped, consumed by
+  // the target screen on mount; the screens unmount when you leave the tab,
+  // so the next visit shows the plain screen again, exactly as before.
+  const [inboxRequestId, setInboxRequestId] = useState<string | null>(null);
+  const [inboxPhoneSubTab, setInboxPhoneSubTab] = useState<'phone' | 'voicemails' | 'comms'>('phone');
+  // Clear a consumed deep-link as soon as its screen is left, so the next
+  // plain visit to Requests or Phone starts on the plain screen again.
+  useEffect(() => {
+    if (activeTab !== 'requests') setInboxRequestId(null);
+    if (activeTab !== 'phone') setInboxPhoneSubTab('phone');
+  }, [activeTab]);
   const [settingsSection, setSettingsSection] = useState<'user' | 'agents'>('user');
   const openSettings = (section: 'user' | 'agents') => {
     setSettingsSection(section);
@@ -1654,6 +1666,15 @@ export default function App() {
   };
 
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
+  // One Inbox badge: AI Team unread + new requests + alerts unread +
+  // team unread. The team count is real now: the real-time work merged
+  // in main added the team read marker, so the old "team not in the
+  // badge" limit from the original One Inbox build no longer applies.
+  const inboxBadgeCount =
+    agentMessages.filter((m) => m.status === 'unread').length +
+    customerRequests.filter((r) => r.status === 'pending').length +
+    unreadNotifCount +
+    teamUnreadCount;
 
   // If no user is logged in, show the full-screen Login & Registration gate!
   if (!currentUser) {
@@ -1700,7 +1721,7 @@ export default function App() {
               <JobsHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} />
             </div>
           )}
-          {(activeTab === 'team-chat' || activeTab === 'gmail' || activeTab === 'phone' || activeTab === 'requests') && (
+          {(activeTab === 'inbox' || activeTab === 'team-chat' || activeTab === 'gmail' || activeTab === 'phone' || activeTab === 'requests') && (
             <div className="px-3.5 sm:px-4 pt-2">
               <MessagesHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} unreadTeamCount={teamUnreadCount} />
             </div>
@@ -1751,8 +1772,31 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'inbox' && (
+            <InboxView
+              agentMessages={agentMessages}
+              notifications={notifications}
+              customerRequests={customerRequests}
+              businessId={activeBusiness.id}
+              currentUserEmail={currentUser?.email || ''}
+              teamUnreadCount={teamUnreadCount}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onOpenInbox={() => setIsInboxOpen(true)}
+              onOpenNotifications={() => setIsNotifCenterOpen(true)}
+              onOpenRequest={(id) => {
+                setInboxRequestId(id);
+                setActiveTab('requests');
+              }}
+              onOpenVoicemail={() => {
+                setInboxPhoneSubTab('voicemails');
+                setActiveTab('phone');
+              }}
+            />
+          )}
+
           {activeTab === 'phone' && (
             <PhoneSystemTab
+              initialSubTab={inboxPhoneSubTab}
               calls={calls}
               onSimulateCall={handleSimulateInboundCall}
               messages={messages}
@@ -1894,6 +1938,7 @@ export default function App() {
               customerRequests={customerRequests}
               businessId={activeBusiness.id}
               businessName={activeBusiness.name || 'Setup Company'}
+              initialRequestId={inboxRequestId}
             />
           )}
 
@@ -1983,7 +2028,7 @@ export default function App() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           currentUser={currentUser}
-          unreadTeamCount={teamUnreadCount}
+          messagesBadge={inboxBadgeCount}
         />
 
         {/* Notification Center Modal */}

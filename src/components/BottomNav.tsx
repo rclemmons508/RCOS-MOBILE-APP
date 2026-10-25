@@ -13,21 +13,23 @@ interface BottomNavProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   currentUser?: User | null;
-  /** Unread Team Chat messages from other people; badge on Messages. */
-  unreadTeamCount?: number;
+  /** One Inbox badge on Messages: AI Team unread + new requests +
+   *  alerts unread + team unread (the team count is folded into
+   *  messagesBadge by App.tsx). 0 hides it. */
+  messagesBadge?: number;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   setActiveTab,
   currentUser,
-  unreadTeamCount = 0
+  messagesBadge = 0
 }) => {
   const tabs: { id: TabType; label: string; icon: any; activeWhen: TabType[] }[] = [
     { id: 'dashboard', label: 'Dash', icon: Gauge, activeWhen: ['dashboard'] },
     { id: 'jobs', label: 'Jobs / $', icon: Briefcase, activeWhen: ['jobs', 'approvals', 'clients'] },
     { id: 'team', label: 'AI Team', icon: Bot, activeWhen: ['team'] },
-    { id: 'team-chat', label: 'Messages', icon: MessagesSquare, activeWhen: ['team-chat', 'gmail', 'phone', 'requests'] },
+    { id: 'inbox', label: 'Messages', icon: MessagesSquare, activeWhen: ['inbox', 'team-chat', 'gmail', 'phone', 'requests'] },
     { id: 'more', label: 'More', icon: Ellipsis, activeWhen: ['more', 'settings'] },
   ];
 
@@ -58,9 +60,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   {isActive && (
                     <span className="absolute -bottom-1 w-1 h-1 rounded-full bg-lime-400 animate-pulse" />
                   )}
-                  {tab.id === 'team-chat' && unreadTeamCount > 0 && (
-                    <span className="absolute -top-2 -right-3 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
-                      {unreadTeamCount > 99 ? '99+' : unreadTeamCount}
+                  {tab.id === 'inbox' && messagesBadge > 0 && (
+                    <span className="absolute -top-2 -right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border border-black">
+                      {messagesBadge > 99 ? '99+' : messagesBadge}
                     </span>
                   )}
                 </div>
