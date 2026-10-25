@@ -36,6 +36,8 @@ import { ClientsTab } from './components/tabs/ClientsTab';
 import { SettingsTab, ProfileUpdate } from './components/tabs/SettingsTab';
 import { TeamChatView } from './components/tabs/TeamChatView';
 import { teamService } from './services/teamService';
+import { countTeamUnread, getTeamLastSeenId } from './services/teamUnread';
+import { useTeamLiveEvents } from './hooks/useTeamLiveEvents';
 import { industryLabel } from './utils/industry';
 import { asSafeSuggestion } from './utils/safeRender';
 import { GmailTab } from './components/tabs/GmailTab';
@@ -984,10 +986,68 @@ export default function App() {
     bumpAutomationRun,
   ]);
 
+  // Team Chat unread badge + in-app toast for teammates' messages.
+  // Live first (stream below); the 30-second sync engine is the safety
+  // net while the stream is down. The badge counts messages from OTHER
+  // people newer than the last message seen in Team Chat (per phone,
+  // stored on the device). While the user is looking at the chat, the
+  // badge is zero — opening the chat marks everything seen.
+  const [teamUnreadCount, setTeamUnreadCount] = useState(0);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const teamSeenIdsRef = useRef<Set<string>>(new Set());
+  const firstTeamPollRef = useRef(true);
+  const refreshTeamUnread = useCallback(async () => {
+    const bizId = businessAccount?.id;
+    const email = currentUser?.email;
+    if (!bizId || !email) return;
+    try {
+      const msgs = await teamService.getTeamMessages(bizId, email);
+      const list = Array.isArray(msgs) ? msgs : [];
+      const myEmail = email.toLowerCase();
+      if (activeTabRef.current === 'team-chat') {
+        setTeamUnreadCount(0);
+      } else {
+        setTeamUnreadCount(countTeamUnread(list, myEmail, getTeamLastSeenId(bizId)));
+      }
+      // One toast for the newest message from someone else that arrived
+      // after this phone's first check — never for history already on
+      // file at first load, and never while the user is in Team Chat.
+      // (In-app toast only: nothing arrives while the app is closed.)
+      if (!firstTeamPollRef.current && activeTabRef.current !== 'team-chat' && notifPreferences.pushEnabled) {
+        const fresh = list.filter(m => (m.senderEmail || '').toLowerCase() !== myEmail && !teamSeenIdsRef.current.has(m.id));
+        const newest = fresh[fresh.length - 1];
+        if (newest) {
+          const toast: RCOSNotification = {
+            id: 'notif-team-' + newest.id,
+            type: 'team_message',
+            title: `${newest.senderName} sent a team message`,
+            message: newest.text,
+            timestamp: 'Just now',
+            read: false,
+            priority: 'medium',
+            module: 'Team Chat'
+          };
+          setNotifications(prev => [toast, ...prev]);
+          setActivePushToast(toast);
+        }
+      }
+      teamSeenIdsRef.current = new Set(list.map(m => m.id));
+      firstTeamPollRef.current = false;
+    } catch {
+      /* a blip must not blank the badge — keep the last count */
+    }
+  }, [businessAccount?.id, currentUser?.email, notifPreferences.pushEnabled]);
+
+  // Live team stream at the app level: the badge and the toast update
+  // the moment a teammate's message lands, even when Team Chat is not
+  // open. TeamChatView opens its own stream while the chat is on screen.
+  useTeamLiveEvents(businessAccount?.id, currentUser?.email, refreshTeamUnread);
+
   useSyncEngine(
     useCallback(async () => {
-      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting(), pollProactive(), pollFollowups()]);
-    }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting, pollProactive, pollFollowups]),
+      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting(), pollProactive(), pollFollowups(), refreshTeamUnread()]);
+    }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting, pollProactive, pollFollowups, refreshTeamUnread]),
     30000
   );
 
@@ -1609,9 +1669,14 @@ export default function App() {
         <NotificationToast
           notification={activePushToast}
           onClose={() => setActivePushToast(null)}
-          onView={(_notif) => {
+          onView={(notif) => {
             setActivePushToast(null);
-            setIsNotifCenterOpen(true);
+            // A team-message toast opens Team Chat, not the notification center.
+            if (notif.type === 'team_message') {
+              setActiveTab('team-chat');
+            } else {
+              setIsNotifCenterOpen(true);
+            }
           }}
         />
 
@@ -1637,7 +1702,7 @@ export default function App() {
           )}
           {(activeTab === 'team-chat' || activeTab === 'gmail' || activeTab === 'phone' || activeTab === 'requests') && (
             <div className="px-3.5 sm:px-4 pt-2">
-              <MessagesHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} />
+              <MessagesHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} unreadTeamCount={teamUnreadCount} />
             </div>
           )}
           {activeTab === 'dashboard' && (
@@ -1910,10 +1975,11 @@ export default function App() {
         )}
 
         {/* Bottom Navigation Bar with Safe Area Insets */}
-        <BottomNav 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
+        <BottomNav
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
           currentUser={currentUser}
+          unreadTeamCount={teamUnreadCount}
         />
 
         {/* Notification Center Modal */}

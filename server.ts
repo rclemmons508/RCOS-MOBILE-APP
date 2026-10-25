@@ -1102,6 +1102,68 @@ app.post('/api/team/join', teamInviteLimiter, (req: Request, res: Response) => {
   res.json({ business: updated, alreadyMember: false });
 });
 
+// ---- Live team events (server-sent events) ----
+// One in-memory subscriber list per business. This server runs as a
+// single process, so every connected phone shares this map. If the
+// server ever scales to several instances, a phone connected to another
+// instance would miss an event — the client's 30-second safety-net poll
+// still catches it, so nothing is lost, just slower.
+// The stream carries only message ids + sender names; the client fetches
+// the full message text through the normal guarded route on each event.
+const teamEventSubscribers = new Map<string, Set<Response>>();
+function broadcastTeamMessage(businessId: string, msg: TeamMessage): void {
+  const subs = teamEventSubscribers.get(businessId);
+  if (!subs || subs.size === 0) return;
+  const payload = `event: team-message\ndata: ${JSON.stringify({ id: msg.id, senderEmail: msg.senderEmail, senderName: msg.senderName, timestamp: msg.timestamp })}\n\n`;
+  for (const sub of [...subs]) {
+    try {
+      sub.write(payload);
+    } catch {
+      subs.delete(sub);
+    }
+  }
+}
+
+// Live stream of team-chat activity for one business. Guarded by the
+// SAME membership check as the team-messages routes below: a caller who
+// is not on the team gets 403, never a stream. Clients reconnect on
+// their own when the stream drops; a heartbeat comment every 25s keeps
+// idle connections (and phone radios) from silently dying.
+app.get('/api/business/:id/team-events', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found.' });
+  const email = teamRequesterEmail(req);
+  const hasMembers = (business.members || []).length > 0;
+  if (hasMembers && !teamMemberFor(business, email)) {
+    return res.status(403).json({ error: 'Only people on this team can follow the team chat live.' });
+  }
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.write(': connected\n\n');
+  let subs = teamEventSubscribers.get(business.id);
+  if (!subs) {
+    subs = new Set();
+    teamEventSubscribers.set(business.id, subs);
+  }
+  subs.add(res);
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      /* closed below */
+    }
+  }, 25000);
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    subs.delete(res);
+    if (subs.size === 0) teamEventSubscribers.delete(business.id);
+  });
+});
+
 // Team chat history for this business (human-to-human only — the
 // AI-employee chat lives at /api/business/:id/chat and is untouched).
 app.get('/api/business/:id/team-messages', (req: Request, res: Response) => {
@@ -1142,7 +1204,11 @@ app.post('/api/business/:id/team-messages', (req: Request, res: Response) => {
     text,
     timestamp: new Date().toISOString()
   };
-  res.status(201).json(db.saveTeamMessage(msg));
+  const saved = db.saveTeamMessage(msg);
+  // Wake every connected teammate immediately — this is what makes the
+  // chat live instead of waiting for the next poll tick.
+  broadcastTeamMessage(business.id, saved);
+  res.status(201).json(saved);
 });
 
 // AI Onboarding Agent - Document Analysis & Industry Preset Deciphering.

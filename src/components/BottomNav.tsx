@@ -13,12 +13,15 @@ interface BottomNavProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   currentUser?: User | null;
+  /** Unread Team Chat messages from other people; badge on Messages. */
+  unreadTeamCount?: number;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ 
-  activeTab, 
-  setActiveTab, 
-  currentUser 
+export const BottomNav: React.FC<BottomNavProps> = ({
+  activeTab,
+  setActiveTab,
+  currentUser,
+  unreadTeamCount = 0
 }) => {
   const tabs: { id: TabType; label: string; icon: any; activeWhen: TabType[] }[] = [
     { id: 'dashboard', label: 'Dash', icon: Gauge, activeWhen: ['dashboard'] },
@@ -54,6 +57,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   <Icon className={`w-4 h-4 sm:w-4.5 sm:h-4.5 transition-transform ${isActive ? 'scale-110 text-lime-400' : ''}`} />
                   {isActive && (
                     <span className="absolute -bottom-1 w-1 h-1 rounded-full bg-lime-400 animate-pulse" />
+                  )}
+                  {tab.id === 'team-chat' && unreadTeamCount > 0 && (
+                    <span className="absolute -top-2 -right-3 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                      {unreadTeamCount > 99 ? '99+' : unreadTeamCount}
+                    </span>
                   )}
                 </div>
                 <span className={`text-[9px] sm:text-[10px] tracking-tight mt-0.5 truncate max-w-full font-medium ${isActive ? 'text-lime-300 font-bold' : 'text-zinc-400'}`}>
