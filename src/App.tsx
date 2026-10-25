@@ -1742,6 +1742,10 @@ export default function App() {
               onOpenAuth={() => setIsAuthModalOpen(true)}
               onOpenNotifications={() => setIsNotifCenterOpen(true)}
               onOpenInbox={() => setIsInboxOpen(true)}
+              onApproveQuote={(actionId) => handleApprovalDecision(actionId, 'approved')}
+              onScheduleJob={handleScheduleJob}
+              onMarkPaid={handleMarkPaid}
+              onOpenAppCheck={() => openSettings('agents')}
               industry={businessAccount?.industry || industryProfile}
               industryModifierOn={industryModifierOn}
             />

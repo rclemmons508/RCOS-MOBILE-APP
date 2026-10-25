@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Sunrise,
   PhoneMissed,
@@ -22,6 +22,10 @@ interface MorningBriefingCardProps {
   unreadInboxCount: number;
   onOpenInbox: () => void;
   onNavigateTab: (tab: TabType) => void;
+  /** Same approve path the Approvals screen uses — approves one waiting quote/invoice. */
+  onApproveQuote?: (actionId: string) => Promise<void> | void;
+  /** Opens one request right here (the dashboard's own request view). */
+  onOpenRequest?: (request: CustomerRequest) => void;
   industry?: string;
   industryModifierOn?: boolean;
   followupsDraftedYesterday?: number;
@@ -32,6 +36,9 @@ interface Suggestion {
   text: string;
   actionLabel?: string;
   actionTab?: TabType;
+  /** One-tap action that runs right here, next to the usual "go look" link. */
+  inlineLabel?: string;
+  inlineAction?: () => Promise<void> | void;
 }
 
 function money(n: number): string {
@@ -47,6 +54,8 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   unreadInboxCount,
   onOpenInbox,
   onNavigateTab,
+  onApproveQuote,
+  onOpenRequest,
   industry,
   industryModifierOn = true,
   followupsDraftedYesterday = 0,
@@ -96,6 +105,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   );
 
   const suggestions: Suggestion[] = [];
+  const [busySuggestion, setBusySuggestion] = useState<number | null>(null);
   if (followupsDraftedYesterday > 0) {
     suggestions.push({
       agent: 'system',
@@ -111,6 +121,8 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
     });
   }
   if (pendingQuotes.length > 0) {
+    const first = pendingQuotes[0];
+    const firstDetails = first.result?.quoteDetails || first.result?.invoiceDetails;
     suggestions.push({
       agent: 'sales',
       text: `${pendingQuotes.length} quote${pendingQuotes.length === 1 ? '' : 's'} (${money(
@@ -118,6 +130,15 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
       )}) waiting for your approval. Approving today keeps jobs moving.`,
       actionLabel: 'Review quotes',
       actionTab: 'approvals',
+      // One-tap approve for the first waiting item only, named so you can
+      // see exactly what you are approving. Everything else still goes
+      // through Review quotes, exactly as before.
+      ...(onApproveQuote && firstDetails
+        ? {
+            inlineLabel: `Approve ${firstDetails.clientName} (${money(firstDetails.totalAmount)})`,
+            inlineAction: () => onApproveQuote(first.id),
+          }
+        : {}),
     });
   }
   if (overdueRequests.length > 0) {
@@ -127,6 +148,12 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
       text: `${overdueRequests.length} request${overdueRequests.length === 1 ? ' is' : 's are'} waiting over ${windowH}h. A quick follow-up keeps customers happy.`,
       actionLabel: 'View requests',
       actionTab: 'dashboard',
+      ...(onOpenRequest
+        ? {
+            inlineLabel: `Open ${overdueRequests[0].customerName}'s request`,
+            inlineAction: () => onOpenRequest(overdueRequests[0]),
+          }
+        : {}),
     });
   }
   if (todaysJobs.length === 0 && openRequests.length > 0) {
@@ -194,14 +221,33 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
                   </span>
                 </div>
                 <div className="mt-1.5 text-xs text-zinc-300 leading-relaxed">{s.text}</div>
-                {s.actionLabel && s.actionTab && (
-                  <button
-                    onClick={() => onNavigateTab(s.actionTab!)}
-                    className="mt-2 text-[11px] font-extrabold text-lime-400 flex items-center gap-0.5"
-                  >
-                    {s.actionLabel} <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {s.inlineLabel && s.inlineAction && (
+                    <button
+                      type="button"
+                      disabled={busySuggestion === i}
+                      onClick={async () => {
+                        setBusySuggestion(i);
+                        try {
+                          await s.inlineAction!();
+                        } finally {
+                          setBusySuggestion(null);
+                        }
+                      }}
+                      className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-black text-[11px] font-extrabold cursor-pointer"
+                    >
+                      {busySuggestion === i ? 'Working…' : s.inlineLabel}
+                    </button>
+                  )}
+                  {s.actionLabel && s.actionTab && (
+                    <button
+                      onClick={() => onNavigateTab(s.actionTab!)}
+                      className="text-[11px] font-extrabold text-lime-400 flex items-center gap-0.5"
+                    >
+                      {s.actionLabel} <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}

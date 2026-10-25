@@ -19,6 +19,8 @@ export interface PipelineFlag {
   severity: 'high' | 'medium';
   text: string;
   tab: TabType;
+  /** Action this flag is about, when one exists — lets the card act in place. */
+  actionId?: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -54,6 +56,7 @@ export function computePipelineFlags(input: {
       severity: d >= 4 ? 'high' : 'medium',
       text: `Quote for ${q.clientName} (${money(q.totalAmount)}) was approved ${d} days ago — no job scheduled yet.`,
       tab: 'jobs',
+      actionId: a.id,
     });
   }
 
@@ -72,6 +75,7 @@ export function computePipelineFlags(input: {
       severity: d >= 14 ? 'high' : 'medium',
       text: `Invoice ${inv.invoiceNumber} for ${inv.clientName} — ${money(inv.totalAmount)} unpaid for ${d} days.`,
       tab: 'jobs',
+      actionId: a.id,
     });
   }
 

@@ -28,6 +28,7 @@ import {
 import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
 import { PipelineHealthCard } from '../dashboard/PipelineHealthCard';
+import { AppCheckCard } from '../dashboard/AppCheckCard';
 import { haptic } from '../../utils/haptics';
 import { buildPublicBookingLink } from '../../config/api';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
@@ -62,6 +63,12 @@ interface DashboardTabProps {
   onOpenAuth: () => void;
   onOpenNotifications: () => void;
   onOpenInbox: () => void;
+  /** One-tap dashboard actions — the exact handlers the Approvals screen uses. */
+  onApproveQuote?: (actionId: string) => Promise<void> | void;
+  onScheduleJob?: (action: ActionRecord) => Promise<void> | void;
+  onMarkPaid?: (action: ActionRecord) => Promise<void> | void;
+  /** Opens Settings on the section that holds the guided app check. */
+  onOpenAppCheck?: () => void;
   industry?: string;
   industryModifierOn?: boolean;
   followupsDraftedYesterday?: number;
@@ -95,6 +102,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onOpenAuth,
   onOpenNotifications,
   onOpenInbox,
+  onApproveQuote,
+  onScheduleJob,
+  onMarkPaid,
+  onOpenAppCheck,
   industry,
   industryModifierOn,
   followupsDraftedYesterday = 0,
@@ -180,6 +191,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         followupsDraftedYesterday={followupsDraftedYesterday}
         onOpenInbox={onOpenInbox}
         onNavigateTab={onNavigateTab}
+        onApproveQuote={onApproveQuote}
+        onOpenRequest={(req) => setSelectedRequest(req)}
         industry={industry}
         industryModifierOn={industryModifierOn}
       />
@@ -198,7 +211,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         actions={actions}
         clients={clients}
         onNavigateTab={onNavigateTab}
+        onScheduleJob={onScheduleJob}
+        onMarkPaid={onMarkPaid}
       />
+
+      {/* Guided app check — already in Settings; this card just surfaces it here */}
+      {onOpenAppCheck && <AppCheckCard onOpenAppCheck={onOpenAppCheck} />}
 
       {/* Friendly Header with Business & Operator Status */}
       <div className="flex items-center justify-between gap-2">
