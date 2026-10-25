@@ -4,6 +4,14 @@ import { BusinessAccount, BusinessMember, TeamMessage, User } from '../../types'
 import { teamService } from '../../services/teamService';
 import { markTeamSeen } from '../../services/teamUnread';
 import { useTeamLiveEvents } from '../../hooks/useTeamLiveEvents';
+import {
+  loadOutbox,
+  enqueueTeamMessage,
+  removeQueuedMessage,
+  sendQueuedMessage,
+  isOfflineFailure,
+  QueuedTeamMessage
+} from '../../services/teamOutbox';
 import { resolveProfilePicture } from '../../utils/profilePicture';
 import { haptic } from '../../utils/haptics';
 
@@ -72,6 +80,15 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Messages saved on this device because they could not be sent yet
+  // (see teamOutbox.ts). Shown in the chat as "Still sending…" so a
+  // failed send is never silently lost.
+  const [queued, setQueued] = useState<QueuedTeamMessage[]>([]);
+  // 'saved' only after the server list actually loaded; 'unknown'
+  // until then or after a failed load. The status line never claims
+  // "Saved" on a guess.
+  const [syncState, setSyncState] = useState<'saved' | 'unknown'>('unknown');
+  const flushingRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
   const myEmail = (currentUser?.email || '').toLowerCase();
 
@@ -88,8 +105,10 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
     try {
       const msgs = await teamService.getTeamMessages(businessId, currentUser.email);
       applyMessages(msgs);
+      setSyncState('saved');
     } catch {
       /* keep the last good list — a blip must not blank the chat */
+      setSyncState('unknown');
     }
   }, [businessId, currentUser?.email, applyMessages]);
 
@@ -100,19 +119,52 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
     }
     setLoading(true);
     setError(null);
+    setQueued(loadOutbox(businessId));
     try {
       const [msgs, roster] = await Promise.all([
         teamService.getTeamMessages(businessId, currentUser.email),
         teamService.getTeam(businessId, currentUser.email)
       ]);
       applyMessages(msgs);
+      setSyncState('saved');
       if (roster?.members) setMembers(roster.members);
     } catch (e: any) {
       setError(e?.message || 'Could not load the team chat. Please try again.');
+      setSyncState('unknown');
     } finally {
       setLoading(false);
     }
   }, [businessId, currentUser?.email, applyMessages]);
+
+  /**
+   * Send queued messages. With autoOnly, only items that failed while
+   * provably offline go out on their own (those requests never
+   * reached the server, so resending cannot duplicate them). Items
+   * that failed ambiguously (e.g. a timeout) only go out when the
+   * user taps Retry — see teamOutbox.ts.
+   */
+  const flushOutbox = useCallback(async (autoOnly: boolean) => {
+    if (!businessId || !currentUser?.email || flushingRef.current) return;
+    const items = loadOutbox(businessId);
+    const due = autoOnly ? items.filter(i => i.status === 'offline') : items;
+    if (due.length === 0) {
+      setQueued(items);
+      return;
+    }
+    flushingRef.current = true;
+    try {
+      const sent: TeamMessage[] = [];
+      for (const item of due) {
+        const saved = await sendQueuedMessage(businessId, currentUser.email, item);
+        if (saved) sent.push(saved);
+      }
+      if (sent.length > 0) setMessages(prev => [...prev, ...sent]);
+      setQueued(loadOutbox(businessId));
+      if (sent.length > 0) loadMessages();
+    } finally {
+      flushingRef.current = false;
+    }
+  }, [businessId, currentUser?.email, loadMessages]);
 
   useEffect(() => {
     loadAll();
@@ -125,33 +177,76 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
   // Safety-net poll while the chat is open, plus a refresh the moment
   // the app comes back into view. Kept on purpose until the live path
   // is proven on a real phone build — do not remove it yet.
+  // Coming back into view also retries anything queued while offline.
   useEffect(() => {
     if (!businessId) return;
     const timer = setInterval(() => {
       if (!document.hidden) loadMessages();
     }, SAFETY_NET_POLL_MS);
     const onVisible = () => {
-      if (!document.hidden) loadMessages();
+      if (!document.hidden) {
+        flushOutbox(true);
+        loadMessages();
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [businessId, loadMessages]);
+  }, [businessId, loadMessages, flushOutbox]);
+
+  // When the device comes back online, send queued offline messages on their own.
+  useEffect(() => {
+    const onOnline = () => {
+      flushOutbox(true);
+      loadMessages();
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [flushOutbox, loadMessages]);
 
   // Stay pinned to the newest message.
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+  }, [messages.length, queued.length]);
+
+  /** Queue a message that could not be sent. Returns false when the
+   *  outbox is full — in that case the draft is kept, never cleared. */
+  const queueUnsent = (text: string, status: 'offline' | 'failed'): boolean => {
+    if (!businessId || !currentUser?.email) return false;
+    const item = enqueueTeamMessage(
+      businessId,
+      {
+        senderEmail: currentUser.email,
+        senderName: currentUser.fullName || currentUser.email,
+        senderAvatar: currentUser.avatar,
+        text
+      },
+      status
+    );
+    if (!item) {
+      setError('Too many unsent messages saved on this device (50). Send or remove one first — your text is still in the box below.');
+      return false;
+    }
+    setQueued(loadOutbox(businessId));
+    setDraft('');
+    return true;
+  };
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const text = draft.trim();
     if (!text || sending || !businessId || !currentUser?.email) return;
-    setSending(true);
     setError(null);
+    // Already offline: do not wait on a network call that cannot
+    // succeed — save it straight to the outbox, shown as Still sending.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      queueUnsent(text, 'offline');
+      return;
+    }
+    setSending(true);
     try {
       const sent = await teamService.sendTeamMessage(businessId, currentUser.email, {
         text,
@@ -164,10 +259,37 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
       // Refresh right after sending so the list matches the server.
       loadMessages();
     } catch (err: any) {
-      setError(err?.message || 'Could not send that message. Please try again.');
+      if (isOfflineFailure(err)) {
+        // The request never got an answer: safe to send on its own later.
+        queueUnsent(text, 'offline');
+      } else if (err?.status === 408) {
+        // Timed out: the server may already have it, so this waits
+        // for a manual Retry tap instead of sending on its own.
+        queueUnsent(text, 'failed');
+      } else {
+        // The server answered and said no (for example, not a team
+        // member): keep the draft and show the reason, as before.
+        setError(err?.message || 'Could not send that message. Please try again.');
+      }
     } finally {
       setSending(false);
     }
+  };
+
+  const retryQueued = async (item: QueuedTeamMessage) => {
+    if (!businessId || !currentUser?.email) return;
+    const sent = await sendQueuedMessage(businessId, currentUser.email, item);
+    setQueued(loadOutbox(businessId));
+    if (sent) {
+      setMessages(prev => [...prev, sent]);
+      loadMessages();
+    }
+  };
+
+  const removeQueued = (item: QueuedTeamMessage) => {
+    if (!businessId) return;
+    removeQueuedMessage(businessId, item.queueId);
+    setQueued(loadOutbox(businessId));
   };
 
   if (!businessId) {
@@ -261,7 +383,65 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
             </div>
           );
         })}
+        {/* Unsent messages saved on this device — never hidden, never
+            silently dropped. They send on their own when back online
+            (offline ones) or when the user taps Retry (timed-out ones). */}
+        {queued.map(item => (
+          <div key={item.queueId} className="flex gap-2 flex-row-reverse">
+            <MemberAvatar member={null} name={item.senderName} email={item.senderEmail} />
+            <div className="max-w-[78%] space-y-0.5 items-end flex flex-col">
+              <div className="text-[10px] font-semibold text-lime-300">
+                You
+                <span className="text-zinc-500 font-normal"> · {formatTime(item.createdAt)}</span>
+              </div>
+              <div className="px-3 py-2 rounded-2xl rounded-tr-md text-sm leading-snug break-words whitespace-pre-wrap bg-lime-500/40 text-lime-100 border border-dashed border-lime-500/60 opacity-90">
+                {item.text}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-amber-300">
+                  {item.status === 'offline'
+                    ? 'Still sending…'
+                    : 'Still sending — tap to retry'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => retryQueued(item)}
+                  className="text-[11px] font-bold text-lime-300 underline underline-offset-2 cursor-pointer"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeQueued(item)}
+                  className="text-[11px] text-zinc-400 underline underline-offset-2 cursor-pointer"
+                  aria-label="Remove unsent message"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
+
+      {/* Sync status — plain words, and "Saved" only when the server
+          list actually loaded and nothing is still waiting to send. */}
+      {!loading && (
+        <div className="shrink-0 px-3 pt-2">
+          {queued.length > 0 ? (
+            <p className="text-[11px] text-amber-300">
+              Still sending — {queued.length} {queued.length === 1 ? 'message is' : 'messages are'} waiting to send.
+              {queued.some(i => i.status === 'offline')
+                ? ' They will send on their own when you are back online.'
+                : ' Tap Retry on the message to send it.'}
+            </p>
+          ) : syncState === 'saved' ? (
+            <p className="text-[11px] text-zinc-500">✓ Saved — all team messages are sent.</p>
+          ) : (
+            <p className="text-[11px] text-zinc-500">Connection unclear — new messages could not be checked just now.</p>
+          )}
+        </div>
+      )}
 
       {/* Send box */}
       {error && (
