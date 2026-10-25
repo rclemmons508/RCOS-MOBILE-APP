@@ -13,18 +13,21 @@ interface BottomNavProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   currentUser?: User | null;
+  /** One Inbox badge: AI Team unread + new requests + alerts unread. 0 hides it. */
+  messagesBadge?: number;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ 
   activeTab, 
   setActiveTab, 
-  currentUser 
+  currentUser,
+  messagesBadge = 0,
 }) => {
   const tabs: { id: TabType; label: string; icon: any; activeWhen: TabType[] }[] = [
     { id: 'dashboard', label: 'Dash', icon: Gauge, activeWhen: ['dashboard'] },
     { id: 'jobs', label: 'Jobs / $', icon: Briefcase, activeWhen: ['jobs', 'approvals', 'clients'] },
     { id: 'team', label: 'AI Team', icon: Bot, activeWhen: ['team'] },
-    { id: 'team-chat', label: 'Messages', icon: MessagesSquare, activeWhen: ['team-chat', 'gmail', 'phone', 'requests'] },
+    { id: 'inbox', label: 'Messages', icon: MessagesSquare, activeWhen: ['inbox', 'team-chat', 'gmail', 'phone', 'requests'] },
     { id: 'more', label: 'More', icon: Ellipsis, activeWhen: ['more', 'settings'] },
   ];
 
@@ -54,6 +57,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   <Icon className={`w-4 h-4 sm:w-4.5 sm:h-4.5 transition-transform ${isActive ? 'scale-110 text-lime-400' : ''}`} />
                   {isActive && (
                     <span className="absolute -bottom-1 w-1 h-1 rounded-full bg-lime-400 animate-pulse" />
+                  )}
+                  {tab.id === 'inbox' && messagesBadge > 0 && (
+                    <span className="absolute -top-2 -right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border border-black">
+                      {messagesBadge > 99 ? '99+' : messagesBadge}
+                    </span>
                   )}
                 </div>
                 <span className={`text-[9px] sm:text-[10px] tracking-tight mt-0.5 truncate max-w-full font-medium ${isActive ? 'text-lime-300 font-bold' : 'text-zinc-400'}`}>

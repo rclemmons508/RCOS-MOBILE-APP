@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Inbox, ChevronRight, Share2, Link2 } from 'lucide-react';
 import { CustomerRequest } from '../../types';
 import { RequestDetailModal } from '../RequestDetailModal';
@@ -9,6 +9,8 @@ interface RequestsViewProps {
   customerRequests?: CustomerRequest[];
   businessId?: string;
   businessName?: string;
+  /** One Inbox deep-link: open this request's detail when the screen mounts. */
+  initialRequestId?: string | null;
 }
 
 /**
@@ -21,6 +23,7 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
   customerRequests = [],
   businessId = '',
   businessName = 'My Business',
+  initialRequestId = null,
 }) => {
   const slaFor = (req: CustomerRequest) => {
     const urgent = req.urgency === 'urgent' || req.urgency === 'emergency';
@@ -45,6 +48,15 @@ export const RequestsView: React.FC<RequestsViewProps> = ({
 
   const [linkCopied, setLinkCopied] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<CustomerRequest | null>(null);
+  // One Inbox deep-link: opening a request row lands here with its detail open.
+  // Mount-scoped on purpose — the screen unmounts when you leave the tab, so
+  // returning later shows the plain list again, exactly as before.
+  useEffect(() => {
+    if (!initialRequestId) return;
+    const found = customerRequests.find((r) => r.id === initialRequestId);
+    if (found) setSelectedRequest(found);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const bookingLink = buildPublicBookingLink(businessId);
   const shareBookingLink = async () => {
     if (!bookingLink) return;

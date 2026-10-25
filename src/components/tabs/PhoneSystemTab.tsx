@@ -45,6 +45,8 @@ interface PhoneSystemTabProps {
   onSendMessage: (text: string) => void;
   onNavigateTab?: (tab: any) => void;
   onTriggerNotification?: (title: string, message: string) => void;
+  /** One Inbox deep-link: start on this sub-tab instead of the default. */
+  initialSubTab?: 'phone' | 'voicemails' | 'comms';
 }
 
 const PRESET_SCENARIOS = [
@@ -124,9 +126,10 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   availableDepartments,
   onSendMessage,
   onNavigateTab,
-  onTriggerNotification
+  onTriggerNotification,
+  initialSubTab,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'phone' | 'voicemails' | 'comms'>('phone');
+  const [activeSubTab, setActiveSubTab] = useState<'phone' | 'voicemails' | 'comms'>(initialSubTab ?? 'phone');
   const [answeringMode, setAnsweringMode] = useState<'ai' | 'manual'>('ai');
   const [isSavingMode, setIsSavingMode] = useState(false);
   const [callsList, setCallsList] = useState<PhoneCall[]>(propCalls);
