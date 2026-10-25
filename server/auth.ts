@@ -56,6 +56,23 @@ export function isAuthReady(): boolean {
   return authReady;
 }
 
+// True only once FIREBASE_SERVICE_ACCOUNT is set and usable. This is
+// the switch the per-business ownership checks in server.ts key off:
+// gate OFF = today's behavior (everything below keeps working as-is);
+// gate ON = a verified Firebase token is the only identity that counts.
+export function isGateOn(): boolean {
+  return authReady;
+}
+
+// The verified caller from a Firebase token, or null. Client-sent
+// headers and body fields are NEVER a caller identity once the gate
+// is on — they can be typed in by anyone.
+export function verifiedCaller(req: Request): { uid?: string; email?: string | null } | null {
+  const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
+  if (!caller || (!caller.uid && !caller.email)) return null;
+  return caller;
+}
+
 export function isAuthMisconfigured(): boolean {
   return authMisconfigured;
 }

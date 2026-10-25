@@ -27,7 +27,7 @@ import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { sendVonageSms } from './server/vonage';
-import { initAuth, isAuthMisconfigured, isAuthReady, requireAuth } from './server/auth';
+import { initAuth, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 
@@ -184,6 +184,117 @@ app.use('/api', (req: Request, res: Response, next) => {
   }
   return requireAuth(req, res, next);
 });
+
+// ---- Per-business ownership (login-gate ON only) ----
+// When the gate is OFF (today's deployment, FIREBASE_SERVICE_ACCOUNT
+// unset), every helper and middleware below is a no-op and the app
+// behaves exactly as it does today. When the gate is ON, a verified
+// Firebase token is the ONLY identity that counts — the client-sent
+// X-User-Email header and body requesterEmail are ignored, because
+// anyone can type those in. Membership is proven by: a roster entry
+// matching the token email or the member's user id, the token uid
+// matching the recorded owner id, or the token email matching an
+// owner email recorded on the business. A business with no owner
+// identity anywhere is NOT opened up: gate ON fails closed on it.
+function businessMemberFor(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): BusinessMember | undefined {
+  if (!caller) return undefined;
+  const email = (caller.email || '').toLowerCase().trim();
+  return (business.members || []).find((m) => (
+    (email !== '' && m.email.toLowerCase() === email) ||
+    (!!caller.uid && !!m.userId && m.userId === caller.uid)
+  ));
+}
+
+function businessOwnerEmails(business: BusinessAccount): string[] {
+  return [
+    String((business as any).contactEmail || '').toLowerCase().trim(),
+    String((business as any).ownerEmail || '').toLowerCase().trim(),
+  ].filter(Boolean);
+}
+
+function businessIsMember(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): boolean {
+  if (!caller) return false;
+  if (businessMemberFor(business, caller)) return true;
+  const email = (caller.email || '').toLowerCase().trim();
+  if (email !== '' && businessOwnerEmails(business).includes(email)) return true;
+  return !!caller.uid && !!business.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === caller.uid;
+}
+
+function businessIsOwner(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): boolean {
+  if (!caller) return false;
+  if (businessMemberFor(business, caller)?.role === 'owner') return true;
+  if (!!caller.uid && !!business.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === caller.uid) return true;
+  const email = (caller.email || '').toLowerCase().trim();
+  return email !== '' && businessOwnerEmails(business).includes(email);
+}
+
+// Gate-ON owner check for a single route. Returns true when the request
+// may proceed; sends the 403 and returns false otherwise. Gate OFF
+// always returns true — owner checks that already exist in a handler
+// keep running with today's header identity in that case.
+function requireBusinessOwner(req: Request, res: Response, business: BusinessAccount): boolean {
+  if (!isGateOn()) return true;
+  if (businessIsOwner(business, verifiedCaller(req))) return true;
+  res.status(403).json({ error: 'Only the business owner can do this.' });
+  return false;
+}
+
+// Every /api/business/:id route, in one place, instead of a check pasted
+// into thirty handlers (where one missed handler is a leak). Skips the
+// two public-by-design cases the gate already exempts: the customer
+// booking POST, and the voice worker's agent-message POST (secret-
+// checked, same as the gate). Also skips /api/business/analyze-document,
+// which is not a business record at all — ':id' there is the literal
+// word 'analyze-document'.
+app.use('/api/business/:id', (req: Request, res: Response, next) => {
+  if (!isGateOn()) return next();
+  const businessId = req.params.id;
+  if (businessId === 'analyze-document') return next();
+  if (req.method === 'POST' && req.path === '/requests') return next();
+  if (req.method === 'POST' && req.path === '/agent-messages') {
+    const secret = process.env.VOICE_AGENT_SECRET;
+    if (secret && req.headers['x-voice-secret'] === secret) return next();
+  }
+  const business = db.getBusiness(businessId);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const caller = verifiedCaller(req);
+  if (!caller) return res.status(401).json({ error: 'Please sign in to use this feature.' });
+  if (!businessIsMember(business, caller)) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  (req as any).business = business;
+  (req as any).businessIsOwner = businessIsOwner(business, caller);
+  return next();
+});
+
+// The caller's own businesses, for routes that name a business in the
+// request body instead of the URL (voice token, receptionist, quote /
+// invoice requests). Gate OFF returns every business, as today.
+function callerBusinesses(req: Request): BusinessAccount[] {
+  const all = db.getAllBusinesses();
+  if (!isGateOn()) return all;
+  const caller = verifiedCaller(req);
+  if (!caller) return [];
+  return all.filter((b) => businessIsMember(b, caller));
+}
+
+// Resolve the business for a body-named route. Gate ON: a named
+// business the caller is not on is a 403 (never silently fall back to
+// the first business on the server — that was the leak); no name at
+// all resolves to the caller's first business, or null when the caller
+// has none. Gate OFF: today's behavior, unchanged.
+function resolveBodyBusiness(req: Request, businessId?: string): BusinessAccount | null {
+  if (!isGateOn()) {
+    return (businessId && db.getBusiness(businessId)) || db.getAllBusinesses()[0] || null;
+  }
+  const caller = verifiedCaller(req);
+  if (!caller) return null;
+  if (businessId && businessId !== 'default') {
+    const business = db.getBusiness(businessId);
+    return business && businessIsMember(business, caller) ? business : null;
+  }
+  return callerBusinesses(req)[0] || null;
+}
 
 // ---- Diagnostics (per RCOS Master Dashboard spec) ----
 // Returns system health checks with PASS/WARN/FAIL status.
@@ -356,10 +467,17 @@ app.post('/api/business/:id/delete-account', deleteAccountLimiter, async (req: R
     // business survives orphaned. These identities are client-asserted
     // while the gate is off, so this is defense-in-depth against the
     // app's own bugs (wrong company, stale id), not unforgeable auth.
-    const callerEmail = String(
-      (req.headers['x-user-email'] as string) || (req.body as any)?.requesterEmail || ''
-    ).toLowerCase().trim();
-    const requesterUserId = String((req.body as any)?.requesterUserId || '').trim();
+    // Gate ON: the verified token email is the only email identity —
+    // the header and body values below are ignored, because anyone can
+    // type them in. Gate OFF keeps today's header/body behavior.
+    const callerEmail = isGateOn()
+      ? (caller?.email || '').toLowerCase().trim()
+      : String(
+          (req.headers['x-user-email'] as string) || (req.body as any)?.requesterEmail || ''
+        ).toLowerCase().trim();
+    const requesterUserId = isGateOn()
+      ? ''
+      : String((req.body as any)?.requesterUserId || '').trim();
     const ownerMember = (business.members || []).find((m: any) => m?.role === 'owner');
     const ownerEmails = Array.from(new Set([
       String(ownerMember?.email || '').toLowerCase().trim(),
@@ -569,12 +687,24 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
   try {
     const { AccessToken, RoomServiceClient } = await import('livekit-server-sdk');
     const user = (req as any).user || {};
-    const businessId = typeof req.body?.businessId === 'string' ? req.body.businessId : 'default';
+    const rawBusinessId = typeof req.body?.businessId === 'string' ? req.body.businessId : 'default';
+    let businessId = rawBusinessId;
     // Departments this business offers for transfers, worked out from its
     // industry + services. The worker only offers these — a business with
     // no dispatch function never hears Dispatch as an option. Falls back
     // to every department when the business is unknown or has no record.
-    const tokenBusiness = businessId !== 'default' ? db.getBusiness(businessId) : undefined;
+    let tokenBusiness = rawBusinessId !== 'default' ? db.getBusiness(rawBusinessId) : undefined;
+    // Gate ON: a named business the caller is not on is refused, and
+    // 'default' resolves to the caller's own business — never to the
+    // first business on the server, which could be someone else's.
+    if (isGateOn()) {
+      const resolved = resolveBodyBusiness(req, rawBusinessId === 'default' ? undefined : rawBusinessId);
+      if (rawBusinessId !== 'default' && !resolved) {
+        return res.status(403).json({ error: 'You are not on this team.' });
+      }
+      businessId = resolved ? resolved.id : 'default';
+      tokenBusiness = resolved || undefined;
+    }
     const departments = tokenBusiness
       ? (Array.isArray(tokenBusiness.availableDepartments) && tokenBusiness.availableDepartments.length > 0
           ? normalizeDepartments(tokenBusiness.availableDepartments)
@@ -755,12 +885,30 @@ app.post('/api/business/:id/sms/send', smsSendLimiter, async (req: Request, res:
 
 // Businesses
 app.get('/api/businesses', (req: Request, res: Response) => {
-  const businesses = db.getAllBusinesses();
-  res.json(businesses);
+  // Gate ON: a caller sees only their own businesses — never the
+  // whole list. Gate OFF returns everything, as today.
+  res.json(callerBusinesses(req));
 });
 
 app.post('/api/businesses', (req: Request, res: Response) => {
   const data = req.body;
+  // Gate ON: nobody may create a business naming someone else as its
+  // owner. When the new record names no owner at all, it is allowed —
+  // the caller is creating their own business, not impersonating one.
+  if (isGateOn()) {
+    const caller = verifiedCaller(req);
+    const callerEmail = (caller?.email || '').toLowerCase().trim();
+    const namedOwnerEmails = [
+      String(data?.contactEmail || '').toLowerCase().trim(),
+      ...(Array.isArray(data?.members) ? data.members.filter((m: any) => m?.role === 'owner').map((m: any) => String(m?.email || '').toLowerCase().trim()) : []),
+    ].filter(Boolean);
+    const namedOwnerId = typeof data?.ownerId === 'string' ? data.ownerId : '';
+    const impersonating = namedOwnerEmails.length > 0 && callerEmail !== '' && !namedOwnerEmails.includes(callerEmail)
+      && !(namedOwnerId !== '' && caller?.uid === namedOwnerId);
+    if (impersonating) {
+      return res.status(403).json({ error: 'You can only create a business for yourself.' });
+    }
+  }
   const newBusiness: BusinessAccount = {
     id: data.id || `biz_${Date.now()}`,
     ownerId: typeof data.ownerId === 'string' ? data.ownerId : undefined,
@@ -838,6 +986,10 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
   if (!existing) {
     return res.status(404).json({ error: 'Business account not found' });
   }
+  // Gate ON: only the owner may save business settings. Before this,
+  // any signed-in (or, gate OFF, any) caller could rewrite a business
+  // — including its member roster. Gate OFF keeps today's behavior.
+  if (!requireBusinessOwner(req, res, existing)) return;
   // Allow-list update (Bug 5): never spread req.body verbatim — an object
   // smuggled into a string field used to crash the dashboard on render.
   // Only known BusinessAccount fields are accepted, each coerced to its
@@ -896,6 +1048,12 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
 });
 
 app.delete('/api/business/:id', (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.json({ success: false });
+  // Gate ON: only the owner may delete a business. This route
+  // previously had no ownership check at all. (The guarded, confirm-
+  // gated delete-account route is separate and unchanged.)
+  if (!requireBusinessOwner(req, res, business)) return;
   const deleted = db.deleteBusiness(req.params.id);
   res.json({ success: deleted });
 });
@@ -909,6 +1067,10 @@ function teamRequesterEmail(req: Request): string {
   const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
   const fromToken = (caller?.email || '').trim().toLowerCase();
   if (fromToken) return fromToken;
+  // Gate ON: the verified token is the only identity. The header and
+  // body fallbacks below exist ONLY while the gate is off, so today's
+  // local sign-ins keep working — anyone can type those values in.
+  if (isGateOn()) return '';
   const fromHeader = String(req.headers['x-user-email'] || '').trim().toLowerCase();
   if (fromHeader) return fromHeader;
   const fromBody = String(((req.body as any)?.requesterEmail || '') as string).trim().toLowerCase();
@@ -1404,6 +1566,12 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
   }
 
   const business = businessId ? db.getBusiness(businessId) : null;
+  // Gate ON: chatting "as" a business the caller is not on is refused —
+  // otherwise its name, services, and Teach Your Team notes would leak
+  // into the prompt. No business named means generic prompts, as today.
+  if (isGateOn() && businessId && (!business || !businessIsMember(business, verifiedCaller(req)))) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
   const bizName = business?.name || 'RC Solutions';
   const bizIndustry = business?.industry || 'Professional Services';
   const bizTone = business?.brandTone || 'Formal, strategic, rigorous, and insight-driven';
@@ -1598,12 +1766,19 @@ app.post('/api/phone/receptionist-chat', async (req: Request, res: Response) => 
     withAudio = true
   } = req.body;
 
-  const defaultBiz = (businessId && db.getBusiness(businessId)) || db.getAllBusinesses()[0] || {
+  // Gate ON: resolve to the caller's own business, never to the first
+  // business on the server. A caller with no business gets a 403
+  // instead of another company's record. Gate OFF: today's behavior.
+  const resolvedBiz = resolveBodyBusiness(req, businessId);
+  const defaultBiz = resolvedBiz || (!isGateOn() ? {
     id: 'biz_rc_solutions',
     name: 'RC Solutions',
     industry: 'automation_field_services',
     dollarThreshold: 250
-  };
+  } : null);
+  if (!defaultBiz) {
+    return res.status(403).json({ error: 'Sign in with a business account first.' });
+  }
 
   const isHuman = answeredBy === 'human_operator';
 
@@ -1945,11 +2120,17 @@ app.post('/api/phone/request-quote', (req: Request, res: Response) => {
     businessId 
   } = req.body;
 
-  const defaultBiz = (businessId && db.getBusiness(businessId)) || db.getAllBusinesses()[0] || {
+  // Gate ON: resolve to the caller's own business, never to the first
+  // business on the server. Gate OFF: today's behavior.
+  const resolvedBiz = resolveBodyBusiness(req, businessId);
+  const defaultBiz = resolvedBiz || (!isGateOn() ? {
     id: 'biz_rc_solutions',
     name: 'RC Solutions',
     dollarThreshold: 250
-  };
+  } : null);
+  if (!defaultBiz) {
+    return res.status(403).json({ error: 'Sign in with a business account first.' });
+  }
 
   const amt = Number(estimatedAmount) || 850;
   const newAction: ActionRecord = {
@@ -2005,11 +2186,17 @@ app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
     businessId
   } = req.body;
 
-  const defaultBiz = (businessId && db.getBusiness(businessId)) || db.getAllBusinesses()[0] || {
+  // Gate ON: resolve to the caller's own business, never to the first
+  // business on the server. Gate OFF: today's behavior.
+  const resolvedBiz = resolveBodyBusiness(req, businessId);
+  const defaultBiz = resolvedBiz || (!isGateOn() ? {
     id: 'biz_rc_solutions',
     name: 'RC Solutions',
     dollarThreshold: 250
-  };
+  } : null);
+  if (!defaultBiz) {
+    return res.status(403).json({ error: 'Sign in with a business account first.' });
+  }
 
   // Canonical invoice payload (Bug 3): stored as invoiceDetails, never
   // the quote shape, with amount === totalAmount so mark-paid (which reads
