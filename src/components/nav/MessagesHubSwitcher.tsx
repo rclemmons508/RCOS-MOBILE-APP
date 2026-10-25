@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Mail, Phone, Inbox } from 'lucide-react';
+import { MessageSquare, Mail, Phone, Inbox, LayoutList } from 'lucide-react';
 import { TabType } from '../../types';
 import { haptic } from '../../utils/haptics';
 
@@ -11,12 +11,13 @@ interface MessagesHubSwitcherProps {
 }
 
 /**
- * Messages hub switcher — sits above the Chat / Email / Phone / Requests
- * screens so the four views behave as one hub. Old tab ids stay valid
- * view targets.
+ * Messages hub switcher — sits above the Inbox / Chat / Email / Phone /
+ * Requests screens so the views behave as one hub. Old tab ids stay valid
+ * view targets. Inbox is first: it is the hub's landing screen.
  */
 export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ activeTab, onNavigate, unreadTeamCount = 0 }) => {
   const items: { id: TabType; label: string; icon: any }[] = [
+    { id: 'inbox', label: 'Inbox', icon: LayoutList },
     { id: 'team-chat', label: 'Chat', icon: MessageSquare },
     { id: 'gmail', label: 'Email', icon: Mail },
     { id: 'phone', label: 'Phone', icon: Phone },
