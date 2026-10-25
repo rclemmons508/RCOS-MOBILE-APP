@@ -470,7 +470,10 @@ export interface AutomationTask {
 
 export interface RCOSNotification {
   id: string;
-  type: 'system_alert' | 'performance_anomaly' | 'task_completion' | 'emergency_dispatch' | 'call_event';
+  // 'team_message' reuses the existing in-app push toast for a teammate's
+  // chat message. It is NOT a background push (FCM/APNs) — nothing
+  // arrives while the app is closed. See the realtime PR limits.
+  type: 'system_alert' | 'performance_anomaly' | 'task_completion' | 'emergency_dispatch' | 'call_event' | 'team_message';
   title: string;
   message: string;
   timestamp: string;

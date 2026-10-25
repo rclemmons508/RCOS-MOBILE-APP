@@ -6,6 +6,8 @@ import { haptic } from '../../utils/haptics';
 interface MessagesHubSwitcherProps {
   activeTab: TabType;
   onNavigate: (tab: TabType) => void;
+  /** Unread Team Chat messages from other people; badge on Chat. */
+  unreadTeamCount?: number;
 }
 
 /**
@@ -13,7 +15,7 @@ interface MessagesHubSwitcherProps {
  * screens so the four views behave as one hub. Old tab ids stay valid
  * view targets.
  */
-export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ activeTab, onNavigate }) => {
+export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ activeTab, onNavigate, unreadTeamCount = 0 }) => {
   const items: { id: TabType; label: string; icon: any }[] = [
     { id: 'team-chat', label: 'Chat', icon: MessageSquare },
     { id: 'gmail', label: 'Email', icon: Mail },
@@ -36,7 +38,7 @@ export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ active
               haptic.light();
               onNavigate(item.id);
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer min-h-[44px] ${
+            className={`relative flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer min-h-[44px] ${
               isActive
                 ? 'bg-lime-500 text-black'
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
@@ -44,6 +46,11 @@ export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ active
           >
             <Icon className="w-4 h-4" />
             <span>{item.label}</span>
+            {item.id === 'team-chat' && unreadTeamCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {unreadTeamCount > 99 ? '99+' : unreadTeamCount}
+              </span>
+            )}
           </button>
         );
       })}
