@@ -74,6 +74,8 @@ interface SettingsTabProps {
   businessId?: string;
   business?: BusinessAccount | null;
   onUpdateProfile?: (profile: ProfileUpdate) => Promise<void>;
+  /** Owner-only: save the company's public contact phone/email. */
+  onUpdateCompanyContact?: (contact: { contactPhone: string; contactEmail: string }) => Promise<void>;
   onUpdateBusinessKnowledge?: (knowledge: string) => Promise<void>;
   onLogout?: () => void;
   automationTasks: AutomationTask[];
@@ -119,6 +121,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   businessId,
   business,
   onUpdateProfile,
+  onUpdateCompanyContact,
   onUpdateBusinessKnowledge,
   onLogout,
   automationTasks,
@@ -166,21 +169,80 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [is24x7Emergency, setIs24x7Emergency] = useState(true);
 
   // ---- My Profile (editable name, contact info, profile picture) ----
+  // A member's own contact info lives on their OWN record: the team
+  // roster entry when one exists, else the signed-in user record. It
+  // is NEVER the company's contact info — prefilling these boxes from
+  // the business record showed every team member the owner's phone,
+  // email, and picture. Blank here means "never filled in", not "use
+  // the company's". The picture is likewise the person's own avatar.
+  const ownMember = (business?.members || []).find(
+    (m) => (m.email || '').toLowerCase() === (currentUser?.email || '').toLowerCase()
+  );
+  const ownPhone = ownMember?.phone || currentUser?.phone || '';
+  const ownContactEmail = ownMember?.contactEmail || currentUser?.contactEmail || '';
   const [profileName, setProfileName] = useState(currentUser?.fullName || '');
-  const [profilePhone, setProfilePhone] = useState(business?.contactPhone || '');
-  const [profileContactEmail, setProfileContactEmail] = useState(business?.contactEmail || '');
-  const [profilePicture, setProfilePicture] = useState(business?.profilePicture || '');
+  const [profilePhone, setProfilePhone] = useState(ownPhone);
+  const [profileContactEmail, setProfileContactEmail] = useState(ownContactEmail);
+  const [profilePicture, setProfilePicture] = useState(currentUser?.avatar || '');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const profileFileRef = useRef<HTMLInputElement | null>(null);
   // When a different account/business loads, reset the form to its values.
   useEffect(() => {
     setProfileName(currentUser?.fullName || '');
-    setProfilePhone(business?.contactPhone || '');
-    setProfileContactEmail(business?.contactEmail || '');
-    setProfilePicture(business?.profilePicture || '');
+    setProfilePhone(ownPhone);
+    setProfileContactEmail(ownContactEmail);
+    setProfilePicture(currentUser?.avatar || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [business?.id, currentUser?.email]);
+
+  // ---- Company contact (owner only; the info customers see) ----
+  // Positive proof only, mirroring the team backfill guard: a roster
+  // entry with role 'owner', or — for businesses created before teams
+  // existed — a match against the business's own owner identity. An
+  // empty roster alone proves nothing, so nobody is promoted by it.
+  const isBusinessOwner = (() => {
+    if (ownMember) return ownMember.role === 'owner';
+    const myEmail = (currentUser?.email || '').toLowerCase();
+    if (!myEmail) return false;
+    const ownerIdentities = [
+      (business?.contactEmail || '').toLowerCase(),
+      ((business as unknown as { ownerEmail?: string } | null)?.ownerEmail || '').toLowerCase(),
+    ].filter(Boolean);
+    return ownerIdentities.includes(myEmail) ||
+      (!!business?.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === currentUser?.id);
+  })();
+  const [companyContactPhone, setCompanyContactPhone] = useState(business?.contactPhone || '');
+  const [companyContactEmail, setCompanyContactEmail] = useState(business?.contactEmail || '');
+  const [companyContactSaving, setCompanyContactSaving] = useState(false);
+  const [companyContactError, setCompanyContactError] = useState<string | null>(null);
+  // When a different business loads, reset the company form to its values.
+  useEffect(() => {
+    setCompanyContactPhone(business?.contactPhone || '');
+    setCompanyContactEmail(business?.contactEmail || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business?.id]);
+
+  const handleSaveCompanyContact = async () => {
+    if (companyContactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companyContactEmail.trim())) {
+      setCompanyContactError('That company email does not look right.');
+      return;
+    }
+    if (!onUpdateCompanyContact) { setCompanyContactError('Company contact saving is not available right now.'); return; }
+    setCompanyContactSaving(true);
+    setCompanyContactError(null);
+    try {
+      await onUpdateCompanyContact({
+        contactPhone: companyContactPhone.trim(),
+        contactEmail: companyContactEmail.trim(),
+      });
+      showToast('Company contact saved!');
+    } catch (e: any) {
+      setCompanyContactError(e?.message || 'Could not save the company contact. Please try again.');
+    } finally {
+      setCompanyContactSaving(false);
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!profileName.trim()) { setProfileError('Please enter your name.'); return; }
@@ -700,7 +762,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   placeholder="you@company.com"
                   className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none font-mono"
                 />
-                <p className="text-[10px] text-zinc-500 mt-1">This is the email customers see. Your login email stays the same.</p>
+                <p className="text-[10px] text-zinc-500 mt-1">Your own contact email. Changing this never changes the company's contact info. Your login email stays the same.</p>
               </div>
             </div>
 
@@ -714,6 +776,56 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               {profileSaving ? 'Saving…' : 'Save profile'}
             </button>
           </div>
+
+          {/* Company contact — owner only. The phone and email customers
+              see. This is the ONLY place that edits the company's contact
+              info; My Profile above edits only the signed-in person's
+              own info and never touches these fields. */}
+          {isBusinessOwner && (
+            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3.5">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-lime-400" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Company contact</h3>
+                <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-mono font-bold uppercase">
+                  Owner only
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                The phone and email customers see for this company. Only you can change these.
+              </p>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-mono block mb-1">Company phone:</label>
+                  <input
+                    type="tel"
+                    value={companyContactPhone}
+                    onChange={(e) => setCompanyContactPhone(e.target.value)}
+                    placeholder="(555) 123-4567"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-mono block mb-1">Company email:</label>
+                  <input
+                    type="email"
+                    value={companyContactEmail}
+                    onChange={(e) => setCompanyContactEmail(e.target.value)}
+                    placeholder="hello@company.com"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none font-mono"
+                  />
+                </div>
+              </div>
+              {companyContactError && <p className="text-xs text-red-300">{companyContactError}</p>}
+              <button
+                type="button"
+                onClick={handleSaveCompanyContact}
+                disabled={companyContactSaving}
+                className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
+              >
+                {companyContactSaving ? 'Saving…' : 'Save company contact'}
+              </button>
+            </div>
+          )}
 
           {/* Teach Your Team — business knowledge every AI agent reads */}
           <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3.5">

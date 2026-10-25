@@ -258,9 +258,10 @@ export interface BusinessAccount {
   members?: BusinessMember[];
   name: string;
   /**
-   * Owner's public contact profile, editable in Settings → My Profile.
-   * contactEmail is the email customers see — it is separate from the
-   * login email, which never changes here.
+   * The company's public contact profile — the phone and email
+   * customers see. Editable only in Settings → Company contact, by
+   * the owner. My Profile must never read or write these fields:
+   * a team member's own phone/email live on their own record.
    */
   contactName?: string;
   contactPhone?: string;
@@ -399,6 +400,13 @@ export interface BusinessMember {
   name: string;
   role: TeamRole;
   avatar?: string;
+  /**
+   * This person's own phone and contact email. Blank when they have
+   * never filled them in — never copied from the company's contact
+   * info. My Profile reads and writes these, not the business fields.
+   */
+  phone?: string;
+  contactEmail?: string;
   joinedAt: string;
 }
 
@@ -563,6 +571,13 @@ export interface User {
   /** Free-form role title — the registration screen offers per-industry options. */
   role: string;
   avatar: string;
+  /**
+   * This person's own phone and contact email, filled in by them in
+   * Settings → My Profile. Blank when never filled in — never copied
+   * from the company's contact info, and never shown to another member.
+   */
+  phone?: string;
+  contactEmail?: string;
   /**
    * Local SHA-256 hash of the account password + salt. The password itself
    * is NEVER stored. Login checks the typed password against this hash;
