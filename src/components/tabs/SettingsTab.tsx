@@ -59,6 +59,8 @@ import {
   Copy,
   UserPlus,
   GraduationCap,
+  BookOpen,
+  ChevronRight,
 } from 'lucide-react';
 
  /** Values from the Settings → My Profile editor. */
@@ -103,6 +105,9 @@ interface SettingsTabProps {
   onTriggerTestPush: () => void;
   onOpenNotifPrefsModal: () => void;
   onReopenOnboarding?: () => void;
+  /** Opens the App Guide walkthrough as a reference menu (replay or
+   *  jump to one section). Never blocked by the tour completion flag. */
+  onOpenAppGuide?: () => void;
   onOpenServiceManager?: () => void;
   businessServices?: string[];
   proactiveSuggestion?: IndustryOptimizationSuggestion | null;
@@ -149,6 +154,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onTriggerTestPush,
   onOpenNotifPrefsModal,
   onReopenOnboarding,
+  onOpenAppGuide,
   onOpenServiceManager,
   businessServices = [],
   proactiveSuggestion,
@@ -677,6 +683,32 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               )}
             </div>
           </div>
+
+          {/* App Guide — replay the walkthrough or jump to one section.
+              Always available, even after the first-run tour was skipped. */}
+          {onOpenAppGuide && (
+            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80">
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  onOpenAppGuide();
+                }}
+                className="w-full flex items-center gap-3 text-left transition cursor-pointer"
+              >
+                <span className="w-10 h-10 rounded-2xl bg-lime-500/10 border border-lime-500/30 flex items-center justify-center shrink-0">
+                  <BookOpen className="w-5 h-5 text-lime-400" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-white">App Guide</span>
+                  <span className="block text-xs text-zinc-400">
+                    Walk through the app again, or jump to one section.
+                  </span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+              </button>
+            </div>
+          )}
 
           {/* My Profile — editable name, contact info, profile picture */}
           <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3.5">
