@@ -246,6 +246,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
         draft.kind === 'customer_request' ? ' Find it under Customer Requests.'
         : draft.kind === 'team_message' ? ' Find it in Team Chat.'
         : draft.kind === 'job' ? ' Find it on the Jobs list.'
+        : draft.kind === 'quote' ? ' Find it in Approvals.'
         : '';
       return [
         ...updated,
@@ -320,6 +321,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
     { label: 'Safety checklist', text: 'List mandatory safety pre-check requirements for technician dispatches.' },
     { label: 'Automate invoices', text: 'Recommend an automated workflow for invoices unpaid after 7 days.' },
     { label: 'Create a request', text: 'Create a customer request' },
+    { label: 'Create a quote', text: 'Create a quote' },
     { label: 'Message the team', text: 'Send a team message' }
   ];
 

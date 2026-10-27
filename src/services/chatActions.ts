@@ -21,7 +21,8 @@ export type ChatActionKind =
   | 'team_message'
   | 'job'
   | 'command'
-  | 'mark_paid';
+  | 'mark_paid'
+  | 'quote';
 
 export interface ChatActionField {
   key: string;
@@ -67,6 +68,17 @@ function extractActionId(text: string): string {
 }
 
 /**
+ * Dollar amounts only when the user actually wrote one with a $ sign.
+ * Anything else stays blank for the user to fill in — amounts are never
+ * guessed, and the server endpoint defaults a missing amount to $850,
+ * so a blank amount must refuse to execute rather than call it.
+ */
+function extractAmount(text: string): string {
+  const m = text.match(/\$\s?([\d,]+(?:\.\d{1,2})?)/);
+  return m ? m[1].replace(/,/g, '') : '';
+}
+
+/**
  * Deterministic intent matching. Deliberately narrow: advice questions
  * ("how do I create a quote?") must NOT trigger a card — only direct
  * requests ("create a customer request for ...") do.
@@ -109,6 +121,35 @@ export function detectChatAction(rawText: string): ChatActionDraft | null {
         { key: 'serviceType', label: 'Service needed', value: extractAbout(text) },
         { key: 'description', label: 'Details', value: clean(text), multiline: true },
         { key: 'customerPhone', label: 'Phone (optional)', value: '' },
+      ],
+    };
+  }
+
+  // Quote creation. Direct requests only: a "how do I create a quote?"
+  // question must go to the advice path, never to a card. Checked before
+  // the job branch so "create a quote for a job" is a quote, not a job.
+  if (
+    !/^\s*how\b/i.test(text) &&
+    (/\b(create|make|send|generate|prepare)\b.*\b(quote|estimate)\b/.test(lower) ||
+      /\bgive\b.*\ban estimate\b/.test(lower))
+  ) {
+    const clientName = extractFor(text);
+    const serviceName = extractAbout(text);
+    return {
+      kind: 'quote',
+      title: 'Create a quote',
+      description:
+        'This creates a real quote that lands in Approvals waiting for approval. Check every value before confirming — amounts are never guessed, so fill in any blank first.',
+      fields: [
+        { key: 'clientName', label: 'Customer name', value: clientName },
+        { key: 'serviceName', label: 'Service', value: serviceName },
+        { key: 'amount', label: 'Amount ($)', value: extractAmount(text) },
+        {
+          key: 'details',
+          label: 'Details (optional)',
+          value: !clientName && !serviceName ? clean(text) : '',
+          multiline: true,
+        },
       ],
     };
   }
@@ -218,6 +259,36 @@ export async function executeChatAction(
           return { ok: true, summary: `Done — work action started: ${action.title || action.actionType || 'command'}.`, recordId: String(action.id) };
         }
         return { ok: false, summary: 'The server did not return an action record, so this is not confirmed as started.' };
+      }
+      case 'quote': {
+        if (!v.clientName) return { ok: false, summary: 'No customer name was given, so nothing was created.' };
+        if (!v.serviceName) return { ok: false, summary: 'No service was given, so nothing was created.' };
+        const amount = Number(String(v.amount).replace(/[$,\s]/g, ''));
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return { ok: false, summary: 'No valid amount was given, so nothing was created. Amounts are never guessed — enter one and confirm again.' };
+        }
+        // Quotes in this app are engine actions (actionType generate_quote)
+        // read by the Approvals/Quotes list. POST /api/phone/request-quote
+        // is the app's direct creator with explicit fields — the same
+        // endpoint the phone quote modal uses. It returns 201 with the
+        // saved action; the businessId check guards against the endpoint's
+        // gate-OFF fallback business, so a quote for the wrong business
+        // is never reported as created for this one.
+        const res = await apiFetch<any>('/api/phone/request-quote', {
+          method: 'POST',
+          body: JSON.stringify({
+            clientName: v.clientName,
+            serviceName: v.serviceName,
+            estimatedAmount: amount,
+            details: v.details || `Quote created from AI chat for ${v.clientName}.`,
+            businessId,
+          }),
+        });
+        const action = res?.action;
+        if (res?.success && action?.id && action.actionType === 'generate_quote' && String(action.businessId) === String(businessId)) {
+          return { ok: true, summary: `Done — quote created for ${v.clientName}: ${v.serviceName} at $${amount}. It is waiting in Approvals.`, recordId: String(action.id) };
+        }
+        return { ok: false, summary: 'The server did not confirm a quote for this business, so nothing was created.' };
       }
       case 'mark_paid': {
         if (!v.actionId) return { ok: false, summary: 'No invoice id was given, so nothing was changed.' };
