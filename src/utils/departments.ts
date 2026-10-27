@@ -53,6 +53,14 @@ const FIELD_TRADE_PRESETS = new Set([
   'auto_services',
   'plumbing',
   'electrical',
+  'pest_control',
+  'pool_spa_services',
+  'appliance_repair',
+  'garage_door',
+  'flooring',
+  'fence_deck',
+  'septic_services',
+  'tree_service',
 ]);
 
 /** Words in an industry name or service list that signal field/dispatch work. Biased toward inclusion: offering Dispatch to a business that does not need it is harmless, hiding it from one that does is not. */

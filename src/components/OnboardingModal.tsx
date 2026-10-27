@@ -314,7 +314,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const detectingStages = [
     { title: 'Reading & Parsing Business Information', desc: 'Analyzing uploaded files, service scope, and business terminology...' },
     { title: 'Deciphering Operational Profile', desc: 'Extracting company identity, technician workflows, and client touchpoints...' },
-    { title: 'Matching Across 32 Industry Presets', desc: 'Cross-referencing trades, compliance codes, and best operational fits...' },
+    { title: 'Matching Across 40 Industry Presets', desc: 'Cross-referencing trades, compliance codes, and best operational fits...' },
     { title: 'Calibrating Autonomous Workforce', desc: 'Configuring safety thresholds, reception scripts, and dispatch rules...' }
   ];
 
@@ -1230,7 +1230,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div>
               <h1 className="text-xs font-bold text-white tracking-tight uppercase flex items-center gap-1.5">
                 <span>RCOS Intelligent Onboarding</span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-400 font-mono">32 PRESETS</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-400 font-mono">40 PRESETS</span>
               </h1>
               <p className="text-[10px] text-zinc-400 font-mono">AI Business Intake & Preset Calibrator</p>
             </div>
@@ -1804,7 +1804,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
                 <div>
                   <h3 className="text-sm font-extrabold text-white">Select Business Industry Preset</h3>
-                  <p className="text-[10px] text-zinc-400 font-mono">Choose from 32 tailored operational configurations</p>
+                  <p className="text-[10px] text-zinc-400 font-mono">Choose from 40 tailored operational configurations</p>
                 </div>
                 <button
                   type="button"
