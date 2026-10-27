@@ -1481,7 +1481,7 @@ A business owner named "${effectiveBizName}" is currently configured under the i
 However, they have added and are offering the following specific operational services:
 ${effectiveServices.map(s => `• ${s}`).join('\n')}
 
-Review the catalog of 32 industry presets:
+Review the catalog of 40 industry presets:
 ${presetList}
 
 Analyze whether their specific services indicate they have evolved or belong to a MORE OPTIMIZED industry profile than "${effectiveCurrentIndustry}".

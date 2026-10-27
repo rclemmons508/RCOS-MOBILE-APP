@@ -1188,6 +1188,310 @@ export const INDUSTRY_PRESETS: IndustryPreset[] = [
         troubleshootingNotes: ['If electric strike buzzes but fails to release, verify power supply provides sufficient inrush amps and check door closer pre-load pressure']
       }
     ]
+  },
+  {
+    id: 'pest_control',
+    name: 'Pest Control & Extermination',
+    description: 'General pest treatments, termite inspection and treatment, rodent exclusion, mosquito and tick yard treatments, and bed bug remediation.',
+    suggestedActiveEmployees: [
+      'executive_assistant', 'sales', 'operations', 'customer_service',
+      'technician', 'finance', 'admin', 'marketing', 'project_manager',
+      'automation_specialist', 'hr', 'business_analyst'
+    ],
+    defaultServices: ['General Pest Treatment', 'Termite Inspection & Treatment', 'Rodent Exclusion', 'Mosquito & Tick Yard Treatment', 'Bed Bug Heat Treatment'],
+    recommendedTone: 'Reassuring, thorough, safety-first, and fast to respond',
+    technicianRoleName: 'Licensed Pest Control Technician',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Pest Control Technician', 'Termite Specialist', 'Dispatcher / Scheduler', 'Office Admin'],
+    sampleJobPacks: [
+      {
+        id: 'jp_termite_treatment',
+        serviceType: 'Termite Inspection & Treatment',
+        industry: 'pest_control',
+        checklist: [
+          'Walk the full exterior and probe sill plates, door frames, and foundation joints for mud tubes and hollow wood',
+          'Inspect crawl space and basement for moisture intrusion and prior treatment drill marks',
+          'Map active infestation zones and photograph evidence for the customer report',
+          'Apply labeled termiticide barrier treatment per product label and state regulations',
+          'Install or inspect in-ground monitoring bait stations at labeled intervals',
+          'Leave the customer a written treatment summary, re-treatment warranty terms, and prevention checklist'
+        ],
+        workflowSequence: {
+          preCheck: ['Confirm pets and children are clear of treatment zones', 'Verify product label, dilution rate, and state license requirements'],
+          execute: ['Exterior inspection and evidence mapping', 'Barrier treatment application', 'Bait station installation or service'],
+          cleanUp: ['Remove drill dust and debris', 'Secure all chemical containers for transport'],
+          clientConfirmation: ['Walk the customer through findings, treatment zones, and the warranty']
+        },
+        requiredTools: ['Termite probe and moisture meter', 'Power sprayer and calibrated nozzles', 'Drill with masonry bits', 'Bait station auger', 'PPE: respirator, gloves, eye protection'],
+        safetyNotes: ['Never apply termiticide near wells, drains, or waterways except exactly as the product label permits', 'Keep children and pets away from treated soil until dry'],
+        troubleshootingNotes: ['If mud tubes reappear within the warranty window, re-inspect for a missed entry point or plumbing leak feeding moisture to the colony']
+      }
+    ]
+  },
+  {
+    id: 'pool_spa_services',
+    name: 'Pool & Spa Services',
+    description: 'Pool cleaning and chemical balancing, pump and heater repair, salt system conversion, and seasonal pool opening and closing.',
+    suggestedActiveEmployees: [
+      'executive_assistant', 'sales', 'operations', 'customer_service',
+      'technician', 'finance', 'admin', 'marketing', 'project_manager',
+      'automation_specialist', 'hr', 'business_analyst'
+    ],
+    defaultServices: ['Pool Cleaning & Chemical Balancing', 'Pump & Equipment Repair', 'Heater Installation & Repair', 'Pool Opening & Closing', 'Salt System Conversion'],
+    recommendedTone: 'Friendly, reliable, detail-obsessed, and crystal clear',
+    technicianRoleName: 'Certified Pool Technician',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Pool Technician', 'Equipment Repair Specialist', 'Dispatcher / Scheduler', 'Office Admin'],
+    sampleJobPacks: [
+      {
+        id: 'jp_pool_equipment_repair',
+        serviceType: 'Pump & Equipment Repair',
+        industry: 'pool_spa_services',
+        checklist: [
+          'Test water chemistry and record chlorine, pH, alkalinity, and calcium hardness before touching equipment',
+          'Inspect pump basket, impeller, seals, and motor for cracks, debris, and bearing noise',
+          'Check filter pressure gauge against clean baseline and backwash or clean cartridges as needed',
+          'Test heater ignition, thermostat, and safety shutoffs; inspect for gas or water leaks',
+          'Prime the pump, verify full circulation, and re-check for leaks at all unions',
+          'Log all readings and parts replaced for the customer service record'
+        ],
+        workflowSequence: {
+          preCheck: ['Shut off power at the breaker before opening any pump or heater housing', 'Confirm gate access and pet status'],
+          execute: ['Water chemistry test', 'Pump and filter diagnosis', 'Part replacement and reassembly', 'Heater safety test'],
+          cleanUp: ['Remove old seals, baskets, and packaging from the equipment pad'],
+          clientConfirmation: ['Show the customer the running system, pressure reading, and chemistry results']
+        },
+        requiredTools: ['Water test kit', 'Pump seal and impeller tools', 'Multimeter', 'PVC primer, cement, and unions', 'Filter cleaning wand'],
+        safetyNotes: ['Never run a pump dry — it destroys the seal in minutes', 'Treat all pool electrical work as live until the breaker is locked out and verified'],
+        troubleshootingNotes: ['If the pump loses prime repeatedly, check the pump lid O-ring and suction-side unions for air leaks before replacing the motor']
+      }
+    ]
+  },
+  {
+    id: 'appliance_repair',
+    name: 'Appliance Repair',
+    description: 'Diagnosis and repair of washers, dryers, refrigerators, ovens, ranges, and dishwashers, including parts replacement.',
+    suggestedActiveEmployees: [
+      'executive_assistant', 'sales', 'operations', 'customer_service',
+      'technician', 'finance', 'admin', 'marketing', 'project_manager',
+      'automation_specialist', 'hr', 'business_analyst'
+    ],
+    defaultServices: ['Washer & Dryer Repair', 'Refrigerator & Freezer Repair', 'Oven & Range Repair', 'Dishwasher Repair', 'Diagnostic & Parts Replacement'],
+    recommendedTone: 'Straightforward, honest about parts and cost, and respectful of the home',
+    technicianRoleName: 'Appliance Repair Technician',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Appliance Repair Technician', 'Parts Coordinator', 'Dispatcher / Scheduler', 'Office Admin'],
+    sampleJobPacks: [
+      {
+        id: 'jp_washer_repair',
+        serviceType: 'Washer & Dryer Repair',
+        industry: 'appliance_repair',
+        checklist: [
+          'Ask the customer for the exact symptom, error code, and when it started before opening the machine',
+          'Verify power, water supply valves, and drain hose placement before diagnosing parts',
+          'Run the machine through a short cycle and record noises, leaks, and error codes',
+          'Test the suspect part (pump, belt, valve, control board) with a multimeter before replacing it',
+          'Replace only the failed part, reassemble, and run a full test cycle with no leaks',
+          'Explain the repair, the part warranty, and what to watch for in plain language'
+        ],
+        workflowSequence: {
+          preCheck: ['Unplug the machine and shut off water supply before removing panels', 'Lay down a mat to protect the floor'],
+          execute: ['Symptom interview and test cycle', 'Part testing and replacement', 'Full verification cycle'],
+          cleanUp: ['Wipe down the machine exterior and remove old parts and packaging'],
+          clientConfirmation: ['Run the machine with the customer present and confirm the symptom is gone']
+        },
+        requiredTools: ['Multimeter', 'Nut driver and socket set', 'Pliers and hose clamp tool', 'Appliance dolly and moving straps'],
+        safetyNotes: ['Never bypass a lid switch or thermal fuse to test a machine — both are safety devices', 'Drain standing water before tipping a washer to avoid electrical and floor damage'],
+        troubleshootingNotes: ['If a washer still will not spin after a pump replacement, check the lid switch and drive belt before ordering a control board']
+      }
+    ]
+  },
+  {
+    id: 'garage_door',
+    name: 'Garage Door Services',
+    description: 'Garage door installation, broken spring replacement, opener installation and repair, track and cable repair, and smart garage controls.',
+    suggestedActiveEmployees: [
+      'executive_assistant', 'sales', 'operations', 'customer_service',
+      'technician', 'finance', 'admin', 'marketing', 'project_manager',
+      'automation_specialist', 'hr', 'business_analyst'
+    ],
+    defaultServices: ['Garage Door Installation', 'Broken Spring Replacement', 'Opener Installation & Repair', 'Track & Cable Repair', 'Smart Garage Controls'],
+    recommendedTone: 'Safety-obsessed, prompt, and plain-spoken about cost',
+    technicianRoleName: 'Garage Door Technician',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Garage Door Technician', 'Installer', 'Dispatcher / Scheduler', 'Office Admin'],
+    sampleJobPacks: [
+      {
+        id: 'jp_spring_replacement',
+        serviceType: 'Broken Spring Replacement',
+        industry: 'garage_door',
+        checklist: [
+          'Confirm the door is fully closed and secured before touching any spring hardware',
+          'Identify spring type (torsion vs extension), wire size, length, and wind direction',
+          'Release torsion tension with winding bars only — never with screwdrivers or pliers',
+          'Replace both springs as a matched pair when one breaks, and inspect cables, drums, and bearings',
+          'Re-tension to the correct number of turns, lubricate moving parts, and test balance by hand',
+          'Test safety reverse sensors and auto-reverse, then program remotes and keypads'
+        ],
+        workflowSequence: {
+          preCheck: ['Secure the door and disconnect the opener', 'Verify spring measurements against the door weight and height'],
+          execute: ['Tension release', 'Spring and hardware replacement', 'Re-tension and balance test'],
+          cleanUp: ['Remove broken spring fragments and packaging from the garage floor'],
+          clientConfirmation: ['Operate the door with the customer and demonstrate the safety reverse test']
+        },
+        requiredTools: ['Winding bars (matched pair)', 'Vise grips and locking pliers', 'Socket and wrench set', 'Cable and drum tools', 'Lubricant'],
+        safetyNotes: ['Torsion springs store lethal energy: winding bars must be fully seated before every quarter turn, and your body must never be in the spring line of travel', 'Never work on a partially open door held only by the opener'],
+        troubleshootingNotes: ['If the door feels heavy by hand after new springs, re-check the turn count — one missing turn is the most common cause']
+      }
+    ]
+  },
+  {
+    id: 'flooring',
+    name: 'Flooring Installation & Refinishing',
+    description: 'Hardwood installation and refinishing, luxury vinyl plank, tile installation, carpet installation, and floor repair and sanding.',
+    suggestedActiveEmployees: [
+      'executive_assistant', 'sales', 'operations', 'customer_service',
+      'technician', 'finance', 'admin', 'marketing', 'project_manager',
+      'automation_specialist', 'hr', 'business_analyst'
+    ],
+    defaultServices: ['Hardwood Installation & Refinishing', 'Luxury Vinyl Plank', 'Tile Installation', 'Carpet Installation', 'Floor Repair & Sanding'],
+    recommendedTone: 'Craft-focused, careful with the home, and clear about dust and dry times',
+    technicianRoleName: 'Flooring Installer',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Flooring Installer', 'Finishing Specialist', 'Apprentice', 'Office Admin'],
+    sampleJobPacks: [
+      {
+        id: 'jp_hardwood_refinish',
+        serviceType: 'Hardwood Installation & Refinishing',
+        industry: 'flooring',
+        checklist: [
+          'Measure moisture content of the wood and subfloor and confirm it is within range before sanding',
+          'Inspect for loose boards, squeaks, pet stains, and prior wax coatings that block adhesion',
+          'Sand in grit progression (coarse to fine), edging and corners included, with dust containment running',
+          'Vacuum and tack the floor twice between sanding and the first finish coat',
+          'Apply stain (if chosen) then finish coats, keeping coats thin and even with proper dry time between them',
+          'Walk the floor in raking light with the customer and note the cure time before furniture returns'
+        ],
+        workflowSequence: {
+          preCheck: ['Protect adjacent rooms with plastic sheeting and confirm ventilation', 'Remove furniture, rugs, and wall hangings from the work area'],
+          execute: ['Moisture check and repair', 'Sanding progression', 'Stain and finish coats'],
+          cleanUp: ['Vacuum all dust from vents, sills, and baseboards before final coat'],
+          clientConfirmation: ['Final walkthrough in raking light and written cure-time instructions']
+        },
+        requiredTools: ['Drum sander and edger', 'Moisture meter', 'Vacuum with fine dust filter', 'Applicator pads and finish', 'Respirator and hearing protection'],
+        safetyNotes: ['Oil-soaked rags can spontaneously combust — lay them flat outdoors or store in a sealed metal container', 'Wear a respirator during all sanding passes'],
+        troubleshootingNotes: ['If finish fisheyes or will not adhere, suspect a prior wax coating — screen, clean with a wax remover, and re-test adhesion on a small area']
+      }
+    ]
+  },
+  {
+    id: 'fence_deck',
+    name: 'Fence & Deck Building',
+    description: 'Wood, vinyl, and chain-link fence installation, deck building and resurfacing, gate and opener installation, and fence repair and staining.',
+    suggestedActiveEmployees: [
+      'executive_assistant', 'sales', 'operations', 'customer_service',
+      'technician', 'finance', 'admin', 'marketing', 'project_manager',
+      'automation_specialist', 'hr', 'business_analyst'
+    ],
+    defaultServices: ['Wood Fence Installation', 'Vinyl & Chain-Link Fencing', 'Deck Building & Resurfacing', 'Gate & Opener Installation', 'Fence Repair & Staining'],
+    recommendedTone: 'Outdoorsy, dependable, and straight about materials and timelines',
+    technicianRoleName: 'Fence & Deck Builder',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Fence & Deck Builder', 'Installer', 'Laborer', 'Office Admin'],
+    sampleJobPacks: [
+      {
+        id: 'jp_fence_install',
+        serviceType: 'Wood Fence Installation',
+        industry: 'fence_deck',
+        checklist: [
+          'Confirm property lines, easements, and HOA or permit rules before digging a single hole',
+          'Call 811 and verify all underground utilities are marked along the fence line',
+          'Set corner and end posts first, braced and plumb, then run a string line for the full run',
+          'Set line posts at consistent spacing with concrete footings below frost depth where required',
+          'Hang rails level, attach pickets with consistent gaps, and cap or stain as specified',
+          'Walk the full line with the customer, check every gate latch, and haul away all spoils'
+        ],
+        workflowSequence: {
+          preCheck: ['Utility locate (811) and property line confirmation', 'Material delivery and staging'],
+          execute: ['Post layout and setting', 'Rail and picket installation', 'Gate hanging and hardware'],
+          cleanUp: ['Grade and seed disturbed soil', 'Remove concrete bags and cutoffs from the yard'],
+          clientConfirmation: ['Full-line walkthrough and gate operation demo with the customer']
+        },
+        requiredTools: ['Post hole digger and auger', 'Level and string line', 'Circular saw and nail gun', 'Concrete mixer', 'Gate hardware kit'],
+        safetyNotes: ['Never dig before utilities are marked — a gas or electric strike is the top risk on this job', 'Brace posts before backfilling so a shifting post cannot fall on a worker'],
+        troubleshootingNotes: ['If a gate sags within weeks, the hinge post footing was too shallow or the diagonal brace runs the wrong way — reset the post and re-brace']
+      }
+    ]
+  },
+  {
+    id: 'septic_services',
+    name: 'Septic Services',
+    description: 'Septic tank pumping, septic inspection and certification, drain field repair, septic system installation, and grease trap pumping.',
+    suggestedActiveEmployees: [
+      'executive_assistant', 'sales', 'operations', 'customer_service',
+      'technician', 'finance', 'admin', 'marketing', 'project_manager',
+      'automation_specialist', 'hr', 'business_analyst'
+    ],
+    defaultServices: ['Septic Tank Pumping', 'Septic Inspection & Certification', 'Drain Field Repair', 'Septic System Installation', 'Grease Trap Pumping'],
+    recommendedTone: 'No-nonsense, discreet, and clear about what the system needs and when',
+    technicianRoleName: 'Licensed Septic Technician',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Septic Technician', 'System Installer', 'Dispatcher / Scheduler', 'Office Admin'],
+    sampleJobPacks: [
+      {
+        id: 'jp_septic_pumping',
+        serviceType: 'Septic Tank Pumping',
+        industry: 'septic_services',
+        checklist: [
+          'Locate the tank using the as-built drawing, probe, or locator — never guess and dig blind',
+          'Expose lids, inspect risers and baffles, and measure scum and sludge layers before pumping',
+          'Pump both compartments fully, backflush as needed, and inspect the tank walls for cracks or root intrusion',
+          'Check the outlet filter, clean or replace it, and verify flow to the drain field',
+          'Record tank size, gallons pumped, and condition notes for the customer and the county record',
+          'Restore the lawn, close lids securely, and explain the pumping interval in plain terms'
+        ],
+        workflowSequence: {
+          preCheck: ['Confirm tank location and access, and keep children and pets clear of open lids', 'Verify disposal site and manifest requirements'],
+          execute: ['Lid exposure and inspection', 'Pumping and backflush', 'Filter service and flow check'],
+          cleanUp: ['Reseed and grade disturbed turf', 'Disinfect tools and wash down the work area'],
+          clientConfirmation: ['Show the customer the empty tank and filter, and hand over the service report']
+        },
+        requiredTools: ['Vacuum pump truck and hoses', 'Tank probe and lid lifting tools', 'Sludge judge sampler', 'Replacement outlet filters', 'PPE: gloves, boots, eye protection'],
+        safetyNotes: ['Septic gases are toxic and oxygen-displacing — never enter a tank, and keep your head out of an open riser', 'Open lids are a fall hazard: guard them until they are closed again'],
+        troubleshootingNotes: ['If the tank refills abnormally fast after pumping, suspect a leaking toilet or fixture, or a drain field that is no longer absorbing — check indoor fixtures before blaming the tank']
+      }
+    ]
+  },
+  {
+    id: 'tree_service',
+    name: 'Tree Service & Arbor Care',
+    description: 'Tree removal, trimming and pruning, stump grinding, storm damage cleanup, and certified arborist health assessments.',
+    suggestedActiveEmployees: [
+      'executive_assistant', 'sales', 'operations', 'customer_service',
+      'technician', 'finance', 'admin', 'marketing', 'project_manager',
+      'automation_specialist', 'hr', 'business_analyst'
+    ],
+    defaultServices: ['Tree Removal', 'Tree Trimming & Pruning', 'Stump Grinding', 'Storm Damage Cleanup', 'Arborist Health Assessments'],
+    recommendedTone: 'Safety-first, confident, and respectful of the property and neighbors',
+    technicianRoleName: 'Certified Arborist / Tree Climber',
+    staffRoles: ['Owner / Operator', 'Operations Manager', 'Tree Climber', 'Ground Crew Lead', 'Equipment Operator', 'Office Admin'],
+    sampleJobPacks: [
+      {
+        id: 'jp_tree_removal',
+        serviceType: 'Tree Removal',
+        industry: 'tree_service',
+        checklist: [
+          'Assess lean, deadwood, decay, and targets (house, lines, fences) and choose the removal method before cutting',
+          'Confirm power line clearance and call the utility for a drop if any limb is within reach of lines',
+          'Set the drop zone, rope rigging plan, and ground crew positions, and brief every worker on escape routes',
+          'Remove limbs in controlled, rigged sections — never free-fall large wood over a roof or fence',
+          'Fell or crane-lift the trunk in sections, then grind the stump and clean all debris',
+          'Walk the property with the customer and confirm lawn, beds, and structures are undamaged'
+        ],
+        workflowSequence: {
+          preCheck: ['Site hazard assessment and utility clearance', 'Rigging plan and crew safety briefing'],
+          execute: ['Rigged limb removal', 'Trunk sectioning', 'Stump grinding'],
+          cleanUp: ['Chip brush, rake the lawn, and blow off drives and roofs'],
+          clientConfirmation: ['Final property walkthrough with the customer']
+        },
+        requiredTools: ['Climbing saddle, ropes, and rigging gear', 'Chainsaws (top-handle and ground)', 'Stump grinder', 'Chipper and truck', 'PPE: helmet, eye and hearing protection, chaps'],
+        safetyNotes: ['Tree work is high-risk: no one works under a suspended load, and no cutting happens without a clear escape route', 'Keep all workers and bystanders at least two tree lengths from felling operations where possible'],
+        troubleshootingNotes: ['If a rigged limb swings toward a structure, stop, re-tension the rigging, and re-plan the cut — never chase a swinging load with the saw running']
+      }
+    ]
   }
 ];
 
