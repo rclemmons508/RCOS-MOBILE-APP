@@ -1987,9 +1987,21 @@ export default function App() {
           )}
 
           {activeTab === 'chat' && (
-            <GeminiChatView 
-              business={activeBusiness} 
-              onClose={() => setActiveTab('dashboard')} 
+            <GeminiChatView
+              business={activeBusiness}
+              onClose={() => setActiveTab('dashboard')}
+              senderEmail={currentUser?.email || ''}
+              senderName={currentUser?.fullName || ''}
+              onBusinessRefresh={async () => {
+                const businesses = await apiFetch<BusinessAccount[]>('/api/businesses');
+                const fresh = Array.isArray(businesses)
+                  ? businesses.find((b) => b.id === activeBusiness.id)
+                  : undefined;
+                if (fresh) {
+                  setBusinessAccount(fresh);
+                  if (currentUser) setCachedBusiness(currentUser, fresh);
+                }
+              }}
             />
           )}
 
