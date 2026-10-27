@@ -943,6 +943,22 @@ app.post('/api/businesses', (req: Request, res: Response) => {
       business_analyst: true
     },
     onboardingCompleted: !!data.onboardingCompleted,
+    // Deeper onboarding profile (same coercion as the PUT allow-list).
+    serviceArea: typeof data.serviceArea === 'string' ? data.serviceArea : undefined,
+    businessHours: typeof data.businessHours === 'string' ? data.businessHours : undefined,
+    emergencyAvailable: typeof data.emergencyAvailable === 'boolean' ? data.emergencyAvailable : undefined,
+    teamSize: typeof data.teamSize === 'string' ? data.teamSize : undefined,
+    servesResidential: typeof data.servesResidential === 'boolean' ? data.servesResidential : undefined,
+    servesCommercial: typeof data.servesCommercial === 'boolean' ? data.servesCommercial : undefined,
+    priceHints: Array.isArray(data.priceHints)
+      ? data.priceHints
+          .filter((h: any) => h && typeof h === 'object' && typeof h.service === 'string' && typeof h.price === 'string' && h.service && h.price)
+          .map((h: any) => ({ service: h.service, price: h.price }))
+          .slice(0, 20)
+      : undefined,
+    documentContactInfo: data.documentContactInfo && typeof data.documentContactInfo === 'object' && ['phone', 'email', 'website', 'address'].some((f) => typeof data.documentContactInfo[f] === 'string' && data.documentContactInfo[f].trim())
+      ? Object.fromEntries(['phone', 'email', 'website', 'address'].filter((f) => typeof data.documentContactInfo[f] === 'string' && data.documentContactInfo[f].trim()).map((f) => [f, data.documentContactInfo[f].trim()]))
+      : undefined,
     starterDrafts: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -1009,6 +1025,33 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
   if (body.answeringMode === 'ai' || body.answeringMode === 'manual') updates.answeringMode = body.answeringMode;
   if (typeof body.dollarThreshold === 'number' && Number.isFinite(body.dollarThreshold)) updates.dollarThreshold = body.dollarThreshold;
   if (typeof body.onboardingCompleted === 'boolean') updates.onboardingCompleted = body.onboardingCompleted;
+  // Deeper onboarding profile — same coercion rules as the analysis
+  // output: strings only when non-empty, booleans only when true/false,
+  // prices only when tied to a service. Unknown shapes are dropped.
+  for (const field of ['serviceArea', 'businessHours', 'teamSize'] as const) {
+    if (typeof body[field] === 'string') updates[field] = body[field];
+  }
+  for (const field of ['emergencyAvailable', 'servesResidential', 'servesCommercial'] as const) {
+    if (typeof body[field] === 'boolean') updates[field] = body[field];
+  }
+  if (Array.isArray(body.priceHints)) {
+    updates.priceHints = body.priceHints
+      .filter((h): h is Record<string, unknown> => !!h && typeof h === 'object' && !Array.isArray(h))
+      .map((h) => ({
+        service: typeof h.service === 'string' ? h.service : '',
+        price: typeof h.price === 'string' ? h.price : '',
+      }))
+      .filter((h) => h.service && h.price)
+      .slice(0, 20);
+  }
+  if (body.documentContactInfo && typeof body.documentContactInfo === 'object' && !Array.isArray(body.documentContactInfo)) {
+    const ci = body.documentContactInfo as Record<string, unknown>;
+    const picked: Record<string, string> = {};
+    for (const field of ['phone', 'email', 'website', 'address'] as const) {
+      if (typeof ci[field] === 'string' && ci[field].trim()) picked[field] = ci[field].trim();
+    }
+    if (Object.keys(picked).length > 0) updates.documentContactInfo = picked;
+  }
   if (Array.isArray(body.members)) {
     updates.members = body.members
       .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && !Array.isArray(m))

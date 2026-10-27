@@ -73,6 +73,29 @@ interface AnalyzeDocumentResponse {
   recommendedTone?: string;
   technicianRoleName?: string;
   dollarThreshold?: number;
+  // Deeper profile — present only when the document/typed input said it.
+  serviceArea?: string;
+  businessHours?: string;
+  emergencyAvailable?: boolean;
+  teamSize?: string;
+  servesResidential?: boolean;
+  servesCommercial?: boolean;
+  priceHints?: { service: string; price: string }[];
+  contactInfo?: { phone?: string; email?: string; website?: string; address?: string };
+}
+
+/** Deeper facts carried from analysis into the review step and the saved
+ * business record. Empty means "not found" — never a guess. */
+interface DetectedProfile {
+  docBusinessName: string;
+  serviceArea: string;
+  businessHours: string;
+  emergencyAvailable: boolean;
+  teamSize: string;
+  servesResidential: boolean;
+  servesCommercial: boolean;
+  priceHints: { service: string; price: string }[];
+  contactInfo: { phone: string; email: string; website: string; address: string };
 }
 
 interface ScoredPresetMatch {
@@ -291,6 +314,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [alternativeIndustries, setAlternativeIndustries] = useState<Array<{ preset: typeof INDUSTRY_PRESETS[0]; score?: number }>>([]);
   const [resultSource, setResultSource] = useState<'llm' | 'fallback' | null>(null);
   const [isUncertain, setIsUncertain] = useState(false);
+
+  // Deeper profile from the analysis, plus a snapshot of what the user
+  // typed BEFORE analysis ran — the verification pass compares the two,
+  // so later edits to the company name never hide a real conflict.
+  const [detectedProfile, setDetectedProfile] = useState<DetectedProfile | null>(null);
+  const [analysisSnapshot, setAnalysisSnapshot] = useState<{ name: string; text: string } | null>(null);
 
   // New service tag input for review step
   const [newServiceTag, setNewServiceTag] = useState('');
@@ -983,6 +1012,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     }
 
     setError(null);
+    // Snapshot what the user typed before analysis can change it — the
+    // verification pass on the review step compares typed vs found.
+    setAnalysisSnapshot({ name: businessName.trim(), text: businessDescription.trim() });
     setLoading(true);
     setStep('detecting');
     await haptic.medium();
@@ -1059,6 +1091,28 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         if (result.recommendedTone) setBrandTone(result.recommendedTone);
         if (result.technicianRoleName) setTechnicianRoleName(result.technicianRoleName);
         setDollarThreshold(typeof result.dollarThreshold === 'number' ? result.dollarThreshold : 1250);
+
+        // Deeper profile: only what the analysis actually found. A
+        // keyword fallback carries none of these — they stay empty,
+        // never fabricated.
+        setDetectedProfile({
+          docBusinessName: typeof result.businessName === 'string' ? result.businessName.trim() : '',
+          serviceArea: typeof result.serviceArea === 'string' ? result.serviceArea.trim() : '',
+          businessHours: typeof result.businessHours === 'string' ? result.businessHours.trim() : '',
+          emergencyAvailable: result.emergencyAvailable === true,
+          teamSize: typeof result.teamSize === 'string' ? result.teamSize.trim() : '',
+          servesResidential: result.servesResidential === true,
+          servesCommercial: result.servesCommercial === true,
+          priceHints: (Array.isArray(result.priceHints) ? result.priceHints : [])
+            .filter((h) => h && typeof h.service === 'string' && typeof h.price === 'string' && h.service && h.price)
+            .slice(0, 8),
+          contactInfo: {
+            phone: typeof result.contactInfo?.phone === 'string' ? result.contactInfo.phone : '',
+            email: typeof result.contactInfo?.email === 'string' ? result.contactInfo.email : '',
+            website: typeof result.contactInfo?.website === 'string' ? result.contactInfo.website : '',
+            address: typeof result.contactInfo?.address === 'string' ? result.contactInfo.address : '',
+          },
+        });
       } else {
         // Server returned no industry: local scored fallback.
         applyLocalFallback(localMatchText);
@@ -1082,6 +1136,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     const ranked = matchPresetsLocallyRanked(text, 3);
     const local = ranked.length > 0 ? ranked[0].preset : matchPresetLocally(text);
     applyPreset(local);
+    setDetectedProfile(null);
     setResultSource('fallback');
     setIsUncertain(true);
     setConfidenceScore(0);
@@ -1145,12 +1200,90 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     }));
   };
 
+  // Verification pass: typed input (snapshot) vs document analysis.
+  // Statuses in plain words: confirmed = both sides agree, guessed =
+  // one side only, missing = found nowhere, conflict = the two sides
+  // disagree. Conflicts are flagged, never blocking — the company name
+  // and other fields below stay editable and the user can proceed.
+  type VerificationFinding = { label: string; status: 'confirmed' | 'guessed' | 'missing' | 'conflict'; note: string };
+  const buildVerificationFindings = (): VerificationFinding[] => {
+    const typedName = (analysisSnapshot?.name || '').trim();
+    const typedText = (analysisSnapshot?.text || '').trim().toLowerCase();
+    const docName = (detectedProfile?.docBusinessName || '').trim();
+    const findings: VerificationFinding[] = [];
+    if (!typedName && !docName) {
+      findings.push({ label: 'Company name', status: 'missing', note: 'No company name found anywhere — add it below.' });
+    } else if (typedName && !docName) {
+      findings.push({ label: 'Company name', status: 'guessed', note: 'From what you typed — the document did not name the company.' });
+    } else if (!typedName && docName) {
+      findings.push({ label: 'Company name', status: 'guessed', note: 'From your document only.' });
+    } else if (typedName.toLowerCase() === docName.toLowerCase()) {
+      findings.push({ label: 'Company name', status: 'confirmed', note: 'What you typed matches the document.' });
+    } else {
+      findings.push({ label: 'Company name', status: 'conflict', note: `You typed "${typedName}" but the document says "${docName}" — fix the company name below if one is wrong.` });
+    }
+    if (!detectedProfile) {
+      findings.push({ label: 'Services', status: 'guessed', note: 'Services come from the industry preset — no document facts were extracted.' });
+    } else if (!typedText) {
+      findings.push({ label: 'Services', status: 'guessed', note: 'From your document.' });
+    } else {
+      const mentioned = detectedServices.filter((s) => {
+        const words = s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+        return words.some((w) => typedText.includes(w));
+      }).length;
+      findings.push(mentioned > 0
+        ? { label: 'Services', status: 'confirmed', note: `${mentioned} of ${detectedServices.length} services are also named in your description.` }
+        : { label: 'Services', status: 'guessed', note: 'From your document — your description did not name these services.' });
+    }
+    findings.push(detectedProfile?.serviceArea
+      ? { label: 'Service area', status: 'confirmed', note: `Found: ${detectedProfile.serviceArea}` }
+      : { label: 'Service area', status: 'missing', note: 'No service area in the document.' });
+    findings.push(detectedProfile?.businessHours
+      ? { label: 'Business hours', status: 'confirmed', note: `Found: ${detectedProfile.businessHours}` }
+      : { label: 'Business hours', status: 'missing', note: 'No hours in the document.' });
+    findings.push(detectedProfile?.emergencyAvailable
+      ? { label: 'Emergency service', status: 'confirmed', note: 'Emergency / after-hours service found in the document.' }
+      : { label: 'Emergency service', status: 'missing', note: 'No emergency service mentioned.' });
+    findings.push((detectedProfile?.priceHints.length || 0) > 0
+      ? { label: 'Prices', status: 'confirmed', note: `${detectedProfile!.priceHints.length} price(s) found in the document.` }
+      : { label: 'Prices', status: 'missing', note: 'No prices in the document.' });
+    const hasContact = !!(detectedProfile && (detectedProfile.contactInfo.phone || detectedProfile.contactInfo.email || detectedProfile.contactInfo.website || detectedProfile.contactInfo.address));
+    findings.push(hasContact
+      ? { label: 'Contact details', status: 'confirmed', note: 'Contact details found in the document.' }
+      : { label: 'Contact details', status: 'missing', note: 'No contact details in the document.' });
+    return findings;
+  };
+
+  // Plain-words next-setup suggestions. Suggestions only — nothing here
+  // is turned on automatically, and nothing is sent.
+  const buildSetupSuggestions = (): string[] => {
+    if (!detectedProfile) return [];
+    const out: string[] = [];
+    if (detectedProfile.emergencyAvailable) out.push('After-hours missed-call follow-up: since you offer emergency service, after-hours callers could get a text back automatically. You can switch this on in Automations after launch.');
+    if (detectedProfile.priceHints.length > 0) out.push('Quote templates: the prices found above can be the starting point for your quote templates — set them up after launch.');
+    if (detectedProfile.contactInfo.email) out.push('Email: connect Gmail after launch so customer email stays inside the app, private to each person.');
+    return out;
+  };
+
   // Final User Approval & Launch Workspace
   const handleApproveAndLaunch = async () => {
     setLoading(true);
     await haptic.success();
 
     const finalName = businessName.trim() || `${detectedIndustryName.split('&')[0].trim()} Solutions`;
+
+    // Seed Teach Your Team knowledge with the verified facts from the
+    // analysis — agents read this as reference from day one. Only facts
+    // actually found are included, capped like any knowledge text.
+    const knowledgeParts: string[] = [...keyInsights];
+    if (detectedProfile?.serviceArea) knowledgeParts.push(`Serves: ${detectedProfile.serviceArea}`);
+    if (detectedProfile?.businessHours) knowledgeParts.push(`Hours: ${detectedProfile.businessHours}`);
+    if (detectedProfile?.emergencyAvailable) knowledgeParts.push('Offers emergency service.');
+    if (detectedProfile?.teamSize) knowledgeParts.push(`Team size: ${detectedProfile.teamSize}`);
+    if (detectedProfile?.servesResidential || detectedProfile?.servesCommercial) {
+      knowledgeParts.push(`Serves: ${[detectedProfile.servesResidential ? 'homes' : '', detectedProfile.servesCommercial ? 'businesses' : ''].filter(Boolean).join(' and ')}`);
+    }
+    const seededKnowledge = knowledgeParts.join('\n').slice(0, 8000);
 
     const businessPayload: BusinessAccount = {
       id: initialBusiness?.id || `biz_${Date.now()}`,
@@ -1160,6 +1293,22 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       services: detectedServices,
       pricingApproach: 'Flat-rate standard ratecard & hourly dispatch',
       brandTone,
+      businessKnowledge: seededKnowledge || undefined,
+      serviceArea: detectedProfile?.serviceArea || undefined,
+      businessHours: detectedProfile?.businessHours || undefined,
+      emergencyAvailable: detectedProfile ? detectedProfile.emergencyAvailable : undefined,
+      teamSize: detectedProfile?.teamSize || undefined,
+      servesResidential: detectedProfile ? detectedProfile.servesResidential : undefined,
+      servesCommercial: detectedProfile ? detectedProfile.servesCommercial : undefined,
+      priceHints: detectedProfile?.priceHints.length ? detectedProfile.priceHints : undefined,
+      documentContactInfo: detectedProfile && (detectedProfile.contactInfo.phone || detectedProfile.contactInfo.email || detectedProfile.contactInfo.website || detectedProfile.contactInfo.address)
+        ? {
+            ...(detectedProfile.contactInfo.phone ? { phone: detectedProfile.contactInfo.phone } : {}),
+            ...(detectedProfile.contactInfo.email ? { email: detectedProfile.contactInfo.email } : {}),
+            ...(detectedProfile.contactInfo.website ? { website: detectedProfile.contactInfo.website } : {}),
+            ...(detectedProfile.contactInfo.address ? { address: detectedProfile.contactInfo.address } : {}),
+          }
+        : undefined,
       painPoints: ['Emergency dispatch delays', 'Off-hours voice phone triage', 'Estimating turnaround'],
       autonomyMode: 'autonomous',
       dollarThreshold,
@@ -1597,6 +1746,125 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* VERIFICATION PASS — typed input vs document, in plain words.
+                Conflicts are flagged, never blocking: every field below
+                stays editable and the user can proceed. */}
+            <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                What we checked — typed vs document
+              </span>
+              <div className="space-y-1.5">
+                {buildVerificationFindings().map((f, idx) => (
+                  <div key={idx} className="flex items-start gap-2 text-[11px] leading-snug">
+                    {f.status === 'confirmed' && <CheckCircle2 className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />}
+                    {f.status === 'conflict' && <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />}
+                    {f.status === 'guessed' && <Info className="w-3.5 h-3.5 text-amber-300 shrink-0 mt-0.5" />}
+                    {f.status === 'missing' && <Info className="w-3.5 h-3.5 text-zinc-500 shrink-0 mt-0.5" />}
+                    <span className="text-zinc-200">
+                      <span className="font-bold">{f.label}: </span>
+                      <span className="text-zinc-400">{f.note}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {buildVerificationFindings().some((f) => f.status === 'conflict') && (
+                <p className="text-[11px] text-amber-300">
+                  Something does not match — check the company name below and fix whichever side is wrong. Nothing is blocked; you can still continue.
+                </p>
+              )}
+            </div>
+
+            {/* DEEPER FACTS FOUND — service area, hours, prices, contact */}
+            <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                More about your business
+              </span>
+              {!detectedProfile ? (
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  No extra facts were pulled out — the offline match only picked the industry. You can add these after launch in Settings.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
+                        Service area
+                      </label>
+                      <input
+                        type="text"
+                        value={detectedProfile.serviceArea}
+                        onChange={(e) => setDetectedProfile({ ...detectedProfile, serviceArea: e.target.value })}
+                        placeholder="Not found in the document"
+                        className="w-full bg-zinc-950 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
+                        Business hours
+                      </label>
+                      <input
+                        type="text"
+                        value={detectedProfile.businessHours}
+                        onChange={(e) => setDetectedProfile({ ...detectedProfile, businessHours: e.target.value })}
+                        placeholder="Not found in the document"
+                        className="w-full bg-zinc-950 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {detectedProfile.emergencyAvailable && (
+                      <span className="text-[10px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold">Emergency service</span>
+                    )}
+                    {detectedProfile.teamSize && (
+                      <span className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Team: {detectedProfile.teamSize}</span>
+                    )}
+                    {detectedProfile.servesResidential && (
+                      <span className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Serves homes</span>
+                    )}
+                    {detectedProfile.servesCommercial && (
+                      <span className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Serves businesses</span>
+                    )}
+                  </div>
+                  {detectedProfile.priceHints.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Prices found in the document:</span>
+                      {detectedProfile.priceHints.map((h, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-[11px] text-zinc-300">
+                          <span>{h.service}</span>
+                          <span className="font-mono font-bold text-lime-400">{h.price}</span>
+                        </div>
+                      ))}
+                      <p className="text-[10px] text-zinc-500">Only prices printed in the document are shown — nothing here was guessed.</p>
+                    </div>
+                  )}
+                  {(detectedProfile.contactInfo.phone || detectedProfile.contactInfo.email || detectedProfile.contactInfo.website || detectedProfile.contactInfo.address) && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Contact details found:</span>
+                      {detectedProfile.contactInfo.phone && <p className="text-[11px] text-zinc-300">Phone: {detectedProfile.contactInfo.phone}</p>}
+                      {detectedProfile.contactInfo.email && <p className="text-[11px] text-zinc-300">Email: {detectedProfile.contactInfo.email}</p>}
+                      {detectedProfile.contactInfo.website && <p className="text-[11px] text-zinc-300">Website: {detectedProfile.contactInfo.website}</p>}
+                      {detectedProfile.contactInfo.address && <p className="text-[11px] text-zinc-300">Address: {detectedProfile.contactInfo.address}</p>}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* SUGGESTED NEXT SETUPS — suggestions only, nothing switched on */}
+            {buildSetupSuggestions().length > 0 && (
+              <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+                <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                  Suggested next setups (not switched on yet)
+                </span>
+                {buildSetupSuggestions().map((s, idx) => (
+                  <div key={idx} className="flex items-start gap-2 text-[11px] text-zinc-300 leading-snug">
+                    <Sparkles className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />
+                    <span>{s}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* ALTERNATIVE MATCHES (2nd/3rd choices) */}
             {alternativeIndustries.length > 0 && (

@@ -24,6 +24,18 @@ export interface AnalyzeDocumentAlternative {
   confidence?: number;
 }
 
+export interface AnalyzePriceHint {
+  service: string;
+  price: string;
+}
+
+export interface AnalyzeContactInfo {
+  phone?: string;
+  email?: string;
+  website?: string;
+  address?: string;
+}
+
 export interface AnalyzeDocumentResult {
   industryId: string;
   confidence?: number;
@@ -37,6 +49,16 @@ export interface AnalyzeDocumentResult {
   recommendedTone?: string;
   technicianRoleName?: string;
   dollarThreshold?: number;
+  // Deeper profile — set only when the document/typed input actually
+  // said it. Absent on keyword-fallback results: never fabricated.
+  serviceArea?: string;
+  businessHours?: string;
+  emergencyAvailable?: boolean;
+  teamSize?: string;
+  servesResidential?: boolean;
+  servesCommercial?: boolean;
+  priceHints?: AnalyzePriceHint[];
+  contactInfo?: AnalyzeContactInfo;
 }
 
 export interface ScoredPresetMatch {
@@ -715,6 +737,13 @@ DECIPHERING INSTRUCTIONS:
 9. "technicianRoleName": Precise specialist role title (e.g. "Journeyman Plumber", "Systems Engineer", "Certified Solar Lead").
 10. "keyInsights": Array of 2 to 3 concise bullet points highlighting key business traits deciphered from the document (e.g. "Offers 24/7 emergency dispatch", "Commercial and residential service lines").
 11. "alternativeIndustries": Array of up to 2 alternative preset IDs if the user wants to adjust.
+12. "serviceArea": The towns, cities, counties, or region the business serves, exactly as stated in the document (e.g. "Greater Atlanta, GA"). Omit the field entirely if the document does not state a service area — never guess one.
+13. "businessHours": Regular opening hours exactly as stated (e.g. "Mon-Fri 8am-6pm, Sat 9am-2pm"). Omit if not stated.
+14. "emergencyAvailable": true ONLY if the document says the business offers emergency, after-hours, or 24/7 service. Otherwise false.
+15. "teamSize": One of "solo", "small team", or "larger crew", based only on what the document shows (one named operator = solo; a crew/truck count = larger crew). Omit if unclear.
+16. "servesResidential": true if the document shows homes/residential customers; "servesCommercial": true if it shows businesses/commercial customers. Otherwise false for each.
+17. "priceHints": ONLY prices actually printed in the document, each tied to a service (e.g. {"service": "Standard diagnostic", "price": "$149"}). NEVER invent, round, or estimate a price, and never attach a price to a service the document did not price. If the document shows no prices, use an empty array.
+18. "contactInfo": Phone, email, website, and street address ONLY if printed in the document. Omit any field that is not present.
 
 DISAMBIGUATION RULES (overlapping presets — follow these, do not guess):
 - healthcare vs dental_practices: teeth / dental / orthodontic / cavity work is dental_practices; medical / clinic / patient / therapy work is healthcare. "Wellness" alone (salon/spa context) is NOT healthcare.
@@ -739,7 +768,15 @@ Respond with ONLY valid JSON with this exact schema:
   "dollarThreshold": 1250,
   "technicianRoleName": "...",
   "keyInsights": ["...", "..."],
-  "alternativeIndustries": ["...", "..."]
+  "alternativeIndustries": ["...", "..."],
+  "serviceArea": "Greater Atlanta, GA",
+  "businessHours": "Mon-Fri 8am-6pm",
+  "emergencyAvailable": true,
+  "teamSize": "small team",
+  "servesResidential": true,
+  "servesCommercial": false,
+  "priceHints": [{"service": "Standard diagnostic", "price": "$149"}],
+  "contactInfo": {"phone": "(555) 000-0000", "email": "hello@example.com", "website": "", "address": ""}
 }`;
 }
 
@@ -832,6 +869,26 @@ export async function analyzeDocument(input: AnalyzeDocumentInput): Promise<Anal
   const keyInsights = asStringArray(parsed.keyInsights);
   const threshold = asFiniteNumber(parsed.dollarThreshold);
 
+  // Deeper profile — coerced strictly, never invented: strings only when
+  // non-empty, booleans only when explicitly true, prices only when the
+  // document tied a price to a service. Anything else stays unset.
+  const asTextOrUndef = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim() ? v.trim() : undefined;
+  const teamSizeRaw = asTextOrUndef(parsed.teamSize);
+  const priceHints = (Array.isArray(parsed.priceHints) ? parsed.priceHints : [])
+    .filter((h: unknown): h is Record<string, unknown> => !!h && typeof h === 'object')
+    .map((h: Record<string, unknown>) => ({ service: asTextOrUndef(h.service) || '', price: asTextOrUndef(h.price) || '' }))
+    .filter((h: { service: string; price: string }) => h.service && h.price)
+    .slice(0, 8);
+  const contactRaw = parsed.contactInfo && typeof parsed.contactInfo === 'object' ? parsed.contactInfo : {};
+  const contactInfo = {
+    phone: asTextOrUndef(contactRaw.phone),
+    email: asTextOrUndef(contactRaw.email),
+    website: asTextOrUndef(contactRaw.website),
+    address: asTextOrUndef(contactRaw.address),
+  };
+  const hasContact = !!(contactInfo.phone || contactInfo.email || contactInfo.website || contactInfo.address);
+
   return {
     industryId: matchedPreset.id,
     confidence,
@@ -857,5 +914,13 @@ export async function analyzeDocument(input: AnalyzeDocumentInput): Promise<Anal
         ? parsed.technicianRoleName
         : matchedPreset.technicianRoleName || 'Field Specialist',
     dollarThreshold: threshold !== undefined && threshold > 0 ? threshold : dollarThresholdFor(matchedPreset.id),
+    serviceArea: asTextOrUndef(parsed.serviceArea),
+    businessHours: asTextOrUndef(parsed.businessHours),
+    emergencyAvailable: parsed.emergencyAvailable === true,
+    teamSize: teamSizeRaw === 'solo' || teamSizeRaw === 'small team' || teamSizeRaw === 'larger crew' ? teamSizeRaw : undefined,
+    servesResidential: parsed.servesResidential === true,
+    servesCommercial: parsed.servesCommercial === true,
+    priceHints,
+    contactInfo: hasContact ? contactInfo : undefined,
   };
 }

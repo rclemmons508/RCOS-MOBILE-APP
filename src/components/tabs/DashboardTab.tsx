@@ -25,6 +25,7 @@ import {
   Link2,
   MessageSquare
 } from 'lucide-react';
+import { dashboardCard, sectionLabel } from '../ui/cards';
 import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
 import { PipelineHealthCard } from '../dashboard/PipelineHealthCard';
@@ -178,8 +179,78 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     action();
   };
 
+  // "What needs you" — live situations from data the Dashboard already
+  // loads (no new server calls). Each row is one clear tap to the screen
+  // that handles it. Nothing here invents a situation: counts come
+  // straight from approvals, requests, calls, and invoice actions.
+  const attentionItems: { key: string; title: string; detail: string; tab: TabType }[] = [];
+  if (pendingApprovals > 0) {
+    attentionItems.push({
+      key: 'approvals',
+      title: `${pendingApprovals} waiting for your approval`,
+      detail: 'Quotes and actions need a yes or no',
+      tab: 'approvals',
+    });
+  }
+  const pendingRequestCount = customerRequests.filter((r) => r.status === 'pending').length;
+  if (pendingRequestCount > 0) {
+    attentionItems.push({
+      key: 'requests',
+      title: `${pendingRequestCount} new customer request${pendingRequestCount === 1 ? '' : 's'}`,
+      detail: 'People waiting to hear back',
+      tab: 'requests',
+    });
+  }
+  const missedCallCount = calls.filter((c) => c.status === 'missed').length;
+  if (missedCallCount > 0) {
+    attentionItems.push({
+      key: 'missed',
+      title: `${missedCallCount} missed call${missedCallCount === 1 ? '' : 's'}`,
+      detail: 'Call back or send a follow-up',
+      tab: 'phone',
+    });
+  }
+  const unpaidInvoiceCount = actions.filter((a) => a.paymentStatus === 'unpaid').length;
+  if (unpaidInvoiceCount > 0) {
+    attentionItems.push({
+      key: 'unpaid',
+      title: `${unpaidInvoiceCount} unpaid invoice${unpaidInvoiceCount === 1 ? '' : 's'}`,
+      detail: 'Money waiting to be collected',
+      tab: 'jobs',
+    });
+  }
+
   return (
     <div className="space-y-4 pb-8 px-3.5 sm:px-4 pt-2 max-w-full overflow-x-hidden">
+      {/* What needs you — the situations first, before the briefing */}
+      <div className={`p-3.5 ${dashboardCard} space-y-2`}>
+        <span className={sectionLabel}>What needs you</span>
+        {attentionItems.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-zinc-300">
+            <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />
+            <span>You're all caught up — nothing needs you right now.</span>
+          </div>
+        ) : (
+          attentionItems.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                haptic.light();
+                onNavigateTab(item.tab);
+              }}
+              className="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-lime-500/40 text-left transition cursor-pointer min-h-[44px]"
+            >
+              <span>
+                <span className="block text-sm font-bold text-white">{item.title}</span>
+                <span className="block text-[11px] text-zinc-400">{item.detail}</span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-lime-400 shrink-0" />
+            </button>
+          ))
+        )}
+      </div>
+
       {/* Morning Briefing — the team reports in */}
       <MorningBriefingCard
         ownerName={currentUser?.fullName || ''}
