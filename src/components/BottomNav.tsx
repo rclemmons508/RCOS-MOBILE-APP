@@ -26,7 +26,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   messagesBadge = 0
 }) => {
   const tabs: { id: TabType; label: string; icon: any; activeWhen: TabType[] }[] = [
-    { id: 'dashboard', label: 'Dash', icon: Gauge, activeWhen: ['dashboard'] },
+    { id: 'dashboard', label: 'Home', icon: Gauge, activeWhen: ['dashboard'] },
     { id: 'jobs', label: 'Jobs / $', icon: Briefcase, activeWhen: ['jobs', 'approvals', 'clients'] },
     { id: 'team', label: 'AI Team', icon: Bot, activeWhen: ['team'] },
     { id: 'inbox', label: 'Messages', icon: MessagesSquare, activeWhen: ['inbox', 'team-chat', 'gmail', 'phone', 'requests'] },

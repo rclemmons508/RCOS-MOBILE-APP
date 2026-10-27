@@ -247,9 +247,41 @@ export interface StarterDraft {
   createdAt: string;
 }
 
+/** A price actually shown in a business document — never invented. The
+ * price is kept as printed (e.g. "$149", "from $89") so no amount is
+ * misread as exact when the document said "starting at". */
+export interface PriceHint {
+  service: string;
+  price: string;
+}
+
+/** Contact details found in a business document — only fields actually
+ * present in the document are set; nothing here is guessed. */
+export interface BusinessContactInfo {
+  phone?: string;
+  email?: string;
+  website?: string;
+  address?: string;
+}
+
 export interface BusinessAccount {
   id: string;
   ownerId?: string;
+  /**
+   * Deeper onboarding profile, filled from the uploaded document or typed
+   * description during company setup and editable afterwards. Every field
+   * is optional and only set when the source actually said it — missing
+   * means "not found", never a guess. Added by the deeper-onboarding
+   * upgrade; older records simply lack these fields.
+   */
+  serviceArea?: string;
+  businessHours?: string;
+  emergencyAvailable?: boolean;
+  teamSize?: string;
+  servesResidential?: boolean;
+  servesCommercial?: boolean;
+  priceHints?: PriceHint[];
+  documentContactInfo?: BusinessContactInfo;
   /**
    * People on this company account. The creator is the `owner`; everyone
    * who joins with an invite is a `member`. Empty on businesses created

@@ -2,6 +2,7 @@ import React from 'react';
 import { Briefcase, ShieldCheck, Users } from 'lucide-react';
 import { TabType } from '../../types';
 import { haptic } from '../../utils/haptics';
+import { hubSwitcherButton, hubSwitcherContainer } from '../ui/cards';
 
 interface JobsHubSwitcherProps {
   activeTab: TabType;
@@ -20,7 +21,7 @@ export const JobsHubSwitcher: React.FC<JobsHubSwitcherProps> = ({ activeTab, onN
   ];
 
   return (
-    <div className="flex gap-1 p-1 rounded-2xl bg-zinc-950 border border-zinc-800/80" role="tablist" aria-label="Jobs hub">
+    <div className={hubSwitcherContainer} role="tablist" aria-label="Jobs hub">
       {items.map((item) => {
         const Icon = item.icon;
         const isActive = activeTab === item.id;
@@ -34,11 +35,7 @@ export const JobsHubSwitcher: React.FC<JobsHubSwitcherProps> = ({ activeTab, onN
               haptic.light();
               onNavigate(item.id);
             }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer min-h-[44px] ${
-              isActive
-                ? 'bg-lime-500 text-black'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
-            }`}
+            className={hubSwitcherButton(isActive)}
           >
             <Icon className="w-4 h-4" />
             <span>{item.label}</span>
