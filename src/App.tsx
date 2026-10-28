@@ -56,8 +56,7 @@ import { BiometricLockScreen } from './components/biometrics/BiometricLockScreen
 import { biometricService } from './services/biometricService';
 import { LoginView } from './components/auth/LoginView';
 import { OnboardingModal } from './components/OnboardingModal';
-import { AppTour, type TourMode } from './components/AppTour';
-import { isTourCompleted, markTourCompleted } from './utils/appTour';
+import { showChecklistAgain } from './utils/getStartedChecklist';
 import { ServiceManagerModal } from './components/ServiceManagerModal';
 import { ProactiveIndustrySuggestionModal } from './components/ProactiveIndustrySuggestionModal';
 import { authService } from './services/authService';
@@ -332,12 +331,9 @@ export default function App() {
     return !getOnboardingCompleted(currentUser);
   });
 
-  // App Guide walkthrough state. Auto-opens once, right after a new
-  // user finishes company setup (see the OnboardingModal onComplete
-  // handler below); Settings reopens it as a reference any time.
-  const [isTourOpen, setIsTourOpen] = useState(false);
-  const [tourMode, setTourMode] = useState<TourMode>('tour');
-  const [tourStartStep, setTourStartStep] = useState(0);
+  // No overlay tour anymore: fresh setup lands on the Dashboard, where
+  // the inline "Get started" checklist is visible. Settings reopens
+  // the checklist and lists every section as plain navigation.
 
   // Proactive AI Industry Profile Optimization Agent State
   const [proactiveSuggestion, setProactiveSuggestion] = useState<IndustryOptimizationSuggestion | null>(null);
@@ -2142,10 +2138,9 @@ export default function App() {
               onTriggerTestPush={handleTriggerTestPush}
               onOpenNotifPrefsModal={() => setIsNotifPrefsOpen(true)}
               onReopenOnboarding={() => setIsOnboardingOpen(true)}
-              onOpenAppGuide={() => {
-                setTourMode('menu');
-                setTourStartStep(0);
-                setIsTourOpen(true);
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onShowGetStartedChecklist={() => {
+                showChecklistAgain(currentUser, businessAccount);
               }}
               onOpenServiceManager={() => setIsServiceManagerOpen(true)}
               businessServices={activeBusiness.services}
@@ -2323,14 +2318,9 @@ export default function App() {
               setIndustryProfile(withOwner.industry);
               setIsOnboardingOpen(false);
               setOnboardingCompleted(currentUser);
-              // First run for a new user: open the App Guide walkthrough
-              // now that setup is done — unless this user already finished
-              // or skipped it (re-running setup must never re-trigger it).
-              if (!isTourCompleted(currentUser, withOwner)) {
-                setTourMode('tour');
-                setTourStartStep(0);
-                setIsTourOpen(true);
-              }
+              // First run for a new user: land on the Dashboard, where
+              // the inline "Get started" checklist is visible. No
+              // overlay tour ever opens (it hid the screen it described).
               sendPushNotification({
                 type: 'system_alert',
                 title: 'Workspace Initialized',
@@ -2342,20 +2332,6 @@ export default function App() {
           />
         )}
 
-        {/* App Guide walkthrough: auto-opens once after first setup,
-            reopens any time from Settings. Skipping or finishing records
-            the per-user/business flag so it never auto-opens again. */}
-        <AppTour
-          open={isTourOpen}
-          initialStep={tourStartStep}
-          initialMode={tourMode}
-          onNavigate={(tab) => setActiveTab(tab)}
-          onClose={(finished) => {
-            markTourCompleted(currentUser, businessAccount);
-            setIsTourOpen(false);
-            if (finished) setActiveTab('dashboard');
-          }}
-        />
       </div>
     </div>
   );

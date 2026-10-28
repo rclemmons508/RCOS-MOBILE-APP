@@ -35,6 +35,7 @@ import { buildPublicBookingLink } from '../../config/api';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
 import { RequestDetailModal } from '../RequestDetailModal';
 import { GlobalSearchBar } from '../GlobalSearchBar';
+import { GetStartedChecklist } from '../GetStartedChecklist';
 
 interface DashboardTabProps {
   calls: PhoneCall[];
@@ -250,6 +251,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           ))
         )}
       </div>
+
+      {/* Get started — the Dashboard checklist that replaced the overlay
+          App Guide tour. Inline on the Dashboard, never a dimmed card
+          over the screen, so the user always sees the real app. */}
+      <GetStartedChecklist
+        currentUser={currentUser}
+        businessId={businessId}
+        onNavigateTab={onNavigateTab}
+      />
 
       {/* Morning Briefing — the team reports in */}
       <MorningBriefingCard

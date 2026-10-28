@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion, BusinessAccount, BusinessMember, TeamInvite } from '../../types';
+import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion, BusinessAccount, BusinessMember, TeamInvite, TabType } from '../../types';
 import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
@@ -14,6 +14,7 @@ import { employeeCustomizationService, CustomAIEmployee } from '../../services/e
 import { EmployeeJobCustomizerModal } from '../employees/EmployeeJobCustomizerModal';
 import { haptic } from '../../utils/haptics';
 import { deleteAccount, isReauthRequired } from '../../services/accountDeletionService';
+import { GET_STARTED_ITEMS } from '../../utils/getStartedChecklist';
 import { teamService } from '../../services/teamService';
 import { authService } from '../../services/authService';
 import { apiFetch } from '../../lib/api';
@@ -105,9 +106,11 @@ interface SettingsTabProps {
   onTriggerTestPush: () => void;
   onOpenNotifPrefsModal: () => void;
   onReopenOnboarding?: () => void;
-  /** Opens the App Guide walkthrough as a reference menu (replay or
-   *  jump to one section). Never blocked by the tour completion flag. */
-  onOpenAppGuide?: () => void;
+  /** Navigates straight to a section (App Guide list + checklist
+   *  "show again"). Plain navigation — no overlay card on top. */
+  onNavigateTab?: (tab: TabType) => void;
+  /** Brings the dismissed Dashboard "Get started" checklist back. */
+  onShowGetStartedChecklist?: () => void;
   onOpenServiceManager?: () => void;
   businessServices?: string[];
   proactiveSuggestion?: IndustryOptimizationSuggestion | null;
@@ -154,7 +157,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onTriggerTestPush,
   onOpenNotifPrefsModal,
   onReopenOnboarding,
-  onOpenAppGuide,
+  onNavigateTab,
+  onShowGetStartedChecklist,
   onOpenServiceManager,
   businessServices = [],
   proactiveSuggestion,
@@ -166,6 +170,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   // Navigation: 3 clean client-facing sections
   const [activeSection, setActiveSection] = useState<'user' | 'agents' | 'device'>(initialSection ?? 'user');
+  // App Guide section list: expanded inline in Settings, never an
+  // overlay. Tapping a section navigates straight to that real screen.
+  const [guideExpanded, setGuideExpanded] = useState(false);
   const [fireLog] = useState<AutomationLogEntry[]>(() => getAutomationLog(businessId));
 
   // User & Company Profile State (multi-company support)
@@ -684,31 +691,67 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           </div>
 
-          {/* App Guide — replay the walkthrough or jump to one section.
-              Always available, even after the first-run tour was skipped. */}
-          {onOpenAppGuide && (
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80">
+          {/* App Guide — the section list, expanded inline in Settings.
+              Tapping a section navigates straight to that real screen;
+              nothing is ever laid over the screen. The Dashboard
+              "Get started" checklist can also be brought back here. */}
+          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light();
+                setGuideExpanded((v) => !v);
+              }}
+              className="w-full flex items-center gap-3 text-left transition cursor-pointer"
+            >
+              <span className="w-10 h-10 rounded-2xl bg-lime-500/10 border border-lime-500/30 flex items-center justify-center shrink-0">
+                <BookOpen className="w-5 h-5 text-lime-400" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-white">App Guide</span>
+                <span className="block text-xs text-zinc-400">
+                  Every section of the app — tap one to go straight there.
+                </span>
+              </span>
+              <ChevronRight
+                className={`w-4 h-4 text-zinc-500 shrink-0 transition-transform ${guideExpanded ? 'rotate-90' : ''}`}
+              />
+            </button>
+            {guideExpanded && (
+              <div className="space-y-1.5 pt-1">
+                {GET_STARTED_ITEMS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      haptic.light();
+                      onNavigateTab?.(item.tab);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 hover:border-lime-500/40 text-left transition cursor-pointer min-h-[44px]"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold text-white truncate">{item.title}</span>
+                      <span className="block text-xs text-zinc-400 truncate">{item.where}</span>
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+            {onShowGetStartedChecklist && (
               <button
                 type="button"
                 onClick={() => {
                   haptic.light();
-                  onOpenAppGuide();
+                  onShowGetStartedChecklist();
+                  onNavigateTab?.('dashboard');
                 }}
-                className="w-full flex items-center gap-3 text-left transition cursor-pointer"
+                className="w-full px-4 py-3 rounded-2xl bg-zinc-900 text-white border border-zinc-800 text-sm font-bold transition cursor-pointer"
               >
-                <span className="w-10 h-10 rounded-2xl bg-lime-500/10 border border-lime-500/30 flex items-center justify-center shrink-0">
-                  <BookOpen className="w-5 h-5 text-lime-400" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold text-white">App Guide</span>
-                  <span className="block text-xs text-zinc-400">
-                    Walk through the app again, or jump to one section.
-                  </span>
-                </span>
-                <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+                Show the Get started checklist again
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* My Profile — editable name, contact info, profile picture */}
           <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3.5">
