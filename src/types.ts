@@ -528,7 +528,7 @@ export interface RCOSNotification {
 // here when something needs the owner's eyes or a decision — the inbox is
 // how the team "comes to you" instead of waiting to be tapped.
 // (Named AgentInboxMessage to avoid clashing with the chat AgentMessage below.)
-export type AgentId = 'sales' | 'operations' | 'marketing' | 'support' | 'receptionist' | 'system';
+export type AgentId = 'sales' | 'operations' | 'marketing' | 'support' | 'receptionist' | 'system' | 'main';
 export type AgentMessageKind = 'alert' | 'suggestion' | 'question';
 export type AgentMessageStatus = 'unread' | 'read' | 'answered' | 'dismissed' | 'snoozed';
 

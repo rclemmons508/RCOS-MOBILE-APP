@@ -90,6 +90,11 @@ import {
 } from './utils/followups';
 import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automation';
 import { haptic } from './utils/haptics';
+import {
+  detectMainAiAlerts,
+  loadMainAiAlertState,
+  saveMainAiAlertState,
+} from './utils/mainAiAlerts';
 
 const BLANK_BUSINESS: BusinessAccount = {
   id: '',
@@ -729,6 +734,58 @@ export default function App() {
       }
     }
 
+    // Main-AI attention alerts: the main AI itself comes to the owner with
+    // one short Agent Inbox message per real record that needs attention
+    // (new request, waiting quote, unpaid invoice, missed call, stalled
+    // job), plus a phone notification through the same push path new
+    // inbox messages use. Deliberately NOT gated by quiet hours or the
+    // automation master switch — these are attention taps, not automation
+    // actions — and never a repeat: fired keys persist on this device
+    // and are cross-checked against the inbox every poll.
+    {
+      const state = loadMainAiAlertState(bizId);
+      const alerted = new Set([...existing, ...state.alerted]);
+      const { alerts, jobFirstSeen } = detectMainAiAlerts({
+        requests: customerRequests,
+        actions,
+        calls,
+        jobs,
+        alerted,
+        jobFirstSeen: state.jobFirstSeen,
+      });
+      if (JSON.stringify(jobFirstSeen) !== JSON.stringify(state.jobFirstSeen)) {
+        state.jobFirstSeen = jobFirstSeen;
+        saveMainAiAlertState(bizId, state);
+      }
+      for (const alert of alerts) {
+        try {
+          const created = await agentInboxService.create(bizId, {
+            agent: 'main',
+            kind: 'alert',
+            title: alert.title,
+            body: alert.body,
+            actionLabel: alert.actionLabel,
+            actionTab: alert.actionTab,
+            dedupeKey: alert.dedupeKey,
+          });
+          seenInboxIdsRef.current.add(created.id);
+          setAgentMessages((prev) => [created, ...prev]);
+          state.alerted.push(alert.dedupeKey);
+          saveMainAiAlertState(bizId, state);
+          sendPushNotification({
+            type: 'system_alert',
+            title: created.title,
+            message: created.body.slice(0, 140),
+            priority: 'high',
+            module: 'AI Team',
+            actionTaken: 'Posted to Agent Inbox',
+          });
+        } catch {
+          /* offline — the next poll will retry */
+        }
+      }
+    }
+
     // 2. Poll the inbox; anything new from the team gets a push.
     try {
       const msgs = await agentInboxService.list(bizId);
@@ -757,7 +814,7 @@ export default function App() {
     } catch {
       /* offline */
     }
-  }, [businessAccount?.id, customerRequests, actions, automationTasks, automationMasterOn, conditionalLogicOn, industryModifierOn, notifPreferences, bumpAutomationRun]);
+  }, [businessAccount?.id, customerRequests, actions, calls, jobs, automationTasks, automationMasterOn, conditionalLogicOn, industryModifierOn, notifPreferences, bumpAutomationRun]);
 
   // Automatic follow-ups (Phase A): draft, never send. The three follow-up
   // rules watch for new customers, real missed calls, and completed jobs.

@@ -766,7 +766,7 @@ app.get('/api/voice/routing-log', (_req: Request, res: Response) => {
 // The AI team posts here when something needs the owner's eyes or a decision.
 // The voice-agent worker can create messages with VOICE_AGENT_SECRET (see the
 // auth gate above); everything else requires the normal user session.
-const AGENT_IDS = ['sales', 'operations', 'marketing', 'support', 'receptionist', 'system'];
+const AGENT_IDS = ['sales', 'operations', 'marketing', 'support', 'receptionist', 'system', 'main'];
 const AGENT_MESSAGE_KINDS = ['alert', 'suggestion', 'question'];
 
 
