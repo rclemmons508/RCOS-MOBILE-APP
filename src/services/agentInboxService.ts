@@ -55,4 +55,6 @@ export const AGENT_META: Record<AgentId, { name: string; color: string; bg: stri
   support: { name: 'Support', color: 'text-amber-400', bg: 'bg-amber-500/15 border-amber-500/30' },
   receptionist: { name: 'Receptionist', color: 'text-lime-400', bg: 'bg-lime-500/15 border-lime-500/30' },
   system: { name: 'System', color: 'text-zinc-400', bg: 'bg-zinc-500/15 border-zinc-500/30' },
+  // The main AI itself, used only for its own attention alerts.
+  main: { name: 'Main AI', color: 'text-violet-400', bg: 'bg-violet-500/15 border-violet-500/30' },
 };
