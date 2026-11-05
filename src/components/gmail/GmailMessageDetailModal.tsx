@@ -13,6 +13,7 @@ import {
   Sparkles,
   Briefcase
 } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import { GmailMessageDetail } from '../../lib/gmail';
 import { GmailConfirmModal, GmailActionType } from './GmailConfirmModal';
 
@@ -44,6 +45,29 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
   const [isProcessing, setIsProcessing] = useState(false);
 
   if (!isOpen || !message) return null;
+
+  // Email HTML sanitization (audit H4). Gmail-supplied HTML used to go
+  // straight into dangerouslySetInnerHTML, so a crafted image tag or link
+  // could run code in the app's WebView (with localStorage access). All
+  // HTML is sanitized with DOMPurify first: scripts, event handlers
+  // (onerror/onclick/...), javascript: and other unsafe URLs, iframes,
+  // forms and embeds are stripped; only safe formatting/links survive.
+  //
+  // Plain-text-only messages arrive as `<pre>${text}</pre>` with the text
+  // UNESCAPED (gmail.ts), so markup inside a text body used to render as
+  // HTML too. That case is detected here and rendered as React text
+  // instead — React escapes it, so it can never become markup.
+  const isPlainTextFallback =
+    !!message.bodyText && message.bodyHtml === `<pre>${message.bodyText}</pre>`;
+  const sanitizedBodyHtml = isPlainTextFallback
+    ? ''
+    : DOMPurify.sanitize(message.bodyHtml || '', {
+        FORBID_TAGS: [
+          'script', 'style', 'iframe', 'object', 'embed', 'form', 'input',
+          'button', 'select', 'textarea', 'link', 'meta', 'base', 'title',
+          'noscript', 'template', 'frame', 'frameset', 'applet',
+        ],
+      });
 
   const handleRequestTrash = () => {
     setConfirmAction('trash');
@@ -212,12 +236,18 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               </div>
             )}
 
-            {/* Email Body Rendering */}
+            {/* Email Body Rendering — sanitized HTML, or escaped plain text */}
             <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/30 border border-zinc-800/80 min-h-[160px] text-zinc-200 text-xs sm:text-sm leading-relaxed overflow-x-auto">
-              <div 
-                className="prose prose-invert max-w-none text-zinc-200 text-xs sm:text-sm"
-                dangerouslySetInnerHTML={{ __html: message.bodyHtml }} 
-              />
+              {isPlainTextFallback ? (
+                <pre className="whitespace-pre-wrap break-words font-sans text-zinc-200 text-xs sm:text-sm">
+                  {message.bodyText}
+                </pre>
+              ) : (
+                <div
+                  className="prose prose-invert max-w-none text-zinc-200 text-xs sm:text-sm"
+                  dangerouslySetInnerHTML={{ __html: sanitizedBodyHtml }}
+                />
+              )}
             </div>
           </div>
 

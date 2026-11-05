@@ -26,36 +26,44 @@ export const DirectEmailModal: React.FC<DirectEmailModalProps> = ({
   const [body, setBody] = useState(defaultBody || `Hello ${callerName},\n\nThank you for calling RC Solutions today. This email confirms that our dispatch and operations team has received your inquiry.\n\nA technician has been assigned and will contact you prior to on-site arrival.\n\nBest regards,\nRC Solutions Operations Team`);
   const [isSending, setIsSending] = useState(false);
   const [sentSuccess, setSentSuccess] = useState(false);
+  // Stage 2 assembly (L3): the server only LOGS this email (sent: false) —
+  // the old code showed "Email Dispatched! / Confirmation delivered" for
+  // a log, and even on a failed request. Track the real outcome instead.
+  const [loggedNotSent, setLoggedNotSent] = useState(false);
+  const [sendError, setSendError] = useState('');
 
   if (!isOpen) return null;
 
   const handleSend = async () => {
     if (!recipient || !subject) return;
     setIsSending(true);
+    setSendError('');
+    setLoggedNotSent(false);
     try {
       const data = await apiFetch<any>('/api/phone/send-email', {
         method: 'POST',
         body: JSON.stringify({ recipient, subject, body, callerName })
       });
       if (data?.success) {
-        setSentSuccess(true);
         if (onEmailSent) {
           onEmailSent({ recipient, subject, body });
         }
-        setTimeout(() => {
-          setSentSuccess(false);
-          onClose();
-        }, 1200);
+        if (data?.sent === true) {
+          setSentSuccess(true);
+          setTimeout(() => {
+            setSentSuccess(false);
+            onClose();
+          }, 1200);
+        } else {
+          // Logged by the server, not delivered — say so, and stay open
+          // so the user reads it instead of auto-closing on a false win.
+          setLoggedNotSent(true);
+        }
+      } else {
+        setSendError('The email could not be logged. Please try again.');
       }
     } catch {
-      setSentSuccess(true);
-      if (onEmailSent) {
-        onEmailSent({ recipient, subject, body });
-      }
-      setTimeout(() => {
-        setSentSuccess(false);
-        onClose();
-      }, 1200);
+      setSendError('Could not reach the server — the email was not logged or sent.');
     } finally {
       setIsSending(false);
     }
@@ -86,8 +94,21 @@ export const DirectEmailModal: React.FC<DirectEmailModalProps> = ({
         {sentSuccess ? (
           <div className="p-6 text-center space-y-2 rounded-2xl bg-lime-500/10 border border-lime-500/30">
             <CheckCircle2 className="w-8 h-8 text-lime-400 mx-auto animate-bounce" />
-            <div className="text-sm font-bold text-white">Email Dispatched!</div>
+            <div className="text-sm font-bold text-white">Email Sent!</div>
             <p className="text-xs text-zinc-400">Confirmation delivered to {recipient}</p>
+          </div>
+        ) : loggedNotSent ? (
+          <div className="p-6 text-center space-y-2 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+            <AlertCircle className="w-8 h-8 text-amber-400 mx-auto" />
+            <div className="text-sm font-bold text-white">Email logged — not sent yet</div>
+            <p className="text-xs text-zinc-400">The email service is not connected, so this was saved as a log and not delivered to {recipient}.</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold cursor-pointer"
+            >
+              Close
+            </button>
           </div>
         ) : (
           <div className="space-y-3">
@@ -127,6 +148,10 @@ export const DirectEmailModal: React.FC<DirectEmailModalProps> = ({
                 className="w-full bg-black border border-zinc-800 rounded-xl p-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 resize-none font-sans"
               />
             </div>
+
+            {sendError && (
+              <p className="text-xs text-red-400 text-center">{sendError}</p>
+            )}
 
             <div className="pt-2 flex items-center justify-end gap-2">
               <button

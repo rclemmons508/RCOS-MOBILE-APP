@@ -1,7 +1,7 @@
 {
   "name": "rcos-mobile-app",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "engines": {
     "node": "22.x"
   },
@@ -45,7 +45,8 @@
     "tsx": "^4.21.0",
     "twilio": "^6.1.2",
     "vite": "^8.3.0",
-    "zod": "^3.25.0"
+    "zod": "^3.25.0",
+    "dompurify": "^3.4.17"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",

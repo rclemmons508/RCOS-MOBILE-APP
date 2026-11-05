@@ -18,6 +18,13 @@ export interface BiometricSecuritySettings {
   autoLockOnBackground: boolean;
   autoLockTimeoutMinutes: number; // 0 = immediate, 1, 5, 15
   requireForCriticalActions: boolean;
+  /**
+   * LEGACY field, kept only so existing settings readers still compile.
+   * Backup PINs were removed (Nov 5, 2026, audit H5): plaintext PINs must
+   * never be stored. This is always '' now — getSettings() strips any
+   * stored value and saveSettings() never persists one. Do not read this
+   * as "a PIN is set" and do not write a PIN into it.
+   */
   operatorPin: string;
 }
 
@@ -47,7 +54,7 @@ export const DEFAULT_BIOMETRIC_SETTINGS: BiometricSecuritySettings = {
   autoLockOnBackground: true,
   autoLockTimeoutMinutes: 5,
   requireForCriticalActions: true,
-  operatorPin: '' // empty until the user sets their own backup PIN
+  operatorPin: '' // always empty: backup PINs were removed (audit H5), never stored
 };
 
 /**
@@ -251,12 +258,10 @@ class BiometricService {
 
       localStorage.setItem(STORAGE_KEY_ENROLLMENT, JSON.stringify(enrollment));
 
-      // Also ensure settings enabled
-      if (pin) {
-        this.saveSettings({ enabled: true, operatorPin: pin });
-      } else {
-        this.saveSettings({ enabled: true });
-      }
+      // Also ensure settings enabled. The `pin` argument is ignored on
+      // purpose: backup PINs were removed (audit H5) and are never stored.
+      void pin;
+      this.saveSettings({ enabled: true });
 
       this.recordActiveTimestamp();
       return { success: true };
@@ -361,12 +366,12 @@ class BiometricService {
       if (msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('user') || msg.toLowerCase().includes('abort')) {
         return {
           success: false,
-          error: 'Biometric scan was dismissed. You can tap "Unlock with Phone Sensor" or enter your PIN.'
+          error: 'Biometric scan was dismissed. Please sign in with your email and password.'
         };
       }
       return {
         success: false,
-        error: err?.message || 'Biometric sensor error. Please use your backup PIN.'
+        error: err?.message || 'Biometric sensor error. Please sign in with your email and password.'
       };
     }
   }
@@ -379,41 +384,54 @@ class BiometricService {
   }
 
   /**
-   * Load security settings from storage
+   * Load security settings from storage.
+   *
+   * Backup PINs were removed (audit H5): any `operatorPin` found in the
+   * stored blob is deleted from storage on read and never returned — the
+   * field is always ''. Stored PINs are cleared, not carried.
    */
   getSettings(): BiometricSecuritySettings {
+    // Purge a stored plaintext PIN even while the master switch is off:
+    // PINs from earlier enrollments sit on disk otherwise, and would
+    // reactivate if the switch were ever flipped back on.
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<BiometricSecuritySettings>;
+        if ((parsed.operatorPin || '').trim()) {
+          const cleaned: BiometricSecuritySettings = {
+            ...DEFAULT_BIOMETRIC_SETTINGS,
+            ...parsed,
+            operatorPin: '',
+          };
+          try {
+            localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(cleaned));
+          } catch {}
+        }
+      }
+    } catch {}
     if (!BIOMETRICS_ENABLED) {
       return { ...DEFAULT_BIOMETRIC_SETTINGS, enabled: false };
     }
     try {
       const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
       if (raw) {
-        const merged = { ...DEFAULT_BIOMETRIC_SETTINGS, ...JSON.parse(raw) };
-        return this.migrateLegacyPin(merged);
+        const parsed = JSON.parse(raw) as Partial<BiometricSecuritySettings>;
+        return { ...DEFAULT_BIOMETRIC_SETTINGS, ...parsed, operatorPin: '' };
       }
     } catch {}
-    return this.migrateLegacyPin({ ...DEFAULT_BIOMETRIC_SETTINGS });
+    return { ...DEFAULT_BIOMETRIC_SETTINGS, operatorPin: '' };
   }
 
   /**
-   * The old builds shipped universal fallback PINs (7267 / 6073 / 1234).
-   * Those values were the same for everyone, so they can never be trusted
-   * as a user-chosen PIN — treat them as "no PIN set".
-   */
-  private migrateLegacyPin(settings: BiometricSecuritySettings): BiometricSecuritySettings {
-    const pin = (settings.operatorPin || '').trim();
-    if (pin === '7267' || pin === '6073' || pin === '1234') {
-      return { ...settings, operatorPin: '' };
-    }
-    return settings;
-  }
-
-  /**
-   * Save security settings
+   * Save security settings. A PIN is NEVER persisted: any `operatorPin`
+   * passed in (e.g. by older settings screens) is dropped before writing.
    */
   saveSettings(settings: Partial<BiometricSecuritySettings>): BiometricSecuritySettings {
     const current = this.getSettings();
-    const updated = { ...current, ...settings };
+    const { operatorPin: _droppedPin, ...rest } = settings;
+    void _droppedPin;
+    const updated: BiometricSecuritySettings = { ...current, ...rest, operatorPin: '' };
     try {
       localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(updated));
     } catch {}
@@ -461,50 +479,33 @@ class BiometricService {
   }
 
   /**
-   * Verify backup operator PIN.
-   * Only the user's own PIN (set at registration or in biometric setup)
-   * can unlock — there are no master or fallback PINs.
+   * Verify backup operator PIN — REMOVED (audit H5).
+   *
+   * Plaintext PINs are no longer stored, so there is nothing to verify
+   * against. Kept as a safe no-op returning false so existing callers
+   * (e.g. the biometric lock screen, owned by another workstream) still
+   * compile — PIN unlock can never succeed now.
    */
-  verifyOperatorPin(inputPin: string): boolean {
-    const settings = this.getSettings();
-    const cleanInput = (inputPin || '').trim();
-    const targetPin = (settings.operatorPin || '').trim();
-
-    // No backup PIN was ever set — PIN unlock is unavailable.
-    if (!targetPin) {
-      return false;
-    }
-
-    const isValid = cleanInput === targetPin;
-    if (isValid) {
-      this.setLocked(false);
-      this.recordActiveTimestamp();
-    }
-    return isValid;
+  verifyOperatorPin(_inputPin: string): boolean {
+    return false;
   }
 
   /**
-   * Whether the user has set their own backup PIN.
+   * Whether the user has set their own backup PIN — always false now:
+   * backup PINs were removed (audit H5). Kept for caller compatibility.
    */
   hasBackupPin(): boolean {
-    try {
-      return !!(this.getSettings().operatorPin || '').trim();
-    } catch {
-      return false;
-    }
+    return false;
   }
 
   /**
-   * Save the user's own backup PIN. Must be exactly 4 digits.
-   * Returns false when the PIN is invalid and nothing was saved.
+   * Save the user's own backup PIN — REMOVED (audit H5).
+   *
+   * Kept as a safe no-op returning false so existing callers still
+   * compile. No PIN is stored anywhere.
    */
-  setOperatorPin(pin: string): boolean {
-    const clean = (pin || '').replace(/[^0-9]/g, '');
-    if (clean.length !== 4) {
-      return false;
-    }
-    this.saveSettings({ operatorPin: clean });
-    return true;
+  setOperatorPin(_pin: string): boolean {
+    return false;
   }
 
   /**
