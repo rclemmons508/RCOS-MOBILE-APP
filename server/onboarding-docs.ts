@@ -524,6 +524,15 @@ const countPhraseHits = (haystackLower: string, term: string): number => {
 // ("we act fast") or "customer satisfaction" can never match Education.
 const EDUCATION_ANCHORS = ['tutor', 'tutoring', 'test prep', 'student', 'academic', 'curriculum', 'learning', 'school', 'exam', 'college', 'class'];
 
+// Childcare is NOT education: a daycare / preschool / nursery profile
+// must never score for education_tutoring, even on its "curriculum" /
+// "learning" terms — there is no childcare preset, so the profile must
+// fall through to General Small Business (which has no keywords).
+// Same guard style as the SAT/ACT anchor rule below, but preset-wide:
+// one childcare term suppresses the whole preset, not just one term.
+// (Identical rule to the client scorer in src/components/OnboardingModal.tsx.)
+const CHILDCARE_TERMS = ['daycare', 'day care', 'preschool', 'pre-school', 'childcare', 'child care', 'nursery'];
+
 // Score every preset against the text; highest score wins. Word boundaries
 // only (never substrings) and multi-word phrases outrank bare words. That
 // fixes the known collisions:
@@ -535,6 +544,10 @@ const EDUCATION_ANCHORS = ['tutor', 'tutoring', 'test prep', 'student', 'academi
 //   campaign", never the substring "ads" inside "leads".
 // - "customer satisfaction" / "contract" must NOT match Education:
 //   \bsat\b / \bact\b do not fire inside those words.
+// - daycare / preschool / childcare / nursery must NOT match Education:
+//   any childcare term suppresses the whole education_tutoring preset,
+//   so a childcare profile falls through to General Small Business
+//   instead of matching on "curriculum" / "learning".
 // - salon "wellness" must NOT match Healthcare: "wellness" is not a
 //   Healthcare term at all.
 // - solar proposal must NOT match Electrical via "panel": bare "panel" is
@@ -542,11 +555,15 @@ const EDUCATION_ANCHORS = ['tutor', 'tutoring', 'test prep', 'student', 'academi
 //   "solar panel(s)" count for Solar.
 export function scorePresetsByKeywords(text: string): ScoredPresetMatch[] {
   const lower = (text || '').toLowerCase();
+  // Childcare guard (file 17): one childcare term anywhere in the text
+  // suppresses education_tutoring entirely — see CHILDCARE_TERMS.
+  const hasChildcare = CHILDCARE_TERMS.some((term) => countPhraseHits(lower, term) > 0);
   const scored = INDUSTRY_PRESETS.map((preset) => {
     const keywords = PRESET_KEYWORD_WEIGHTS[preset.id] || [];
     let score = 0;
     const matchedTerms: string[] = [];
     for (const kw of keywords) {
+      if (preset.id === 'education_tutoring' && hasChildcare) continue;
       if (preset.id === 'education_tutoring' && (kw.term === 'sat' || kw.term === 'act')) {
         const hasAnchor = EDUCATION_ANCHORS.some((anchor) => countPhraseHits(lower, anchor) > 0);
         if (!hasAnchor) continue;
@@ -790,6 +807,58 @@ function asFiniteNumber(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// Multi-trade catch-all determinism (file 12): when the LLM picks
+// `construction` — the catch-all for a business doing several trades —
+// the result MUST be uncertain, because the LLM's own `uncertain` flag
+// flips run to run on the same input (file 12: 85% with no flag on the
+// phone run, 85% with the flag on the endpoint run). The evidence comes
+// from the LLM's own output only — its reasoning + extractedServices:
+//   - an explicit multi-trade phrase, OR
+//   - at least two distinct trade terms named across that text.
+// Narrow by construction: it fires ONLY when the pick is `construction`,
+// so a confident single-trade pick (plumbing, electrical, ...) is never
+// touched, and a genuinely single-trade construction pick (one trade
+// named, no multi-trade phrase) keeps the LLM's own uncertain value.
+const MULTI_TRADE_PHRASES = [
+  'multi-trade',
+  'multiple trades',
+  'several trades',
+  'variety of trades',
+  'various trades',
+  'different trades',
+];
+const MULTI_TRADE_TRADES = [
+  'plumbing',
+  'electrical',
+  'drywall',
+  'painting',
+  'hvac',
+  'roofing',
+  'carpentry',
+  'flooring',
+  'tile',
+  'concrete',
+  'framing',
+  'masonry',
+  'siding',
+  'insulation',
+  'excavation',
+];
+
+function llmShowsMultiTradeEvidence(parsed: any): boolean {
+  const haystack = [
+    typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+    ...asStringArray(parsed.extractedServices),
+  ]
+    .join(' ')
+    .toLowerCase();
+  if (MULTI_TRADE_PHRASES.some((phrase) => haystack.includes(phrase))) return true;
+  const tradesFound = MULTI_TRADE_TRADES.filter((trade) =>
+    new RegExp(`\\b${escapeRegExp(trade)}\\b`).test(haystack)
+  );
+  return tradesFound.length >= 2;
+}
+
 // Full handler logic for POST /api/business/analyze-document. Returns the
 // exact client contract, with `source: 'llm'` only when the LLM actually ran.
 export async function analyzeDocument(input: AnalyzeDocumentInput): Promise<AnalyzeDocumentResult> {
@@ -851,7 +920,14 @@ export async function analyzeDocument(input: AnalyzeDocumentInput): Promise<Anal
 
   const rawConfidence = asFiniteNumber(parsed.confidence);
   const confidence = rawConfidence !== undefined ? Math.min(1, Math.max(0, rawConfidence)) : 0.5;
-  const uncertain = parsed.uncertain === true || confidence < 0.75;
+  let uncertain = parsed.uncertain === true || confidence < 0.75;
+  // Deterministic multi-trade rule (file 12): a `construction` pick with
+  // multi-trade evidence in the LLM's own output is ALWAYS uncertain,
+  // regardless of the `uncertain` flag the LLM returned. See
+  // llmShowsMultiTradeEvidence — this never fires for single-trade picks.
+  if (matchedPreset.id === 'construction' && llmShowsMultiTradeEvidence(parsed)) {
+    uncertain = true;
+  }
 
   const llmAlternatives = asStringArray(parsed.alternativeIndustries)
     .filter((id) => id !== matchedPreset.id && INDUSTRY_PRESETS.some((p) => p.id === id))

@@ -569,6 +569,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   //   "satisfaction" (no trailing boundary) or "contract" (no leading one).
   //   SAT/ACT only count when another education anchor is present, so a
   //   plain verb ("we act fast") cannot match Education on its own.
+  // - daycare / preschool / childcare / nursery must NOT match Education:
+  //   any childcare term suppresses the whole education_tutoring preset,
+  //   so a childcare profile falls through to General Small Business
+  //   instead of matching on "curriculum" / "learning".
   // - salon "wellness" must NOT match Healthcare: "wellness" is not a
   //   Healthcare term at all (Healthcare needs medical terms).
   // - solar proposal must NOT match Electrical via "panel": bare "panel"
@@ -932,6 +936,97 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       { term: 'smart lock', weight: 3 },
       { term: 'security', weight: 2 },
     ],
+    // Stage 2 assembly: these 8 presets were missing from the client table
+    // (the server table had them), so the in-app offline fallback mis-picked
+    // files 01-08. Copied verbatim from server/onboarding-docs.ts — the two
+    // tables must stay in sync, or the fallback answer depends on which side
+    // runs it.
+    pest_control: [
+      { term: 'pest control', weight: 5 },
+      { term: 'exterminator', weight: 5 },
+      { term: 'termite treatment', weight: 5 },
+      { term: 'termite', weight: 4 },
+      { term: 'bed bug', weight: 4 },
+      { term: 'bed bugs', weight: 4 },
+      { term: 'rodent', weight: 4 },
+      { term: 'fumigation', weight: 4 },
+      { term: 'mosquito treatment', weight: 4 },
+      { term: 'pest', weight: 3 },
+    ],
+    pool_spa_services: [
+      { term: 'pool cleaning', weight: 5 },
+      { term: 'pool service', weight: 5 },
+      { term: 'pool and spa', weight: 4 },
+      { term: 'pool equipment', weight: 4 },
+      { term: 'pool pump', weight: 4 },
+      { term: 'pool heater', weight: 4 },
+      { term: 'pool opening', weight: 4 },
+      { term: 'pool closing', weight: 4 },
+      { term: 'salt water pool', weight: 4 },
+      { term: 'hot tub', weight: 3 },
+      { term: 'chemical balancing', weight: 3 },
+      { term: 'pool', weight: 3 },
+    ],
+    appliance_repair: [
+      { term: 'appliance repair', weight: 5 },
+      { term: 'washer repair', weight: 4 },
+      { term: 'dryer repair', weight: 4 },
+      { term: 'refrigerator repair', weight: 4 },
+      { term: 'oven repair', weight: 4 },
+      { term: 'dishwasher repair', weight: 4 },
+      { term: 'appliance', weight: 4 },
+      { term: 'washing machine', weight: 3 },
+    ],
+    garage_door: [
+      { term: 'garage door opener', weight: 5 },
+      { term: 'garage door spring', weight: 5 },
+      { term: 'garage door', weight: 5 },
+      { term: 'garage door installation', weight: 4 },
+      { term: 'garage door repair', weight: 4 },
+      { term: 'overhead door', weight: 4 },
+      { term: 'garage', weight: 2 },
+    ],
+    flooring: [
+      { term: 'hardwood flooring', weight: 5 },
+      { term: 'flooring installation', weight: 5 },
+      { term: 'hardwood floor', weight: 4 },
+      { term: 'floor refinishing', weight: 4 },
+      { term: 'vinyl plank', weight: 4 },
+      { term: 'tile installation', weight: 4 },
+      { term: 'carpet installation', weight: 3 },
+      { term: 'flooring', weight: 4 },
+    ],
+    fence_deck: [
+      { term: 'fence installation', weight: 5 },
+      { term: 'deck building', weight: 5 },
+      { term: 'chain-link fence', weight: 4 },
+      { term: 'wood fence', weight: 4 },
+      { term: 'fence repair', weight: 4 },
+      { term: 'deck resurfacing', weight: 4 },
+      { term: 'fencing', weight: 4 },
+      { term: 'fence', weight: 3 },
+      { term: 'deck', weight: 2 },
+    ],
+    septic_services: [
+      { term: 'septic tank', weight: 5 },
+      { term: 'septic pumping', weight: 5 },
+      { term: 'septic system', weight: 5 },
+      { term: 'septic installation', weight: 4 },
+      { term: 'septic inspection', weight: 4 },
+      { term: 'drain field', weight: 4 },
+      { term: 'septic', weight: 4 },
+      { term: 'grease trap', weight: 3 },
+    ],
+    tree_service: [
+      { term: 'tree removal', weight: 5 },
+      { term: 'tree service', weight: 5 },
+      { term: 'stump grinding', weight: 5 },
+      { term: 'arborist', weight: 5 },
+      { term: 'tree trimming', weight: 5 },
+      { term: 'tree pruning', weight: 4 },
+      { term: 'storm cleanup', weight: 3 },
+      { term: 'tree', weight: 3 },
+    ],
   };
 
   const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -946,15 +1041,28 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   // ("we act fast") or "customer satisfaction" can never match Education.
   const EDUCATION_ANCHORS = ['tutor', 'tutoring', 'test prep', 'student', 'academic', 'curriculum', 'learning', 'school', 'exam', 'college', 'class'];
 
+  // Childcare is NOT education: a daycare / preschool / nursery profile
+  // must never score for education_tutoring, even on its "curriculum" /
+  // "learning" terms — there is no childcare preset, so the profile must
+  // fall through to General Small Business (which has no keywords).
+  // Same guard style as the SAT/ACT anchor rule below, but preset-wide:
+  // one childcare term suppresses the whole preset, not just one term.
+  // (Identical rule to the server scorer in server/onboarding-docs.ts.)
+  const CHILDCARE_TERMS = ['daycare', 'day care', 'preschool', 'pre-school', 'childcare', 'child care', 'nursery'];
+
   // Score every preset against the text; highest score wins. Ties keep
   // preset order (Array.sort is stable), so results are deterministic.
   const scorePresetsByKeywords = (text: string): ScoredPresetMatch[] => {
     const lower = text.toLowerCase();
+    // Childcare guard (file 17): one childcare term anywhere in the text
+    // suppresses education_tutoring entirely — see CHILDCARE_TERMS.
+    const hasChildcare = CHILDCARE_TERMS.some((term) => countPhraseHits(lower, term) > 0);
     const scored = INDUSTRY_PRESETS.map((preset) => {
       const keywords = PRESET_KEYWORD_WEIGHTS[preset.id] || [];
       let score = 0;
       const matchedTerms: string[] = [];
       for (const kw of keywords) {
+        if (preset.id === 'education_tutoring' && hasChildcare) continue;
         if (preset.id === 'education_tutoring' && (kw.term === 'sat' || kw.term === 'act')) {
           const hasAnchor = EDUCATION_ANCHORS.some((anchor) => countPhraseHits(lower, anchor) > 0);
           if (!hasAnchor) continue;
@@ -1039,6 +1147,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       //               dollarThreshold? }
       const result = await apiFetch<AnalyzeDocumentResponse>('/api/business/analyze-document', {
         method: 'POST',
+        // 60s, not the 15s apiFetch default: slow LLM answers take up to
+        // ~27s (file 10 in the Nov 5 endpoint run), so the default would
+        // abort a good answer and drop the user to the offline fallback.
+        timeoutMs: 60000,
         body: JSON.stringify({
           fileText,
           fileName,
@@ -1678,9 +1790,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <div className="space-y-0.5 text-left">
                 <div className="text-xs font-extrabold text-white flex items-center gap-2">
                   <span>AI Agent Recommendation Awaiting Your Approval</span>
-                  {resultSource === 'fallback' || isUncertain ? (
+                  {resultSource === 'fallback' ? (
                     <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
                       Low confidence — offline match, please confirm
+                    </span>
+                  ) : isUncertain ? (
+                    <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
+                      Low confidence — please confirm this AI match
                     </span>
                   ) : (
                     <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-300 font-bold">
@@ -1780,7 +1896,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
                 More about your business
               </span>
-              {!detectedProfile ? (
+              {/* The "offline match" note is for a TRUE fallback only —
+                  never for an uncertain AI result. A server fallback also
+                  carries no deeper facts, so it shows the note instead of
+                  the empty form; `!detectedProfile` keeps the local
+                  fallback (no server result at all) covered too. */}
+              {resultSource === 'fallback' || !detectedProfile ? (
                 <p className="text-[11px] text-zinc-400 leading-relaxed">
                   No extra facts were pulled out — the offline match only picked the industry. You can add these after launch in Settings.
                 </p>
