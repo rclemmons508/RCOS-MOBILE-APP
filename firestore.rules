@@ -3,12 +3,118 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // =====================================================================
+    // RCOS Mobile — Firestore rules (Stage 2, finding C2)
+    //
+    // The old rules let ANY signed-in Firebase account read/write EVERY
+    // business. Firebase Auth email/password self-signup is open, so a
+    // stranger could mint an account and read/overwrite another company's
+    // jobs, customers, requests, actions, chat and audit logs straight
+    // from a client. Turning the server login gate on does NOT fix this
+    // path — these rules are the fix for the Firestore path.
+    //
+    // DATA MODEL (verified against src/services/firestoreService.ts,
+    // src/types.ts and server.ts — see the notes at the bottom):
+    //
+    // - Business doc: businesses/{businessId}
+    //   - ownerId: the owner's Firebase Auth UID when a Firebase session
+    //     existed at save time (saveBusiness stamps auth.currentUser.uid);
+    //     'unassigned_owner' when no Firebase session existed, or a local
+    //     'usr_...' id from onboarding when Firebase was not signed in.
+    //   - members: BusinessMember[] — a LIST of { userId, email, name,
+    //     role: 'owner' | 'member', ... }. userId is a LOCAL 'usr_...'
+    //     id, NOT a Firebase UID (invite join writes usr_<timestamp>),
+    //     so the roster can only be matched by EMAIL.
+    //   - contactEmail / ownerEmail: scalar owner emails (may be absent).
+    //   - memberEmails (NEW, not yet written by the app): a MAP
+    //     { "<lowercase email>": "owner" | "member" } mirroring the
+    //     roster. See "MEMBER ACCESS — READ THIS" below.
+    // - Subcollections under a business: jobs, customers, requests,
+    //   actions, chatMessages, auditLogs. Jobs and clients are
+    //   Firestore-ONLY (no REST endpoints exist for them), so the rules
+    //   must keep working for legitimate members, not just the owner.
+    // - Top level: jobPacks (unused by the client — the server keeps its
+    //   own store in server/db.ts) and test/connection (startup probe).
+    //
+    // MEMBER ACCESS — READ THIS:
+    // Firestore rules CANNOT search a list of maps: there is no way to
+    // ask "does some entry in members[] have email == X". The roster as
+    // stored (a list of member objects) is therefore not checkable by
+    // rules. Until the app writes the denormalized memberEmails MAP
+    // (one small change in saveBusiness + the server PUT allow-list —
+    // see the Stage 2 handoff note), non-owner members CANNOT prove
+    // membership and these rules deny them Firestore access. The owner
+    // is unaffected (UID / owner-email checks below). Member Firestore
+    // reads/writes fail safely — every client call site swallows the
+    // error and the REST API stays the source of truth — but a member's
+    // Jobs/Clients screens (Firestore-only data) will be empty until
+    // the memberEmails follow-up lands. Do NOT "fix" that by reopening
+    // the rules to any signed-in user; that re-opens C2.
+    // =====================================================================
+
+    // ---- Helpers ------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128;
     }
-    function isSignedIn() {
-      return request.auth != null;
+
+    // Lowercase email of the caller ('' when the token carries no email).
+    // The app registers Firebase accounts with a lowercased email, and
+    // roster emails are stored lowercased, so exact match after .lower()
+    // is the case-insensitive comparison the server does with toLowerCase().
+    function callerEmail() {
+      return request.auth != null && request.auth.token.email is string
+        ? request.auth.token.email.lower() : '';
+    }
+
+    // Owner proof against a business document's data map (resource.data
+    // on the business doc itself, or a get() result for subcollections).
+    // Any ONE of these proves ownership:
+    //  - Firebase UID == ownerId (never 'unassigned_owner')
+    //  - token email == contactEmail / ownerEmail (case-insensitive)
+    //  - token email listed as role 'owner' in the memberEmails map
+    function isOwnerData(data) {
+      return isSignedIn() && data != null && (
+        (data.get('ownerId', '') is string
+          && data.get('ownerId', '') != 'unassigned_owner'
+          && data.get('ownerId', '') == request.auth.uid)
+        || (callerEmail() != '' && data.get('contactEmail', '') is string
+          && data.get('contactEmail', '').lower() == callerEmail())
+        || (callerEmail() != '' && data.get('ownerEmail', '') is string
+          && data.get('ownerEmail', '').lower() == callerEmail())
+        || (data.get('memberEmails', {}) is map
+          && data.get('memberEmails', {}).get(callerEmail(), null) == 'owner')
+      );
+    }
+
+    // Member proof: the owner, or a token email listed in the
+    // memberEmails map ({ "<lowercase email>": "owner" | "member" }).
+    // The map does not exist yet (see header note) — until the app
+    // writes it, this half grants nobody and only owners get in.
+    function isMemberData(data) {
+      return isOwnerData(data) || (isSignedIn() && data != null && callerEmail() != ''
+        && data.get('memberEmails', {}) is map
+        && data.get('memberEmails', {}).get(callerEmail(), null) != null);
+    }
+
+    // Parent-business lookups for subcollection rules. Two calls per
+    // evaluation (exists + get); the check is identical for every
+    // document in a subcollection, so list queries pass or fail as one.
+    function parentExists(businessId) {
+      return exists(/databases/$(database)/documents/businesses/$(businessId));
+    }
+    function parentData(businessId) {
+      return get(/databases/$(database)/documents/businesses/$(businessId)).data;
+    }
+    function isBusinessMember(businessId) {
+      return isValidId(businessId) && parentExists(businessId)
+        && isMemberData(parentData(businessId));
+    }
+    function isBusinessOwner(businessId) {
+      return isValidId(businessId) && parentExists(businessId)
+        && isOwnerData(parentData(businessId));
     }
 
     // Default deny all
@@ -16,55 +122,80 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Connection test document for startup latency check
+    // Connection test document for startup latency check. It holds no
+    // data; keep the anonymous get the probe needs, list denied.
     match /test/connection {
-      allow read: if true;
+      allow get: if true;
     }
 
     // Businesses Collection - Tenant Data & Subcollections
     match /businesses/{businessId} {
-      allow read, write: if isSignedIn() && isValidId(businessId);
+      // Read the business doc itself: roster members and the owner only.
+      // (No list: the client never queries the businesses collection.)
+      allow get: if isValidId(businessId) && isMemberData(resource.data);
+
+      // Create a business: the caller must stamp their own Firebase UID
+      // as ownerId. That is the only ownership the client can prove at
+      // creation time (saveBusiness writes auth.currentUser.uid). A
+      // stranger can only ever create a business they themselves own.
+      allow create: if isSignedIn() && isValidId(businessId)
+        && request.resource.data.get('ownerId', '') is string
+        && request.resource.data.get('ownerId', '') != 'unassigned_owner'
+        && request.resource.data.get('ownerId', '') == request.auth.uid;
+
+      // Update / delete the business doc (incl. the member roster and
+      // owner fields): owner only. Members' own profile edits ride the
+      // REST API (which is the source of truth); their Firestore mirror
+      // writes fail safely until an owner save refreshes the copy.
+      allow update, delete: if isValidId(businessId) && isOwnerData(resource.data);
 
       // Subcollection: Requests (Intake Pipeline)
       match /requests/{requestId} {
-        allow read, write: if isSignedIn() && isValidId(businessId);
+        allow read, write: if isBusinessMember(businessId);
       }
 
       // Subcollection: Actions & Approvals
       match /actions/{actionId} {
-        allow read, write: if isSignedIn() && isValidId(businessId);
+        allow read, write: if isBusinessMember(businessId);
       }
 
-      // Subcollection: Jobs (Field Dispatch)
+      // Subcollection: Jobs (Field Dispatch) — Firestore-only data
       match /jobs/{jobId} {
-        allow read, write: if isSignedIn() && isValidId(businessId);
+        allow read, write: if isBusinessMember(businessId);
       }
 
-      // Subcollection: Customers / Clients (CRM)
+      // Subcollection: Customers / Clients (CRM) — Firestore-only data
       match /customers/{customerId} {
-        allow read, write: if isSignedIn() && isValidId(businessId);
+        allow read, write: if isBusinessMember(businessId);
       }
 
       // Subcollection: Chat Messages
       match /chatMessages/{messageId} {
-        allow read, write: if isSignedIn() && isValidId(businessId);
+        allow read, write: if isBusinessMember(businessId);
       }
 
-      // Subcollection: Audit Logs
+      // Subcollection: Audit Logs — append-only for members (the
+      // approval transaction creates entries); only the owner may
+      // change or remove them (incl. the account-delete wipe).
       match /auditLogs/{logId} {
-        allow read, write: if isSignedIn() && isValidId(businessId);
+        allow read, create: if isBusinessMember(businessId);
+        allow update, delete: if isBusinessOwner(businessId);
       }
 
-      // Any nested subcollections under business
+      // Any other (future) subcollection under a business: owner-only.
+      // Fail closed — open a new subcollection explicitly here when the
+      // app actually needs member access to it.
       match /{allSubcollections=**} {
-        allow read, write: if isSignedIn() && isValidId(businessId);
+        allow read, write: if isBusinessOwner(businessId);
       }
     }
 
-    // Job Packs global templates
+    // Job Packs global templates — NOT used by the client at all (the
+    // server keeps job packs in its own store, server/db.ts), so nothing
+    // may read or write them through Firestore. Deny explicitly rather
+    // than relying on the default-deny above, so the intent is visible.
     match /jobPacks/{jobPackId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if false;
     }
   }
 }

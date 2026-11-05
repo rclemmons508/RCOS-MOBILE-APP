@@ -6,7 +6,6 @@ import { BIOMETRICS_ENABLED } from '../../services/biometricService';
 import { teamService } from '../../services/teamService';
 import { useBiometrics } from '../../context/BiometricContext';
 import { RCLogo } from '../RCLogo';
-import { BiometricSetupModal } from '../biometrics/BiometricSetupModal';
 import { haptic } from '../../utils/haptics';
 import { INDUSTRY_PRESETS, getStaffRolesForIndustry } from '../../data/presets';
 import { Capacitor } from '@capacitor/core';
@@ -57,7 +56,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [regFullName, setRegFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regBackupPin, setRegBackupPin] = useState('');
   const [regIndustryId, setRegIndustryId] = useState('general_small_business');
   // Role options follow the selected industry; default to its first role.
   const regRoleOptions = getStaffRolesForIndustry(regIndustryId);
@@ -74,7 +72,6 @@ const [joinCode, setJoinCode] = useState('');
 const [joinFullName, setJoinFullName] = useState('');
 const [joinEmail, setJoinEmail] = useState('');
 const [joinPassword, setJoinPassword] = useState('');
-const [joinPin, setJoinPin] = useState('');
 
   const handleIndustryChange = (presetId: string) => {
     setRegIndustryId(presetId);
@@ -157,17 +154,8 @@ const [joinPin, setJoinPin] = useState('');
       setErrorMsg('Please enter your full name.');
       return;
     }
-    // A backup PIN is required when biometric login is on — it is the only
-    // way back in if the sensor ever fails.
-    if (BIOMETRICS_ENABLED && regEnableBiometrics && !/^\d{4}$/.test(regBackupPin)) {
-      setErrorMsg('Please set a 4-digit backup PIN in case biometrics fail.');
-      return;
-    }
-    if (regBackupPin && !/^\d{4}$/.test(regBackupPin)) {
-      setErrorMsg('Backup PIN must be exactly 4 digits.');
-      return;
-    }
-
+    // Backup PINs were removed in the Stage 2 audit (H5): plaintext PINs
+    // are never collected or stored any more.
     setIsLoading(true);
     setErrorMsg(null);
     try {
@@ -178,7 +166,6 @@ const [joinPin, setJoinPin] = useState('');
         password: regPassword,
         role: regRole,
         organization: regOrganization,
-        backupPin: regBackupPin || undefined,
         enableBiometrics: BIOMETRICS_ENABLED && regEnableBiometrics,
         preferences: {
           industryProfile: industryPreset ? industryPreset.name : regIndustryId,
@@ -217,11 +204,6 @@ const [joinPin, setJoinPin] = useState('');
       setErrorMsg('Please create a password.');
       return;
     }
-    if (joinPin && !/^\d{4}$/.test(joinPin)) {
-      setErrorMsg('Backup PIN must be exactly 4 digits.');
-      return;
-    }
-
     setIsLoading(true);
     setErrorMsg(null);
     try {
@@ -247,7 +229,6 @@ const [joinPin, setJoinPin] = useState('');
         password: joinPassword,
         role: 'Team Member',
         organization: business.name,
-        backupPin: joinPin || undefined,
         enableBiometrics: false,
         businessId: business.id
       });
@@ -602,38 +583,20 @@ const [joinPin, setJoinPin] = useState('');
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono text-zinc-400">Backup PIN:</label>
-                  <input
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={4}
-                    autoComplete="new-password"
-                    value={regBackupPin}
-                    onChange={(e) => setRegBackupPin(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="4 digits"
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono text-center tracking-[0.3em]"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-mono text-zinc-400">Organization:</label>
-                  <input
-                    type="text"
-                    autoComplete="off"
-                    autoCapitalize="words"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    value={regOrganization}
-                    onChange={(e) => setRegOrganization(e.target.value)}
-                    placeholder="Your Company Name"
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-zinc-400">Organization:</label>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  autoCapitalize="words"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={regOrganization}
+                  onChange={(e) => setRegOrganization(e.target.value)}
+                  placeholder="Your Company Name"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none"
+                />
               </div>
-              <p className="-mt-1 text-[10px] text-zinc-500">
-                Your backup PIN unlocks the app if your fingerprint or face ever fails. Only you know it.
-              </p>
 
               <div className="grid grid-cols-1 gap-2">
                 <div className="space-y-1">
@@ -792,22 +755,7 @@ const [joinPin, setJoinPin] = useState('');
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Backup PIN (optional):</label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  autoComplete="new-password"
-                  value={joinPin}
-                  onChange={(e) => setJoinPin(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="4 digits"
-                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono text-center tracking-[0.3em]"
-                />
-              </div>
-              <p className="-mt-1 text-[10px] text-zinc-500">
-                Your backup PIN unlocks the app if your fingerprint or face ever fails. Only you know it.
-              </p>
+              {/* Backup PIN removed in the Stage 2 audit (H5) — never collected. */}
 
               <button
                 type="submit"
@@ -836,23 +784,9 @@ const [joinPin, setJoinPin] = useState('');
         RC Solutions Autonomous Telecommunications & Industrial Operations • Protected by Hardware Keystore
       </div>
 
-      {/* Biometric Setup Modal */}
-      <BiometricSetupModal
-        isOpen={isSetupModalOpen}
-        onClose={() => setIsSetupModalOpen(false)}
-        currentUser={{
-          id: 'temp',
-          email: loginEmail,
-          fullName: 'RC Solutions Operator',
-          role: 'Operations Lead',
-          avatar: '',
-          organization: 'RC Solutions',
-          authenticated: false
-        }}
-        onEnrollmentComplete={() => {
-          handleBiometricsLogin();
-        }}
-      />
+      {/* Biometric Setup Modal removed (Stage 2 audit L2): the
+          BiometricSetupModal component was deleted with the rest of the
+          dead biometric UI. Biometrics stay removed. */}
     </div>
   );
 };

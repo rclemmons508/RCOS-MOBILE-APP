@@ -16,9 +16,7 @@ import {
   AlertCircle, 
   Fingerprint, 
   LogOut, 
-  ArrowLeft, 
   X, 
-  Sparkles, 
   Building2 
 } from 'lucide-react';
 
@@ -37,7 +35,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onLoginSuccess,
   onLogout,
 }) => {
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot_password' | 'profile'>(
+  const [mode, setMode] = useState<'login' | 'register' | 'profile'>(
     currentUser?.authenticated ? 'profile' : 'login'
   );
 
@@ -45,7 +43,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
-  const [backupPin, setBackupPin] = useState('');
   const [industryId, setIndustryId] = useState('general_small_business');
   const roleOptions = getStaffRolesForIndustry(industryId);
   const [role, setRole] = useState<string>(roleOptions[0]);
@@ -57,13 +54,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setRole(getStaffRolesForIndustry(presetId)[0]);
   };
 
-  const [recoveryStep, setRecoveryStep] = useState<1 | 2 | 3>(1);
-  const [otpCode, setOtpCode] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [recoverySuccess, setRecoverySuccess] = useState(false);
-
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  // Stage 2 assembly (L5): one in-flight submit at a time — double-click /
+  // double-Enter used to fire duplicate login/register calls.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Stage 2 assembly: hashless (Google-created) accounts cannot sign in
+  // with email/password until a password is set. This inline form is the
+  // entry point for authService.setLocalPassword — previously no UI
+  // called it, so those accounts were stuck on native builds.
+  const [showSetPassword, setShowSetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
 
   // Real biometric state — never a hard-coded label. The kill switch
   // (BIOMETRICS_ENABLED, off since Oct 16, 2026) wins over stored
@@ -91,11 +93,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!email || !password) {
       setErrorMsg('Please enter email and password.');
       return;
     }
     setErrorMsg('');
+    setShowSetPassword(false);
+    setIsSubmitting(true);
     try {
       // Real sign-in: authService CHECKS the password. The old code
       // fabricated a signed-in user for any typed email, so anyone
@@ -109,7 +114,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClose();
       }, 500);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Sign-in failed. Please try again.');
+      const msg = err?.message || 'Sign-in failed. Please try again.';
+      setErrorMsg(msg);
+      // Hashless account: offer the set-a-password step inline instead of
+      // leaving the user with no way forward.
+      if (msg.includes('has no password yet')) setShowSetPassword(true);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    if (!newPassword || newPassword.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== newPasswordConfirm) {
+      setErrorMsg('Passwords do not match.');
+      return;
+    }
+    setErrorMsg('');
+    setIsSubmitting(true);
+    try {
+      await authService.setLocalPassword(email, newPassword);
+      setShowSetPassword(false);
+      setNewPassword('');
+      setNewPasswordConfirm('');
+      setPassword('');
+      setSuccessMsg('Password set — now sign in with it.');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not set the password. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -130,15 +168,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!fullName || !email || !password) {
       setErrorMsg('Please complete all registration fields.');
       return;
     }
-    if (!/^\d{4}$/.test(backupPin)) {
-      setErrorMsg('Please set a 4-digit backup PIN in case biometrics fail.');
-      return;
-    }
     setErrorMsg('');
+    setIsSubmitting(true);
     try {
       // Real registration: salted password hash is stored, so the next
       // sign-in checks it. The old code fabricated an account with no
@@ -149,12 +185,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         password,
         role,
         organization,
-        backupPin,
         preferences: { industryProfile: industryId },
       });
       setSuccessMsg('Account registered successfully!');
-      // Save the user's own backup PIN — the only PIN that can unlock the app.
-      biometricService.setOperatorPin(backupPin);
       setTimeout(() => {
         onLoginSuccess(user);
         setSuccessMsg('');
@@ -162,38 +195,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }, 600);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-  };
-
-  const handleSendRecoveryOTP = () => {
-    if (!email) {
-      setErrorMsg('Please provide your registered email address.');
-      return;
-    }
-    setErrorMsg('');
-    setRecoveryStep(2);
-  };
-
-  const handleVerifyOTP = () => {
-    if (!otpCode || otpCode.length < 4) {
-      setErrorMsg('Please enter valid 6-digit security OTP code.');
-      return;
-    }
-    setErrorMsg('');
-    setRecoveryStep(3);
-  };
-
-  const handleResetPassword = () => {
-    if (!newPassword || newPassword.length < 6) {
-      setErrorMsg('Password must be at least 6 characters.');
-      return;
-    }
-    setRecoverySuccess(true);
-    setTimeout(() => {
-      setRecoverySuccess(false);
-      setRecoveryStep(1);
-      setMode('login');
-    }, 1200);
   };
 
   const strength = getPasswordStrength(password);
@@ -218,7 +222,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <p className="text-[11px] text-zinc-400">
                 {mode === 'login' && 'Sign in to access RCOS System Controls'}
                 {mode === 'register' && 'Create a new operator account'}
-                {mode === 'forgot_password' && 'Password recovery workflow'}
                 {mode === 'profile' && 'Authenticated Operator Session'}
               </p>
             </div>
@@ -282,7 +285,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-zinc-500">Session Security:</span>
-                    <span className="text-lime-400 font-bold">Encrypted JWT • Verified</span>
+                    <span className="text-zinc-400">Local session • Not server-verified</span>
                   </div>
                 </div>
               </div>
@@ -342,13 +345,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-bold text-zinc-300">System Password</label>
-                  <button
-                    type="button"
-                    onClick={() => setMode('forgot_password')}
-                    className="text-[11px] text-lime-400 hover:underline cursor-pointer"
-                  >
-                    Forgot Password?
-                  </button>
                 </div>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
@@ -385,11 +381,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="space-y-2 pt-2">
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-lime-500/20 active:scale-98 cursor-pointer"
+                  disabled={isSubmitting}
+                  className="w-full py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-lime-500/20 active:scale-98 cursor-pointer disabled:opacity-60"
                 >
                   <KeyRound className="w-4 h-4" />
-                  <span>Authenticate Operator</span>
+                  <span>{isSubmitting ? 'Signing in…' : 'Authenticate Operator'}</span>
                 </button>
+
+                {showSetPassword && (
+                  <form onSubmit={handleSetPasswordSubmit} className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                    <p className="text-xs font-bold text-amber-300">Set a password for {email}</p>
+                    <p className="text-[11px] text-zinc-400">This account was created with Google sign-in and has no password yet. Set one to sign in with email and password.</p>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="New password (at least 6 characters)"
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:border-lime-500 focus:outline-none font-mono"
+                      required
+                    />
+                    <input
+                      type="password"
+                      value={newPasswordConfirm}
+                      onChange={(e) => setNewPasswordConfirm(e.target.value)}
+                      placeholder="Repeat new password"
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:border-lime-500 focus:outline-none font-mono"
+                      required
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs cursor-pointer disabled:opacity-60"
+                    >
+                      {isSubmitting ? 'Setting password…' : 'Set Password'}
+                    </button>
+                  </form>
+                )}
 
                 {!Capacitor.isNativePlatform() && (
                 <button
@@ -533,32 +560,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 )}
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-300 block">Backup PIN <span className="text-zinc-500 font-normal">(4 digits)</span></label>
-                <div className="relative">
-                  <KeyRound className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
-                  <input
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={4}
-                    autoComplete="new-password"
-                    value={backupPin}
-                    onChange={(e) => setBackupPin(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="••••"
-                    className="w-full bg-black border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:border-lime-500 focus:outline-none font-mono text-center tracking-[0.3em]"
-                    required
-                  />
-                </div>
-                <p className="text-[10px] text-zinc-500">
-                  Unlocks the app if biometrics ever fail. Only you know it.
-                </p>
-              </div>
-
               <button
                 type="submit"
-                className="w-full py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-lime-500/20 mt-2 cursor-pointer"
+                disabled={isSubmitting}
+                className="w-full py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-lime-500/20 mt-2 cursor-pointer disabled:opacity-60"
               >
-                Create Registered Account
+                {isSubmitting ? 'Creating account…' : 'Create Registered Account'}
               </button>
 
               <div className="pt-2 text-center text-xs text-zinc-400">
@@ -574,108 +581,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </form>
           )}
 
-          {/* VIEW: FORGOT PASSWORD */}
-          {mode === 'forgot_password' && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-xs text-zinc-400 pb-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecoveryStep(1);
-                    setMode('login');
-                  }}
-                  className="hover:text-white flex items-center gap-1 cursor-pointer"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Login
-                </button>
-              </div>
-
-              {recoverySuccess ? (
-                <div className="p-4 rounded-2xl bg-lime-950/60 border border-lime-500/50 text-center space-y-2">
-                  <CheckCircle2 className="w-10 h-10 text-lime-400 mx-auto" />
-                  <h4 className="text-sm font-bold text-white">Password Reset Successful!</h4>
-                  <p className="text-xs text-zinc-300">
-                    Your password has been updated. Redirecting to login...
-                  </p>
-                </div>
-              ) : recoveryStep === 1 ? (
-                <div className="space-y-3">
-                  <p className="text-xs text-zinc-300 leading-relaxed">
-                    Enter your registered RCOS operator email address to receive an instant security recovery code.
-                  </p>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-zinc-500 absolute left-3 top-3" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="rcsoulutions@gmail.com"
-                      className="w-full bg-black border border-zinc-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:border-lime-500 focus:outline-none"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSendRecoveryOTP}
-                    className="w-full py-2.5 rounded-xl bg-lime-500 text-black font-extrabold text-xs cursor-pointer"
-                  >
-                    Send Security Recovery Code
-                  </button>
-                </div>
-              ) : recoveryStep === 2 ? (
-                <div className="space-y-3">
-                  <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300">
-                    Security code sent to <strong className="text-white">{email}</strong>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-300">6-Digit Verification PIN</label>
-                    <input
-                      type="text"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value)}
-                      placeholder="849201"
-                      maxLength={6}
-                      className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-center text-lg font-mono text-lime-400 tracking-widest focus:border-lime-500 focus:outline-none"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setOtpCode('849201')}
-                    className="text-[10px] text-lime-400 hover:underline block text-center mx-auto font-mono cursor-pointer"
-                  >
-                    [Auto-Fill Verified Test PIN: 849201]
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleVerifyOTP}
-                    className="w-full py-2.5 rounded-xl bg-lime-500 text-black font-extrabold text-xs cursor-pointer"
-                  >
-                    Verify PIN Code
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-300">New Password</label>
-                    <input
-                      type="password"
-                      autoComplete="new-password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="••••••••••••"
-                      className="w-full bg-black border border-zinc-800 rounded-xl p-2.5 text-xs text-white font-mono focus:border-lime-500 focus:outline-none"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleResetPassword}
-                    className="w-full py-2.5 rounded-xl bg-lime-500 text-black font-extrabold text-xs cursor-pointer"
-                  >
-                    Confirm New Password
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Password recovery was removed (audit H13): the old flow sent
+              no email, accepted any 4+ digit code, showed false success,
+              and never changed the password. No recovery UI ships until a
+              real emailed-reset flow exists — never show success without
+              a confirmed change. */}
         </div>
       </div>
     </div>

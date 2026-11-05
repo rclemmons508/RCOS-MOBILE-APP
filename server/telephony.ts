@@ -1,3 +1,15 @@
+/**
+ * PARKED — DO NOT RE-ENABLE WITHOUT REVIEW (Stage 2 audit M2).
+ * This whole file is the Twilio carrier path. It is currently unreachable:
+ * the Twilio trial has expired, TELEPHONY_PROVIDER defaults to `webrtc`,
+ * and /api/twilio returns 503. The routes below are kept only so the
+ * carrier integration can be restored deliberately later.
+ * To re-enable: restore a paid Twilio account, set TWILIO_ACCOUNT_SID,
+ * TWILIO_AUTH_TOKEN and APP_URL (the public app address), point Twilio's
+ * webhook URLs at this server, and re-prove signature verification with
+ * a live webhook before any production use. Until then, nothing here
+ * should be called, and no webhook is ever accepted unchecked.
+ */
 import { Request, Response, Router } from 'express';
 import twilio from 'twilio';
 import { db } from './db';
@@ -12,14 +24,20 @@ export const telephonyRouter = Router();
  * account's auth token. Without this check, anyone on the internet could
  * POST fake inbound calls, voicemails, and status updates into the call log.
  *
+ * FAIL-CLOSED (Stage 2 audit M2): the webhook is rejected (403) whenever
+ * the signature cannot be verified — including when APP_URL is unset, when
+ * the auth token or signature is missing, and when validation fails. There
+ * is no unchecked-accept path anymore; the old "accept with a warning"
+ * branch for a missing APP_URL was removed.
+ *
  * - Signature present + valid → the call really came from Twilio → accept.
  * - Signature present + invalid → reject (403). A real Twilio call never
  *   fails this unless the public address (APP_URL) no longer matches the
  *   webhook address set in Twilio — in that case Twilio's own calls get
  *   403s, which is fail-safe and visible in the logs.
  * - No APP_URL set → the signature cannot be checked (there is no address
- *   to check it against), so the call is accepted with a loud warning,
- *   preserving today's behavior. Set APP_URL before re-enabling Twilio.
+ *   to check it against), so the webhook is REJECTED (403). Set APP_URL
+ *   before re-enabling Twilio.
  *
  * These routes are carrier webhooks, not user routes, so they do not use
  * the Firebase login gate — Twilio cannot sign in as a user. The
@@ -35,9 +53,9 @@ function requireTwilioSignature(req: Request, res: Response, next: () => void) {
   if (!appUrl) {
     console.warn(
       '[Twilio] APP_URL is not set — cannot verify the carrier signature. ' +
-      'Accepting this webhook unchecked. Set APP_URL before re-enabling Twilio.'
+      'Rejecting this webhook (fail-closed). Set APP_URL before re-enabling Twilio.'
     );
-    return next();
+    return res.status(403).json({ error: 'Carrier signature cannot be verified: APP_URL is not set.' });
   }
   const url = `${appUrl}${req.originalUrl}`;
   let valid = false;

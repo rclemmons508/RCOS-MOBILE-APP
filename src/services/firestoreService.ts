@@ -8,6 +8,8 @@ import {
   onSnapshot, 
   query, 
   orderBy,
+  limit,
+  limitToLast,
   runTransaction
 } from 'firebase/firestore';
 import { db, auth, OperationType, handleFirestoreError } from '../lib/firebase';
@@ -71,8 +73,18 @@ export const firestoreService = {
   async saveBusiness(business: BusinessAccount): Promise<void> {
     const docRef = doc(db, 'businesses', business.id);
     const ownerId = auth.currentUser?.uid || business.ownerId || 'unassigned_owner';
+    // Stage 2 audit (C2): the Firestore rules check member access against a
+    // denormalized `memberEmails` map — rules cannot search the `members`
+    // list of maps. Derive it from the roster on every save so the mirror
+    // can never go stale while the roster changes.
+    const memberEmails: Record<string, 'owner' | 'member'> = {};
+    for (const m of business.members || []) {
+      const email = String(m?.email || '').toLowerCase().trim();
+      if (email) memberEmails[email] = m?.role === 'owner' ? 'owner' : 'member';
+    }
     const payload = {
       ...business,
+      memberEmails,
       ownerId,
       updatedAt: new Date().toISOString()
     };
@@ -101,10 +113,16 @@ export const firestoreService = {
   },
 
   // ==================== JOBS ====================
+  // P2 (Stage 2 audit): the jobs listener previously loaded the whole
+  // collection with no cap. limit(500) bounds it — far above pilot scale,
+  // so it does not change behavior today, but it stops unbounded growth
+  // from loading the entire job history. No orderBy is added on purpose:
+  // Job has no timestamp field (only scheduledTime, a display string),
+  // so ordering by a missing/unreliable field would silently drop jobs.
   listenToJobs(businessId: string, callback: (jobs: Job[]) => void): () => void {
     const colRef = collection(db, 'businesses', businessId, 'jobs');
     return onSnapshot(
-      colRef,
+      query(colRef, limit(500)),
       (snap) => {
         const list: Job[] = [];
         snap.forEach((d) => list.push(normalizeDoc<Job>(d.data())));
@@ -312,9 +330,13 @@ export const firestoreService = {
   },
 
   // ==================== CHAT MESSAGES ====================
+  // P2 (Stage 2 audit): the chat listener previously loaded the whole
+  // history with no cap. limitToLast(100) keeps the most recent 100
+  // messages live (the UI only ever shows the recent thread); older
+  // history is out of scope for the live listener.
   listenToChatMessages(businessId: string, callback: (msgs: ChatMessage[]) => void): () => void {
     const colRef = collection(db, 'businesses', businessId, 'chatMessages');
-    const q = query(colRef, orderBy('timestamp', 'asc'));
+    const q = query(colRef, orderBy('timestamp', 'asc'), limitToLast(100));
     return onSnapshot(
       q,
       (snap) => {

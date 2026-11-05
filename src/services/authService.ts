@@ -15,6 +15,24 @@ import { Capacitor } from '@capacitor/core';
 
 const STORAGE_KEY_SESSION = 'rcos_active_session';
 const STORAGE_KEY_USERS = 'rcos_registered_users';
+
+/**
+ * Local session expiry (audit M4). The local session is only a cache of a
+ * login — it is NOT proof of identity (see H1) — but it must still not
+ * live forever on a lost or shared device.
+ * - Absolute expiry: 30 days from first sign-in, even if the app is used daily.
+ * - Idle timeout: 24 hours without the app reading the session.
+ * Both are enforced in getActiveSession(); an expired session is cleared
+ * and the user is sent to login.
+ */
+export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const SESSION_IDLE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+/** A stored session is the user record plus its expiry timestamps. */
+interface StoredSession extends User {
+  sessionCreatedAt?: number;
+  sessionLastActiveAt?: number;
+}
 /**
  * One entry per email: a password-reset email was already sent for the
  * Firebase drift case. The drift recovery must never spam the user's
@@ -99,22 +117,47 @@ class AuthService {
   }
 
   /**
-   * Get currently active session if logged in
+   * Get currently active session if logged in.
+   *
+   * Enforces session expiry (M4): an absolute 30-day limit from first
+   * sign-in and a 24-hour idle timeout. An expired session is cleared
+   * here and null is returned, so every caller (App startup, account
+   * screens) sends the user to login. Reading the session counts as
+   * activity and refreshes the idle clock; it never extends the
+   * absolute 30-day limit. Sessions saved before expiry existed carry
+   * no timestamps — they are stamped on first read under the new code,
+   * so they get a bounded life from here instead of being killed on upgrade.
    */
   getActiveSession(): User | null {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_SESSION);
       if (raw) {
-        const user: User = JSON.parse(raw);
+        const stored: StoredSession = JSON.parse(raw);
         // If legacy preloaded mock user, purge it so app starts completely from scratch
-        if (user?.id === 'usr-rcos-lead' || user?.id === 'usr-tech-01' || user?.id === 'usr-rcos-admin') {
+        if (stored?.id === 'usr-rcos-lead' || stored?.id === 'usr-tech-01' || stored?.id === 'usr-rcos-admin') {
           localStorage.removeItem(STORAGE_KEY_SESSION);
           localStorage.removeItem('rcos_auth_user');
           return null;
         }
-        if (user && user.authenticated) {
+        if (stored && stored.authenticated) {
+          const now = Date.now();
+          const createdAt = typeof stored.sessionCreatedAt === 'number' ? stored.sessionCreatedAt : now;
+          const lastActiveAt = typeof stored.sessionLastActiveAt === 'number' ? stored.sessionLastActiveAt : now;
+          if (now - createdAt > SESSION_ABSOLUTE_TTL_MS || now - lastActiveAt > SESSION_IDLE_TIMEOUT_MS) {
+            // Expired session: clear it so the app treats the user as signed out.
+            this.clearActiveSession();
+            return null;
+          }
+          // Refresh the idle clock (activity) and persist the timestamps.
+          const refreshed: StoredSession = { ...stored, sessionCreatedAt: createdAt, sessionLastActiveAt: now };
+          try {
+            localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(refreshed));
+          } catch {}
           // Load fresh preferences
-          const prefs = userPreferencesService.getUserPreferences(user.email || user.id);
+          const prefs = userPreferencesService.getUserPreferences(stored.email || stored.id);
+          const { sessionCreatedAt: _createdAt, sessionLastActiveAt: _lastActiveAt, ...user } = refreshed;
+          void _createdAt;
+          void _lastActiveAt;
           return {
             ...user,
             preferences: prefs
@@ -128,11 +171,24 @@ class AuthService {
   }
 
   /**
-   * Save active session
+   * Save active session. Stamps the expiry timestamps (M4): the first
+   * save sets the 30-day absolute clock, and every save refreshes the
+   * 24-hour idle clock. Re-saving an existing session (e.g. a profile
+   * update) preserves the original creation time — it must not silently
+   * extend the absolute expiry.
    */
   saveActiveSession(user: User): void {
     try {
-      localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(user));
+      const now = Date.now();
+      let createdAt = now;
+      try {
+        const prev = JSON.parse(localStorage.getItem(STORAGE_KEY_SESSION) || 'null') as StoredSession | null;
+        if (prev && prev.email?.toLowerCase() === user.email.toLowerCase() && typeof prev.sessionCreatedAt === 'number') {
+          createdAt = prev.sessionCreatedAt;
+        }
+      } catch {}
+      const stored: StoredSession = { ...user, sessionCreatedAt: createdAt, sessionLastActiveAt: now };
+      localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(stored));
       localStorage.setItem('rcos_auth_user', JSON.stringify({ email: user.email, displayName: user.fullName, uid: user.id }));
       // Also register or update in users list
       this.upsertUser(user);
@@ -266,9 +322,15 @@ class AuthService {
    * The password IS checked (it used to be ignored) and unknown emails do
    * NOT auto-create an account. Both old behaviors meant a deleted account
    * came straight back the next time its email was typed — that is the
-   * bug this fixes. Accounts created before passwords were enforced have
-   * no stored hash: the first login WITH a password adopts it (one-time
-   * migration); after that, the password is enforced.
+   * bug this fixes.
+   *
+   * A password is required on EVERY login path (audit H3): a blank or
+   * missing password never authenticates. Accounts with no stored hash
+   * (e.g. created by Google sign-in, audit B4) do NOT fall through to
+   * authenticated, and do NOT adopt the typed password (audit B3: a typo
+   * would permanently become the password). A hashless account must sign
+   * in with Google, or set a password explicitly via setLocalPassword()
+   * first — there is no silent migration any more.
    */
   async loginWithEmail(email: string, password?: string): Promise<User> {
     const cleanEmail = (email || '').trim().toLowerCase();
@@ -279,27 +341,21 @@ class AuthService {
       throw new Error('No account found for that email. Please check the email or create a new account.');
     }
 
+    // Blank / missing password never authenticates — on any account.
+    if (!password || !password.trim()) {
+      throw new Error('Please enter your password.');
+    }
+
     if (existing.passwordHash) {
-      if (!password || (await hashPassword(password, existing.passwordSalt || '')) !== existing.passwordHash) {
+      if ((await hashPassword(password, existing.passwordSalt || '')) !== existing.passwordHash) {
         throw new Error('Wrong password. Please try again.');
       }
-    } else if (password) {
-      // Legacy account: adopt the typed password from now on.
-      const salt = makeSalt();
-      const passwordHash = await hashPassword(password, salt);
-      const migrated: User = {
-        ...existing,
-        passwordHash,
-        passwordSalt: salt,
-        authenticated: true,
-        lastLogin: 'Just now',
-        preferences: userPreferencesService.getUserPreferences(existing.email)
-      };
-      this.upsertUser(migrated);
-      this.saveActiveSession(migrated);
-      // Mirror into Firebase with the just-verified password (best effort).
-      await this.syncFirebaseSession(cleanEmail, password);
-      return migrated;
+    } else {
+      // Hashless account: refuse, do not adopt, do not authenticate.
+      throw new Error(
+        'This account has no password yet (it was created with Google sign-in). ' +
+        'Please sign in with Google, or set a password for this account first.'
+      );
     }
 
     const loggedIn: User = {
@@ -313,6 +369,39 @@ class AuthService {
     // Mirror into Firebase with the just-verified password (best effort).
     await this.syncFirebaseSession(cleanEmail, password);
     return loggedIn;
+  }
+
+  /**
+   * Explicit set-password step for hashless accounts (audit B4 / H3).
+   *
+   * Only works when the account has NO stored hash (e.g. created by
+   * Google sign-in). It sets the salted hash and does NOT log the user
+   * in — they sign in with the new password afterwards. It refuses when
+   * a hash already exists (changing an existing password needs a real
+   * password-change flow) and when the new password is too short. This
+   * is the only way a hashless account gains a local password — login
+   * itself never adopts one.
+   */
+  async setLocalPassword(email: string, newPassword: string): Promise<void> {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('Password must be at least 6 characters.');
+    }
+    const users = this.getRegisteredUsers();
+    const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    if (idx < 0) {
+      throw new Error('No account found for that email.');
+    }
+    if (users[idx].passwordHash) {
+      throw new Error('This account already has a password set.');
+    }
+    const salt = makeSalt();
+    users[idx] = {
+      ...users[idx],
+      passwordHash: await hashPassword(newPassword, salt),
+      passwordSalt: salt,
+    };
+    this.saveRegisteredUsers(users);
   }
 
   /**
@@ -378,6 +467,7 @@ class AuthService {
     password?: string;
     role?: User['role'];
     organization?: string;
+    /** Accepted for caller compatibility only — IGNORED. Backup PINs were removed (audit H5); no PIN is ever stored. */
     backupPin?: string;
     preferences?: Partial<UserPreferences>;
     enableBiometrics?: boolean;
@@ -386,11 +476,17 @@ class AuthService {
     const cleanEmail = (data.email || '').trim().toLowerCase();
     if (!cleanEmail) throw new Error('Email is required.');
 
+    // The biometrics flag must never claim biometrics are on while the
+    // master switch is off (audit M7): the switch wins over any caller
+    // preference, so a future reader of this flag cannot re-enable a
+    // removed feature by accident. Biometrics are off, so this is false.
+    const biometricsOn = BIOMETRICS_ENABLED && (data.enableBiometrics ?? true);
+
     // Save preferences
     const savedPrefs = userPreferencesService.saveUserPreferences(cleanEmail, {
       ...DEFAULT_USER_PREFERENCES,
       ...(data.preferences || {}),
-      biometricsEnabled: data.enableBiometrics ?? true
+      biometricsEnabled: biometricsOn
     });
 
     const newUser: User = {
@@ -402,22 +498,21 @@ class AuthService {
       organization: data.organization?.trim() || '',
       businessId: data.businessId,
       authenticated: true,
-      biometricsEnabled: data.enableBiometrics ?? true,
+      biometricsEnabled: biometricsOn,
       lastLogin: 'Just now',
       preferences: savedPrefs
     };
 
-    // If user chose to enable biometrics during registration, enroll them
+    // If user chose to enable biometrics during registration, enroll them.
+    // enrollBiometrics itself refuses while the master switch is off.
+    // data.backupPin is deliberately NOT passed on or stored anywhere:
+    // backup PINs were removed (audit H5).
     if (data.enableBiometrics) {
       await biometricService.enrollBiometrics(
         newUser.email,
         newUser.fullName,
-        'fingerprint',
-        data.backupPin
+        'fingerprint'
       ).catch(() => {});
-    } else if (data.backupPin && /^\d{4}$/.test(data.backupPin)) {
-      // PIN-only fallback even when biometrics are skipped
-      biometricService.setOperatorPin(data.backupPin);
     }
 
     // Store only a salted hash of the password — never the password itself.
@@ -451,7 +546,7 @@ class AuthService {
   async loginWithGoogle(): Promise<User> {
     if (Capacitor.isNativePlatform()) {
       throw new Error(
-        'Google sign-in is not available in this app build yet. Please sign in with email, fingerprint, or your backup PIN.'
+        'Google sign-in is not available in this app build yet. Please sign in with email and password.'
       );
     }
 
@@ -489,7 +584,7 @@ class AuthService {
         avatar,
         organization: '',
         authenticated: true,
-        biometricsEnabled: true,
+        biometricsEnabled: BIOMETRICS_ENABLED,
         lastLogin: 'Just now',
         preferences: prefs
       };

@@ -52,7 +52,6 @@ import { AgentInboxModal } from './components/AgentInboxModal';
 import { agentInboxService } from './services/agentInboxService';
 import { AuthModal } from './components/auth/AuthModal';
 import { useBiometrics } from './context/BiometricContext';
-import { BiometricLockScreen } from './components/biometrics/BiometricLockScreen';
 import { biometricService } from './services/biometricService';
 import { LoginView } from './components/auth/LoginView';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -176,7 +175,7 @@ export default function App() {
     setSettingsSection(section);
     setActiveTab('settings');
   };
-  const { isDashboardLocked, isBiometricEnabled, unenrollBiometrics } = useBiometrics();
+  const { unenrollBiometrics } = useBiometrics();
 
   // Authentication State - starts from scratch (no preloaded user profile)
   // A new install or a new build never starts logged in as anyone: if
@@ -1120,6 +1119,11 @@ export default function App() {
 
   useSyncEngine(
     useCallback(async () => {
+      // P1 (Stage 2 audit): pause the 30s full refetch while the tab is
+      // hidden — same document.hidden pattern TeamChatView uses. The
+      // useSyncEngine loop already skips hidden ticks; this is a
+      // belt-and-braces guard on the callback itself.
+      if (document.hidden) return;
       await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting(), pollProactive(), pollFollowups(), refreshTeamUnread()]);
     }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting, pollProactive, pollFollowups, refreshTeamUnread]),
     30000
@@ -2216,14 +2220,6 @@ export default function App() {
           onLoginSuccess={handleLoginSuccess}
           onLogout={handleLogout}
         />
-
-        {/* Biometric Shield Lock Screen */}
-        {isBiometricEnabled && isDashboardLocked && (
-          <BiometricLockScreen 
-            currentUser={currentUser} 
-            onLogout={handleLogout}
-          />
-        )}
 
         {/* Business Services Catalog Manager Modal */}
         <ServiceManagerModal

@@ -288,6 +288,15 @@ export interface BusinessAccount {
    * before teams existed — the creator is treated as the owner then.
    */
   members?: BusinessMember[];
+  /**
+   * Denormalized roster mirror for the Firestore rules (Stage 2 audit):
+   * `{ "<lowercase email>": "owner" | "member" }`. Firestore rules cannot
+   * search the `members` list of maps, so member access is checked against
+   * this map instead. Written by `saveBusiness` from `members` on every
+   * save, and by the server PUT handler when the roster changes. Never
+   * edited by hand — it always mirrors `members`.
+   */
+  memberEmails?: Record<string, 'owner' | 'member'>;
   name: string;
   /**
    * The company's public contact profile — the phone and email
@@ -613,8 +622,10 @@ export interface User {
   /**
    * Local SHA-256 hash of the account password + salt. The password itself
    * is NEVER stored. Login checks the typed password against this hash;
-   * older accounts created before passwords were enforced have no hash
-   * and adopt the password they next log in with (one-time migration).
+   * older accounts created before passwords were enforced have no hash.
+   * Since the Stage 2 audit, a hashless account can NOT log in with a
+   * blank password and does NOT adopt a typed password on first login —
+   * it must sign in with Google or set a password explicitly first.
    */
   passwordHash?: string;
   passwordSalt?: string;

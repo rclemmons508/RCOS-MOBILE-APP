@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AutomationTask, NotificationPreferences, User, IndustryOptimizationSuggestion, BusinessAccount, BusinessMember, TeamInvite, TabType } from '../../types';
-import { BiometricSettingsCard } from '../biometrics/BiometricSettingsCard';
 import { userPreferencesService } from '../../services/userPreferencesService';
 import { getAutomationLog, AutomationLogEntry } from '../../utils/automationLog';
 import { timeAgoShort, describeFollowupWindow } from '../../utils/automation';
@@ -19,7 +18,7 @@ import { teamService } from '../../services/teamService';
 import { authService } from '../../services/authService';
 import { apiFetch } from '../../lib/api';
 import { auth } from '../../lib/firebase';
-import { biometricService, BIOMETRICS_ENABLED } from '../../services/biometricService';
+import { biometricService } from '../../services/biometricService';
 import { DEFAULT_PROFILE_PICTURES, defaultPictureDataUrl, downscaleImageFile, resolveProfilePicture } from '../../utils/profilePicture';
 import { 
   Settings2, 
@@ -1270,8 +1269,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             )}
           </div>
 
-          {/* Biometric Access & Device Keystore */}
-          {BIOMETRICS_ENABLED && <BiometricSettingsCard currentUser={currentUser} />}
+          {/* Biometric settings card removed (Stage 2 audit L2): the
+              BiometricSettingsCard component was deleted with the rest of
+              the dead biometric UI. Biometrics stay removed. */}
         </div>
       )}
 

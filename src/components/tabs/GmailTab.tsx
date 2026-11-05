@@ -37,7 +37,6 @@ import {
   onTokenChange,
   authenticateGmail,
   restoreGmailToken,
-  INITIAL_PREVIEW_MESSAGES
 } from '../../lib/gmail';
 import { apiFetch } from '../../lib/api';
 import { teamHeaders } from '../../services/teamService';
@@ -71,12 +70,15 @@ export const GmailTab: React.FC<GmailTabProps> = ({
   } | null>(null);
   const [copiedDomain, setCopiedDomain] = useState(false);
 
-  // Mailbox data state
+  // Mailbox data state — starts EMPTY (Stage 2 audit M5). No fictional
+  // preview messages: when Gmail is not connected the tab shows an
+  // explicit "not connected" empty state, never invented mail.
   const [activeFolder, setActiveFolder] = useState<MailboxFolder>('INBOX');
   const [searchQuery, setSearchQuery] = useState('');
-  const [messages, setMessages] = useState<GmailMessageDetail[]>(INITIAL_PREVIEW_MESSAGES);
+  const [messages, setMessages] = useState<GmailMessageDetail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Selected message for detail view
   const [selectedMessage, setSelectedMessage] = useState<GmailMessageDetail | null>(null);
@@ -137,6 +139,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
 
   const loadLiveMailbox = useCallback(async (authToken: string) => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       let query = searchQuery.trim();
       let labelIds: string[] = [];
@@ -174,6 +177,10 @@ export const GmailTab: React.FC<GmailTabProps> = ({
       }
     } catch (err: any) {
       console.warn('Live Gmail fetch note:', err.message);
+      // A failed load must never fall back to invented mail: clear the
+      // list and surface the error in the empty state instead (M5).
+      setMessages([]);
+      setLoadError('Couldn\u2019t load your mail. Check your connection and try again.');
       // If unauthorized, token expired
       if (err.message?.includes('401') || err.message?.includes('token')) {
         setCachedAccessToken(null);
@@ -435,13 +442,13 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                   </span>
                 ) : (
                   <span className="text-[9px] font-mono text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800 shrink-0">
-                    Offline / Demo
+                    Not connected
                   </span>
                 )}
               </div>
               <p className="text-[10px] text-zinc-400 truncate">
                 {isLiveConnected 
-                  ? `Authenticated: ${currentUser?.email || 'rcsoulutions@gmail.com'}`
+                  ? `Authenticated: ${currentUser?.email || 'your Google account'}`
                   : 'Connect Google account to sync live mail'}
               </p>
             </div>
@@ -480,7 +487,6 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                 <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
                 <span className="font-semibold text-zinc-200">Connect Google Workspace</span>
               </div>
-              <span className="text-[10px] font-mono text-zinc-400">rcsoulutions@gmail.com</span>
             </div>
 
             <p className="text-[11px] text-zinc-300 leading-relaxed">
@@ -699,9 +705,17 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               <Mail className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-zinc-300">No emails in {activeFolder.toLowerCase()}</h3>
+              <h3 className="text-sm font-semibold text-zinc-300">
+                {!isLiveConnected
+                  ? 'Gmail is not connected'
+                  : loadError
+                    ? 'Couldn\u2019t load your mail'
+                    : `No emails in ${activeFolder.toLowerCase()}`}
+              </h3>
               <p className="text-xs text-zinc-500 mt-0.5">
-                {searchQuery ? 'Try clearing your search query' : 'Your mailbox folder is empty'}
+                {!isLiveConnected
+                  ? 'Connect Gmail to see your mail — no messages are shown until you connect.'
+                  : loadError || (searchQuery ? 'Try clearing your search query' : 'Your mailbox folder is empty')}
               </p>
             </div>
             {searchQuery && (

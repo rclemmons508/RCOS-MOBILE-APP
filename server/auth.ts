@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import admin from 'firebase-admin';
 
 // Verifies the Firebase login token the phone app attaches to every API call
@@ -25,10 +25,13 @@ export function initAuth(): void {
   const svc = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!svc) {
     gateBanner([
-      'LOGIN GATE IS OFF — THE API IS OPEN.',
-      'FIREBASE_SERVICE_ACCOUNT is not set, so every /api route accepts',
+      'LOGIN GATE IS OFF — MOST OF THE API IS OPEN.',
+      'FIREBASE_SERVICE_ACCOUNT is not set, so most /api routes accept',
       'calls with no login. Anyone who finds this server address can read',
-      'and change business data.',
+      'and change business data. EXCEPTION: the Gmail-token, Gmail',
+      'send/draft, voice-token, team-message, delete-account, and',
+      'quote/invoice routes stay closed — they need a verified Firebase',
+      'sign-in, which is impossible until the gate is configured.',
       'Set FIREBASE_SERVICE_ACCOUNT to turn the gate ON (see the login-gate',
       'steps). Until then, do NOT treat this server as private.',
     ]);
@@ -82,6 +85,38 @@ export async function requireAuth(req: Request, res: Response, next: () => void)
   // so the app keeps working during setup. Once configured, bad/missing tokens are rejected.
   if (!authReady) return next();
 
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Please sign in to use this feature.' });
+  }
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    (req as any).user = { uid: decoded.uid, email: decoded.email || null };
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Your sign-in expired. Please sign in again.' });
+  }
+}
+
+// Strict verified-identity gate for the routes that must NEVER accept a
+// client-asserted identity — Gmail tokens, Gmail send/drafts, voice
+// token minting, team-message posting, business deletion, and
+// quote/invoice creation (C3, H9–H12, M9). Unlike requireAuth above,
+// this does NOT fail open while the login gate is off: with no service
+// account configured there is nothing that can verify a token, so the
+// request is denied. That is the intended posture — these routes stay
+// closed to local-session (gate-off) callers until the app signs into
+// Firebase and the gate turns on. When the gate is on and requireAuth
+// already verified the token, req.user is reused (only requireAuth ever
+// sets req.user, and only after verifyIdToken), so the token is not
+// verified twice.
+export async function requireVerifiedAuth(req: Request, res: Response, next: NextFunction) {
+  if (!authReady) {
+    return res.status(401).json({ error: 'Please sign in to use this feature. Sign-in is not available until the login gate is configured.' });
+  }
+  const existing = (req as any).user as { uid?: string; email?: string | null } | undefined;
+  if (existing && (existing.uid || existing.email)) return next();
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) {

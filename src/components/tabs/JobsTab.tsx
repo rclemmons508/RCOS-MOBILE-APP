@@ -43,6 +43,9 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  // Stage 2 assembly (L5): one create at a time — double-click used to
+  // create two jobs (random RC-#### ids, no dedupe).
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
   const [selectedJobForDetail, setSelectedJobForDetail] = useState<Job | null>(null);
   const [smsFeedback, setSmsFeedback] = useState<string | null>(null);
 
@@ -72,7 +75,9 @@ export const JobsTab: React.FC<JobsTabProps> = ({
 
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCreatingJob) return;
     if (!title || !clientName) return;
+    setIsCreatingJob(true);
 
     if (priority === 'critical') {
       await haptic.warning();
@@ -105,6 +110,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
     if (onTriggerNotification) {
       onTriggerNotification('New Task Created', `Task ${newJob.id} dispatched for ${clientName}.`);
     }
+    setIsCreatingJob(false);
   };
 
   const handleSmsClient = (e: React.MouseEvent, job: Job) => {
@@ -571,9 +577,10 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold shadow-lg shadow-lime-500/20"
+                  disabled={isCreatingJob}
+                  className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold shadow-lg shadow-lime-500/20 disabled:opacity-60"
                 >
-                  Confirm & Dispatch
+                  {isCreatingJob ? 'Creating…' : 'Confirm & Dispatch'}
                 </button>
               </div>
             </form>

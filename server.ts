@@ -3,6 +3,7 @@ import http from 'http';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'url';
 import { db } from './server/db';
 import { RcosEngine } from './server/engine';
@@ -21,13 +22,13 @@ import {
   PendingIntake
 } from './src/types';
 import { INDUSTRY_PRESETS } from './src/data/presets';
-import { ALL_TRANSFER_DEPARTMENTS, availableDepartmentsFor, normalizeDepartments } from './src/utils/departments';
+import { availableDepartmentsFor, normalizeDepartments } from './src/utils/departments';
 import { withBehaviorProtocol, withBusinessKnowledge, resolveBusinessKnowledge } from './src/utils/agentBehavior';
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { sendVonageSms } from './server/vonage';
-import { initAuth, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, verifiedCaller } from './server/auth';
+import { initAuth, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 
@@ -42,6 +43,14 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Trust exactly ONE proxy hop — Railway's edge proxy, the socket peer.
+// Express `req.ip` then resolves to the address that proxy appended to
+// X-Forwarded-For, so a forged header prefix from the client is
+// ignored (H8). If another proxy is ever placed in front, raise this
+// number; a too-small number fails toward over-limiting (shared
+// bucket), never toward bypass.
+app.set('trust proxy', 1);
 
 // Security Headers & Production CORS
 app.use((req: Request, res: Response, next) => {
@@ -88,16 +97,35 @@ app.use((req: Request, res: Response, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// In-Memory Token Bucket Rate Limiter
+// In-Memory Token Bucket Rate Limiter (H8)
+//
+// KEYING — never trust the client-sent X-Forwarded-For header as the
+// client IP: any caller can forge it, so a limiter keyed on it is
+// trivially bypassed. Instead the key is:
+//   1. the VERIFIED Firebase identity (uid, else token email) when the
+//      login gate has already verified the caller — one bucket per user,
+//      so one abusive user cannot burn the bucket for everyone behind
+//      the same NAT; or
+//   2. Express `req.ip` otherwise (trust proxy is set to 1 above, so
+//      this is the address Railway's edge proxy appended — a forged
+//      X-Forwarded-For prefix is ignored).
+// The map key is scoped per limiter name, so a busy AI route cannot
+// burn the delete-account budget (or vice versa).
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-function createRateLimiter(maxRequests: number, windowMs: number) {
+function limiterKey(req: Request): string {
+  const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
+  if (caller?.uid) return `uid:${caller.uid}`;
+  if (caller?.email) return `email:${String(caller.email).toLowerCase()}`;
+  return `ip:${req.ip || req.socket.remoteAddress || 'unknown'}`;
+}
+function createRateLimiter(name: string, maxRequests: number, windowMs: number) {
   return (req: Request, res: Response, next: () => void) => {
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.ip || req.socket.remoteAddress || 'unknown';
+    const key = `${name}:${limiterKey(req)}`;
     const now = Date.now();
-    const record = rateLimitMap.get(clientIp);
+    const record = rateLimitMap.get(key);
 
     if (!record || now > record.resetAt) {
-      rateLimitMap.set(clientIp, { count: 1, resetAt: now + windowMs });
+      rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
       return next();
     }
 
@@ -110,11 +138,29 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
   };
 }
 
-const aiRateLimiter = createRateLimiter(60, 60000); // 60 req / min
-const publicIntakeRateLimiter = createRateLimiter(30, 60000); // 30 req / min
-const deleteAccountLimiter = createRateLimiter(3, 10 * 60 * 1000); // 3 delete tries / 10 min
-  const smsSendLimiter = createRateLimiter(30, 60000); // 30 follow-up sends / min per IP
-  const gmailSendLimiter = createRateLimiter(30, 60000); // 30 Gmail sends/drafts / min per IP
+// Route -> limiter map (H8). Every /api route also passes the default
+// 120/min generalApiLimiter (mounted just below the login gate) and
+// every non-GET /api request additionally passes the 60/min
+// writeLimiter, so no route is unguarded even where no limiter is
+// named here. Named limiters below are the stricter ceilings for the
+// expensive or sensitive routes; pre-existing rates are unchanged.
+// Exceptions, by design: /api/health and /api/firebase-config are
+// registered before the gate (health checks must not be limited), and
+// GET /api/diagnostics/scan is exempt from the default limiter (M3 —
+// left exactly as-is as the verification probe while the gate is off).
+const aiRateLimiter = createRateLimiter('ai', 60, 60000); // 60 req / min
+const publicIntakeRateLimiter = createRateLimiter('public-intake', 30, 60000); // 30 req / min
+const deleteAccountLimiter = createRateLimiter('delete-account', 3, 10 * 60 * 1000); // 3 delete tries / 10 min
+const smsSendLimiter = createRateLimiter('sms-send', 30, 60000); // 30 follow-up sends / min
+const gmailSendLimiter = createRateLimiter('gmail-send', 30, 60000); // 30 Gmail sends/drafts / min
+const teamInviteLimiter = createRateLimiter('team-invite', 10, 60000); // 10 invite/join attempts / min
+const generalApiLimiter = createRateLimiter('api', 120, 60000); // 120 req / min, default ceiling for every /api route
+const writeLimiter = createRateLimiter('write', 60, 60000); // 60 writes / min, non-GET /api requests
+const gmailTokenLimiter = createRateLimiter('gmail-token', 30, 60000); // 30 Gmail-token fetches / min (C3)
+const voiceTokenLimiter = createRateLimiter('voice-token', 10, 60000); // 10 LiveKit token mints / min (H12)
+const quoteInvoiceLimiter = createRateLimiter('quote-invoice', 30, 60000); // 30 quote/invoice creations / min (M9)
+const teamMessageLimiter = createRateLimiter('team-message', 60, 60000); // 60 team-chat posts / min (H10)
+const ttsLimiter = createRateLimiter('tts', 30, 60000); // 30 TTS syntheses / min
 
 // Telephony provider: 'twilio' mounts the Twilio PSTN router. Anything else parks it —
 // testing/review builds use the in-app WebRTC voice call instead (see /api/voice/token).
@@ -183,6 +229,21 @@ app.use('/api', (req: Request, res: Response, next) => {
     if (secret && req.headers['x-voice-secret'] === secret) return next();
   }
   return requireAuth(req, res, next);
+});
+
+// ---- Default rate limits (H8) ----
+// Mounted after the login gate so the key can be the verified identity
+// when the gate has verified the caller (see limiterKey above); the
+// public-by-design routes that skip the gate fall back to req.ip.
+// Diagnostics is exempt here (M3 — left exactly as-is as the
+// verification probe while the gate is off).
+app.use('/api', (req: Request, res: Response, next) => {
+  if (req.path === '/diagnostics/scan') return next();
+  return generalApiLimiter(req, res, next);
+});
+app.use('/api', (req: Request, res: Response, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  return writeLimiter(req, res, next);
 });
 
 // ---- Per-business ownership (login-gate ON only) ----
@@ -416,13 +477,15 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   }
 
 // Fresh Gmail access token for the app's Gmail tab (auto-refreshes when expired).
-// Per user: returns only the CALLER's own connected Gmail token, identified
-// the same way the team endpoints identify callers (verified token email
-// once the login gate is on, else the X-User-Email header). A caller with
-// no identity gets nothing — never another user's Gmail.
-app.get('/api/business/:id/gmail-token', async (req: Request, res: Response) => {
+// Per user: returns only the CALLER's own connected Gmail token. The
+// caller is the VERIFIED Firebase token email only (C3) — the
+// X-User-Email header and body fields are never an identity here, and
+// a caller with no verified identity gets nothing, never another
+// user's Gmail. Rate-limited (gmailTokenLimiter) and denied outright
+// while the login gate is off (see requireVerifiedAuth).
+app.get('/api/business/:id/gmail-token', gmailTokenLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
   try {
-    const requesterEmail = teamRequesterEmail(req);
+    const requesterEmail = (verifiedCaller(req)?.email || '').trim().toLowerCase();
     if (!requesterEmail) {
       return res.status(401).json({ error: 'Sign in first, then open Gmail.' });
     }
@@ -437,13 +500,13 @@ app.get('/api/business/:id/gmail-token', async (req: Request, res: Response) => 
   }
 });
 
-// Permanently delete an account and all of its data. Owner-only: when the
-// login gate is on, the caller's Firebase UID must match the business owner
-// (or the business must have no owner recorded). When the gate is off, this
-// route is as open as every other /api route — the gate being off is the
-// thing to fix, not this endpoint. Requires body { confirm: 'DELETE' }.
+// Permanently delete an account and all of its data. Owner-only, and
+// the owner proof is a VERIFIED Firebase identity only (H11) — the
+// client-sent header/body email and body user-id are never proof, and
+// the route denies outright while the login gate is off (see
+// requireVerifiedAuth). Requires body { confirm: 'DELETE' }.
 // Idempotent: deleting an already-deleted business returns ok.
-app.post('/api/business/:id/delete-account', deleteAccountLimiter, async (req: Request, res: Response) => {
+app.post('/api/business/:id/delete-account', deleteAccountLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
   try {
     const confirm = (req.body as any)?.confirm;
     if (confirm !== 'DELETE') {
@@ -454,30 +517,19 @@ app.post('/api/business/:id/delete-account', deleteAccountLimiter, async (req: R
     if (!business) {
       return res.json({ ok: true, deletedBusinessIds: [], alreadyDeleted: true });
     }
-    const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
+    const caller = verifiedCaller(req);
+    if (!caller) {
+      return res.status(401).json({ error: 'Please sign in to use this feature.' });
+    }
     // Ownership proof is REQUIRED to delete a whole business — no
-    // fail-open. Proof is any one of: the caller's email is one of the
-    // business's owner identities (roster owner, contact email, owner
-    // email); the client-sent requester user id matches the recorded
-    // owner id (covers businesses whose owner email is stale or
-    // missing); or, once the login gate is on, the verified Firebase
-    // uid / token email matches. An ownerless business (no owner
-    // identity at all) can therefore never be wiped through this
-    // endpoint — the client takes the member path for those and the
-    // business survives orphaned. These identities are client-asserted
-    // while the gate is off, so this is defense-in-depth against the
-    // app's own bugs (wrong company, stale id), not unforgeable auth.
-    // Gate ON: the verified token email is the only email identity —
-    // the header and body values below are ignored, because anyone can
-    // type them in. Gate OFF keeps today's header/body behavior.
-    const callerEmail = isGateOn()
-      ? (caller?.email || '').toLowerCase().trim()
-      : String(
-          (req.headers['x-user-email'] as string) || (req.body as any)?.requesterEmail || ''
-        ).toLowerCase().trim();
-    const requesterUserId = isGateOn()
-      ? ''
-      : String((req.body as any)?.requesterUserId || '').trim();
+    // fail-open, and no client-asserted identity. Proof is either: the
+    // VERIFIED token email is one of the business's owner identities
+    // (roster owner, contact email, owner email); or the VERIFIED
+    // Firebase uid matches the recorded owner id. An ownerless business
+    // (no owner identity at all) can therefore never be wiped through
+    // this endpoint — the client takes the member path for those and
+    // the business survives orphaned.
+    const callerEmail = (caller.email || '').toLowerCase().trim();
     const ownerMember = (business.members || []).find((m: any) => m?.role === 'owner');
     const ownerEmails = Array.from(new Set([
       String(ownerMember?.email || '').toLowerCase().trim(),
@@ -485,14 +537,9 @@ app.post('/api/business/:id/delete-account', deleteAccountLimiter, async (req: R
       String((business as any).ownerEmail || '').toLowerCase().trim(),
     ].filter(Boolean)));
     const ownerId = business.ownerId;
-    const ownerIdProven = !!ownerId && ownerId !== 'unassigned_owner' && (
-      (requesterUserId !== '' && requesterUserId === ownerId) ||
-      (!!caller?.uid && caller.uid === ownerId)
-    );
+    const ownerIdProven = !!ownerId && ownerId !== 'unassigned_owner' && !!caller.uid && caller.uid === ownerId;
     const emailProven = callerEmail !== '' && ownerEmails.includes(callerEmail);
-    const tokenEmail = (caller?.email || '').toLowerCase().trim();
-    const tokenEmailProven = tokenEmail !== '' && ownerEmails.includes(tokenEmail);
-    if (!emailProven && !ownerIdProven && !tokenEmailProven) {
+    if (!emailProven && !ownerIdProven) {
       return res.status(403).json({ error: 'Only the business owner can delete the whole business. Team members remove only their own login from Settings.' });
     }
     // Delete ONLY the requested business. The old code also deleted
@@ -525,8 +572,11 @@ app.get('/api/public/business/:id', (req: Request, res: Response) => {
 
 // Send a real email from the caller's OWN connected Gmail account.
 // The access token stays server-side; the sender is whichever Gmail
-// account the calling user connected — never a teammate's.
-app.post('/api/business/:id/gmail/send', gmailSendLimiter, async (req: Request, res: Response) => {
+// account the calling user connected — never a teammate's. The caller
+// is the VERIFIED Firebase token email only (C3) — the X-User-Email
+// header is never an identity here, and the route denies outright
+// while the login gate is off (see requireVerifiedAuth).
+app.post('/api/business/:id/gmail/send', gmailSendLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
   try {
     const business = db.getBusiness(req.params.id);
     if (!business) return res.status(404).json({ error: 'Business not found' });
@@ -536,7 +586,7 @@ app.post('/api/business/:id/gmail/send', gmailSendLimiter, async (req: Request, 
     if (!String(subject || '').trim()) {
       return res.status(400).json({ error: 'Subject is required.' });
     }
-    const requesterEmail = teamRequesterEmail(req);
+    const requesterEmail = (verifiedCaller(req)?.email || '').trim().toLowerCase();
     if (!requesterEmail) {
       return res.status(401).json({ error: 'Sign in first, then send.' });
     }
@@ -561,7 +611,9 @@ app.post('/api/business/:id/gmail/send', gmailSendLimiter, async (req: Request, 
 });
 
 // Save a real draft to the caller's OWN connected Gmail account.
-app.post('/api/business/:id/gmail/drafts', gmailSendLimiter, async (req: Request, res: Response) => {
+// Caller identity is the VERIFIED Firebase token email only (C3) —
+// see the send route above.
+app.post('/api/business/:id/gmail/drafts', gmailSendLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
   try {
     const business = db.getBusiness(req.params.id);
     if (!business) return res.status(404).json({ error: 'Business not found' });
@@ -571,7 +623,7 @@ app.post('/api/business/:id/gmail/drafts', gmailSendLimiter, async (req: Request
     if (!String(subject || '').trim()) {
       return res.status(400).json({ error: 'Subject is required.' });
     }
-    const requesterEmail = teamRequesterEmail(req);
+    const requesterEmail = (verifiedCaller(req)?.email || '').trim().toLowerCase();
     if (!requesterEmail) {
       return res.status(401).json({ error: 'Sign in first, then save a draft.' });
     }
@@ -679,37 +731,41 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
 // The voice-agent worker ('rcos-receptionist') is dispatched into the new room automatically.
 // Body may include persona: 'receptionist' | 'sales' | 'operations' | 'marketing' | 'support' | 'executive' | 'technician' | 'finance'
 // (default 'receptionist'). The worker reads it from the room metadata.
-app.post('/api/voice/token', async (req: Request, res: Response) => {
+// The caller MUST be a verified Firebase identity (H12) — the route
+// denies outright while the login gate is off — and the token is
+// minted only for a business the caller is on. A named business the
+// caller is not on is a 403; there is no fallback to the first
+// business on the server, so no other business's Teach-Your-Team
+// knowledge can leak into the room metadata. Rate-limited
+// (voiceTokenLimiter) because minting is a billable LiveKit call.
+app.post('/api/voice/token', voiceTokenLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
     return res.status(503).json({ error: 'Voice calling is not configured yet (LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET).' });
   }
   try {
     const { AccessToken, RoomServiceClient } = await import('livekit-server-sdk');
-    const user = (req as any).user || {};
+    const caller = verifiedCaller(req);
+    if (!caller) {
+      return res.status(401).json({ error: 'Please sign in to use this feature.' });
+    }
     const rawBusinessId = typeof req.body?.businessId === 'string' ? req.body.businessId : 'default';
-    let businessId = rawBusinessId;
+    // Resolve ONLY among the caller's own businesses. A named business
+    // the caller is not on is refused; 'default' resolves to the
+    // caller's first business; a caller with no business gets a 403 —
+    // never another business on the server.
+    const resolved = resolveBodyBusiness(req, rawBusinessId === 'default' ? undefined : rawBusinessId);
+    if (!resolved) {
+      return res.status(403).json({ error: rawBusinessId !== 'default' ? 'You are not on this team.' : 'Sign in with a business account first.' });
+    }
+    const businessId = resolved.id;
+    const tokenBusiness = resolved;
     // Departments this business offers for transfers, worked out from its
     // industry + services. The worker only offers these — a business with
-    // no dispatch function never hears Dispatch as an option. Falls back
-    // to every department when the business is unknown or has no record.
-    let tokenBusiness = rawBusinessId !== 'default' ? db.getBusiness(rawBusinessId) : undefined;
-    // Gate ON: a named business the caller is not on is refused, and
-    // 'default' resolves to the caller's own business — never to the
-    // first business on the server, which could be someone else's.
-    if (isGateOn()) {
-      const resolved = resolveBodyBusiness(req, rawBusinessId === 'default' ? undefined : rawBusinessId);
-      if (rawBusinessId !== 'default' && !resolved) {
-        return res.status(403).json({ error: 'You are not on this team.' });
-      }
-      businessId = resolved ? resolved.id : 'default';
-      tokenBusiness = resolved || undefined;
-    }
-    const departments = tokenBusiness
-      ? (Array.isArray(tokenBusiness.availableDepartments) && tokenBusiness.availableDepartments.length > 0
-          ? normalizeDepartments(tokenBusiness.availableDepartments)
-          : availableDepartmentsFor(tokenBusiness))
-      : [...ALL_TRANSFER_DEPARTMENTS];
+    // no dispatch function never hears Dispatch as an option.
+    const departments = (Array.isArray(tokenBusiness.availableDepartments) && tokenBusiness.availableDepartments.length > 0
+      ? normalizeDepartments(tokenBusiness.availableDepartments)
+      : availableDepartmentsFor(tokenBusiness));
     const personaRaw = typeof req.body?.persona === 'string' ? req.body.persona.toLowerCase() : 'receptionist';
     const persona = ['receptionist', 'sales', 'operations', 'marketing', 'support', 'executive', 'technician', 'finance'].includes(personaRaw)
       ? personaRaw
@@ -732,8 +788,8 @@ app.post('/api/voice/token', async (req: Request, res: Response) => {
       agents: [{ agentName: 'rcos-receptionist' }] as any,
     });
     const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
-      identity: `caller-${user.uid || 'guest'}-${Date.now()}`,
-      name: user.email || 'Customer call',
+      identity: `caller-${caller.uid || 'guest'}-${Date.now()}`,
+      name: caller.email || 'Customer call',
     });
     token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
     res.json({ token: await token.toJwt(), url: LIVEKIT_URL, room: roomName });
@@ -1063,6 +1119,24 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
         ...(m.avatar !== undefined && m.avatar !== null ? { avatar: String(m.avatar) } : {}),
         joinedAt: String(m.joinedAt ?? '')
       }));
+    // Stage 2 audit (C2): the Firestore rules check member access against a
+    // denormalized `memberEmails` map (rules cannot search the `members`
+    // list). Derive it from the roster whenever the roster is updated so
+    // the server copy carries it too; an explicitly provided map wins.
+    const derivedMemberEmails: Record<string, 'owner' | 'member'> = {};
+    for (const m of updates.members as Array<{ email: string; role: string }>) {
+      const email = String(m.email || '').toLowerCase().trim();
+      if (email) derivedMemberEmails[email] = m.role === 'owner' ? 'owner' : 'member';
+    }
+    updates.memberEmails = derivedMemberEmails;
+  }
+  if (body.memberEmails && typeof body.memberEmails === 'object' && !Array.isArray(body.memberEmails)) {
+    const rec: Record<string, 'owner' | 'member'> = {};
+    for (const [k, v] of Object.entries(body.memberEmails as Record<string, unknown>)) {
+      const email = String(k || '').toLowerCase().trim();
+      if (email) rec[email] = v === 'owner' ? 'owner' : 'member';
+    }
+    updates.memberEmails = rec;
   }
   if (body.activeEmployees && typeof body.activeEmployees === 'object' && !Array.isArray(body.activeEmployees)) {
     const rec: Record<string, boolean> = {};
@@ -1157,12 +1231,13 @@ const INVITE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function makeInviteCode(): string {
   let code = '';
   for (let i = 0; i < 8; i++) {
-    code += INVITE_ALPHABET[Math.floor(Math.random() * INVITE_ALPHABET.length)];
+    code += INVITE_ALPHABET[crypto.randomInt(INVITE_ALPHABET.length)];
   }
   return code;
 }
 
-const teamInviteLimiter = createRateLimiter(10, 60000); // 10 invite/join attempts / min per IP
+// Generated with crypto.randomInt (M8) — Math.random is predictable,
+// and an invite code is a credential.
 
 // Team roster for this business. Members see the roster; only the owner
 // also sees pending invites (the codes stay hidden from members).
@@ -1382,28 +1457,36 @@ app.get('/api/business/:id/team-messages', (req: Request, res: Response) => {
   res.json(db.getTeamMessages(business.id));
 });
 
-// Send one team chat message.
-app.post('/api/business/:id/team-messages', (req: Request, res: Response) => {
+// Send one team chat message. The caller MUST be a verified Firebase
+// identity (H10) — the route denies outright while the login gate is
+// off — and MUST be on the team: membership is required even when the
+// roster is empty, so a memberless business accepts posts from nobody
+// but its owner (by verified owner email / uid). Sender name, avatar,
+// and id come from the VERIFIED roster record only, never from the
+// request body, so a post cannot wear a teammate's name and photo.
+app.post('/api/business/:id/team-messages', teamMessageLimiter, requireVerifiedAuth, (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) return res.status(404).json({ error: 'Business not found.' });
-  const email = teamRequesterEmail(req);
-  const me = teamMemberFor(business, email);
-  const hasMembers = (business.members || []).length > 0;
-  if (hasMembers && !me) {
+  const caller = verifiedCaller(req);
+  if (!caller) {
+    return res.status(401).json({ error: 'Please sign in to use this feature.' });
+  }
+  if (!businessIsMember(business, caller)) {
     return res.status(403).json({ error: 'Only people on this team can send team messages.' });
   }
+  const me = businessMemberFor(business, caller);
   const text = String((req.body as any)?.text || '').trim();
   if (!text) return res.status(400).json({ error: 'Please type a message first.' });
   if (text.length > 2000) {
     return res.status(400).json({ error: 'That message is too long (2,000 characters max).' });
   }
-  const senderName = String((req.body as any)?.senderName || me?.name || email || 'Team member').trim() || 'Team member';
-  const senderAvatar = typeof (req.body as any)?.senderAvatar === 'string' ? (req.body as any).senderAvatar : me?.avatar;
+  const senderName = (me?.name || '').trim() || (caller.email || '').trim() || 'Team member';
+  const senderAvatar = me?.avatar;
   const msg: TeamMessage = {
     id: `tm_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
     businessId: business.id,
-    senderId: me?.userId || `usr_${email}`,
-    senderEmail: email || me?.email || '',
+    senderId: me?.userId || caller.uid || `usr_${caller.email || 'unknown'}`,
+    senderEmail: me?.email || caller.email || '',
     senderName,
     senderAvatar,
     text,
@@ -1419,7 +1502,7 @@ app.post('/api/business/:id/team-messages', (req: Request, res: Response) => {
 // AI Onboarding Agent - Document Analysis & Industry Preset Deciphering.
 // Parsing + scored matching live in ./server/onboarding-docs; this route is
 // a thin handler so the file stays small enough to push via the API.
-app.post('/api/business/analyze-document', async (req: Request, res: Response) => {
+app.post('/api/business/analyze-document', aiRateLimiter, async (req: Request, res: Response) => {
   const { fileText, fileName, fileType, fileBase64, rawInput } = req.body || {};
   const text = typeof fileText === 'string' ? fileText : typeof rawInput === 'string' ? rawInput : '';
   if (!text.trim() && !fileBase64) {
@@ -1447,7 +1530,7 @@ const coerceStringArray = (value: unknown, fallback: string[]): string[] => {
 };
 
 // Proactive AI Monitor: Evaluates business context & services added, suggesting an optimized Industry Profile preset
-app.post('/api/business/:id/suggest-optimized-industry', async (req: Request, res: Response) => {
+app.post('/api/business/:id/suggest-optimized-industry', aiRateLimiter, async (req: Request, res: Response) => {
   const businessId = req.params.id;
   const { services, currentIndustry, businessName } = req.body;
 
@@ -1590,7 +1673,7 @@ Respond with ONLY valid JSON matching this schema:
 });
 
 // AI Starter Content Generation (2 real tailored drafts awaiting approval)
-app.post('/api/business/:id/generate-starter-templates', async (req: Request, res: Response) => {
+app.post('/api/business/:id/generate-starter-templates', aiRateLimiter, async (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) {
     return res.status(404).json({ error: 'Business not found' });
@@ -1842,7 +1925,7 @@ app.post('/api/agent/chat', aiRateLimiter, async (req: Request, res: Response) =
 });
 
 // 2. Real Voice Receptionist TTS endpoint (gemini-3.8-flash-lite-tts)
-app.post('/api/phone/tts', async (req: Request, res: Response) => {
+app.post('/api/phone/tts', ttsLimiter, async (req: Request, res: Response) => {
   const { text = '', voiceName = 'Kore' } = req.body;
   if (!text || !text.trim()) {
     return res.status(400).json({ error: 'Text is required for TTS synthesis' });
@@ -1863,7 +1946,7 @@ app.post('/api/phone/tts', async (req: Request, res: Response) => {
 });
 
 // 2b. Intelligent Multi-Turn Voice Receptionist Engine
-app.post('/api/phone/receptionist-chat', async (req: Request, res: Response) => {
+app.post('/api/phone/receptionist-chat', aiRateLimiter, async (req: Request, res: Response) => {
   const { 
     userSpeech = '', 
     callerName = 'Inbound Caller', 
@@ -2214,34 +2297,45 @@ app.post('/api/phone/send-email', (req: Request, res: Response) => {
 
   return res.json({
     success: true,
+    sent: false,
     message: `Email logged for ${recipient} \u2014 not sent yet (email service is not connected)`,
     email: emailRecord
   });
 });
 
 // 2e. Direct Quote Approval Request from Phone System
-app.post('/api/phone/request-quote', (req: Request, res: Response) => {
-  const { 
-    clientName = 'Inbound Caller', 
-    serviceName = 'Facility Mechanical Service', 
-    estimatedAmount = 850, 
-    details = '', 
-    businessId 
+// A quote needs a real amount (M9): a missing, blank, non-numeric, or
+// non-positive estimatedAmount is rejected with a 400 instead of
+// silently becoming $850. This check runs BEFORE the identity check so
+// a bad request fails fast on its own merits.
+// The caller MUST be a verified Firebase identity, and the quote lands
+// only in a business the caller is on — never the first business on
+// the server, and never the old 'biz_rc_solutions' stub.
+function requireQuoteAmount(req: Request, res: Response, next: () => void) {
+  const raw = (req.body as any)?.estimatedAmount;
+  const amt = Number(raw);
+  if (raw === undefined || raw === null || raw === '' || !Number.isFinite(amt) || amt <= 0) {
+    return res.status(400).json({ error: 'An estimated amount is required to request a quote.' });
+  }
+  return next();
+}
+app.post('/api/phone/request-quote', quoteInvoiceLimiter, requireQuoteAmount, requireVerifiedAuth, (req: Request, res: Response) => {
+  const {
+    clientName = 'Inbound Caller',
+    serviceName = 'Facility Mechanical Service',
+    estimatedAmount,
+    details = '',
+    businessId
   } = req.body;
 
-  // Gate ON: resolve to the caller's own business, never to the first
-  // business on the server. Gate OFF: today's behavior.
-  const resolvedBiz = resolveBodyBusiness(req, businessId);
-  const defaultBiz = resolvedBiz || (!isGateOn() ? {
-    id: 'biz_rc_solutions',
-    name: 'RC Solutions',
-    dollarThreshold: 250
-  } : null);
+  // Resolve ONLY among the caller's own businesses. A caller with no
+  // business gets a 403 — never another business, never the stub.
+  const defaultBiz = resolveBodyBusiness(req, businessId);
   if (!defaultBiz) {
     return res.status(403).json({ error: 'Sign in with a business account first.' });
   }
 
-  const amt = Number(estimatedAmount) || 850;
+  const amt = Number(estimatedAmount);
   const newAction: ActionRecord = {
     id: `act_${Date.now()}`,
     businessId: defaultBiz.id,
@@ -2285,7 +2379,21 @@ app.post('/api/phone/request-quote', (req: Request, res: Response) => {
 });
 
 // Owner-created invoice -> lands in the Approvals queue (money_movement gate).
-app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
+// Same posture as request-quote above: a real amount is required (M9)
+// — a missing invoiceAmount with no positively-priced items is a 400,
+// never a silent $0 or a made-up default — and the caller must be a
+// verified Firebase identity on the business the invoice lands in.
+function requireInvoiceAmount(req: Request, res: Response, next: () => void) {
+  const body = (req.body as any) || {};
+  const raw = body.invoiceAmount;
+  const hasAmount = raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw)) && Number(raw) > 0;
+  const hasPricedItems = Array.isArray(body.items) && body.items.some((it: any) => Number(it?.quantity) > 0 && Number(it?.unitPrice) > 0);
+  if (!hasAmount && !hasPricedItems) {
+    return res.status(400).json({ error: 'An invoice amount is required to request an invoice.' });
+  }
+  return next();
+}
+app.post('/api/phone/request-invoice', quoteInvoiceLimiter, requireInvoiceAmount, requireVerifiedAuth, (req: Request, res: Response) => {
   const {
     clientName = 'Client',
     serviceName = 'Service',
@@ -2295,14 +2403,9 @@ app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
     businessId
   } = req.body;
 
-  // Gate ON: resolve to the caller's own business, never to the first
-  // business on the server. Gate OFF: today's behavior.
-  const resolvedBiz = resolveBodyBusiness(req, businessId);
-  const defaultBiz = resolvedBiz || (!isGateOn() ? {
-    id: 'biz_rc_solutions',
-    name: 'RC Solutions',
-    dollarThreshold: 250
-  } : null);
+  // Resolve ONLY among the caller's own businesses. A caller with no
+  // business gets a 403 — never another business, never the stub.
+  const defaultBiz = resolveBodyBusiness(req, businessId);
   if (!defaultBiz) {
     return res.status(403).json({ error: 'Sign in with a business account first.' });
   }
@@ -2383,7 +2486,7 @@ app.post('/api/phone/request-invoice', (req: Request, res: Response) => {
 });
 
 // 2f. Backward compatibility simulate call endpoint
-app.post('/api/phone/simulate-call', async (req: Request, res: Response) => {
+app.post('/api/phone/simulate-call', aiRateLimiter, async (req: Request, res: Response) => {
   const { userSpeech = '', callerName = 'Caller', callerTopic = 'General Inquiry' } = req.body;
 
   const fallbackData = () => {
@@ -2434,7 +2537,7 @@ Respond concisely as the RCOS Voice AI Assistant (max 2-3 sentences). Then outpu
 });
 
 // 3. Analyze uploaded RCOS system files
-app.post('/api/rcos/analyze-files', async (req: Request, res: Response) => {
+app.post('/api/rcos/analyze-files', aiRateLimiter, async (req: Request, res: Response) => {
   const { files = [] } = req.body;
   const count = files.length;
   const fileNames = files.map((f: any) => f.name).slice(0, 5).join(', ');
@@ -2557,7 +2660,7 @@ app.post('/api/billing/estimate', (req: Request, res: Response) => {
 });
 
 // 7. Vector Knowledge Store RAG Search
-app.post('/api/knowledge/query', async (req: Request, res: Response) => {
+app.post('/api/knowledge/query', aiRateLimiter, async (req: Request, res: Response) => {
   const { query = '', category = 'all' } = req.body;
   if (!query) {
     return res.status(400).json({ error: 'Query parameter is required' });
@@ -2692,7 +2795,7 @@ app.get('/api/business/:id/actions/:actionId', (req: Request, res: Response) => 
 });
 
 // Command Bar Execution
-app.post('/api/business/:id/command', async (req: Request, res: Response) => {
+app.post('/api/business/:id/command', aiRateLimiter, async (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) {
     return res.status(404).json({ error: 'Business not found' });
@@ -2809,7 +2912,7 @@ app.get('/api/business/:id/chat', (req: Request, res: Response) => {
   res.json(messages);
 });
 
-app.post('/api/business/:id/chat', async (req: Request, res: Response) => {
+app.post('/api/business/:id/chat', aiRateLimiter, async (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) {
     return res.status(404).json({ error: 'Business not found' });
@@ -2915,7 +3018,7 @@ app.get('/api/business/:id/job-packs', (req: Request, res: Response) => {
   res.json(packs);
 });
 
-app.post('/api/business/:id/job-packs/generate', async (req: Request, res: Response) => {
+app.post('/api/business/:id/job-packs/generate', aiRateLimiter, async (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) {
     return res.status(404).json({ error: 'Business not found' });
