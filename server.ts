@@ -3158,6 +3158,7 @@ app.post('/api/business/:id/command', aiRateLimiter, async (req: Request, res: R
 });
 
 // Approval Queue Decisions
+const decisionsInFlight = new Set<string>();
 app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) {
@@ -3178,6 +3179,18 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
   if (RcosEngine.isDecidedStatus(existingAction.status)) {
     return res.status(409).json({ error: `This item was already ${existingAction.status === 'rejected' ? 'rejected' : 'approved'}.`, action: existingAction });
   }
+  // State machine (audit #19): only an item waiting for approval can be
+  // decided (not queued/running/failed work).
+  if (existingAction.status !== 'awaiting_approval') {
+    return res.status(409).json({ error: 'This item is not waiting for approval.', action: existingAction });
+  }
+  // One decision at a time per action: a double-tap (two concurrent
+  // requests) must not both pass the status check above while the first
+  // is still awaiting the engine.
+  if (decisionsInFlight.has(existingAction.id)) {
+    return res.status(409).json({ error: 'This item is already being decided.' });
+  }
+  decisionsInFlight.add(existingAction.id);
 
   let updatedAction: ActionRecord | null;
   try {
@@ -3192,6 +3205,8 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
   } catch (err) {
     console.error('[Approvals] Decision failed:', err);
     return res.status(500).json({ error: 'Could not record this decision. Please try again.' });
+  } finally {
+    decisionsInFlight.delete(existingAction.id);
   }
 
   if (!updatedAction) {
@@ -3209,8 +3224,30 @@ app.post('/api/business/:id/actions/:actionId/mark-paid', (req: Request, res: Re
   if (!action || action.businessId !== req.params.id) {
     return res.status(404).json({ error: 'Action not found' });
   }
-  const total = action.result?.invoiceDetails?.totalAmount || action.dollarAmount || 0;
-  const amount = Number(req.body?.amount) > 0 ? Number(req.body.amount) : total;
+  // State machine (audit #19): only an APPROVED invoice can be marked
+  // paid, only once, and never for more than its total.
+  const isInvoice = action.actionType === 'send_invoice' || !!action.result?.invoiceDetails;
+  if (!isInvoice) {
+    return res.status(409).json({ error: 'Only invoices can be marked paid.' });
+  }
+  if (action.status !== 'approved' && action.status !== 'completed') {
+    return res.status(409).json({ error: 'Approve this invoice before marking it paid.' });
+  }
+  if (action.paymentStatus === 'paid') {
+    return res.status(409).json({ error: 'This invoice is already marked paid.', action });
+  }
+  const total = Number(action.result?.invoiceDetails?.totalAmount || action.dollarAmount || 0) || 0;
+  let amount = total;
+  if (req.body?.amount !== undefined && req.body?.amount !== null && req.body?.amount !== '') {
+    const requested = Number(req.body.amount);
+    if (!Number.isFinite(requested) || requested <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number.' });
+    }
+    if (total > 0 && requested > total + 0.005) {
+      return res.status(400).json({ error: `Amount cannot be more than the invoice total ($${total}).` });
+    }
+    amount = Math.round(requested * 100) / 100;
+  }
   action.paymentStatus = 'paid';
   action.paidAt = new Date().toISOString();
   action.paidAmount = amount;

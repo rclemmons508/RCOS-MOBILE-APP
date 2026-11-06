@@ -536,6 +536,7 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
     // State machine (audit #19): a decided action is final. Re-approving
     // a quote used to spawn another schedule_job each time.
     if (RcosEngine.isDecidedStatus(action.status)) return null;
+    if (action.status !== 'awaiting_approval') return null;
 
     if (!action.fullTrace) action.fullTrace = [];
 
