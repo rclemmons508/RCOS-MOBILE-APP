@@ -233,7 +233,7 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-2xl max-h-[92vh] bg-zinc-950 border border-zinc-800 rounded-3xl flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-900 bg-zinc-900/50 flex items-center justify-between shrink-0">
@@ -253,7 +253,7 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={handleClose}
             className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"

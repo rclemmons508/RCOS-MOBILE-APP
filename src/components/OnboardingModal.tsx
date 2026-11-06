@@ -1481,7 +1481,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/90 backdrop-blur-xl overflow-y-auto">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/90 backdrop-blur-xl overflow-y-auto">
       <div className="w-full max-w-xl bg-zinc-950 border border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-2xl relative my-auto">
         
         {/* Top Header */}
@@ -1502,7 +1502,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               {step === 'input' ? 'Step 1: Intake' : step === 'detecting' ? 'Analyzing...' : 'Step 2: User Approval'}
             </span>
             {onCancel && (
-              <button
+              <button aria-label="Close"
                 type="button"
                 onClick={onCancel}
                 className="w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition"
@@ -2055,7 +2055,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700/80 flex items-center gap-1.5"
                     >
                       <span>{asText(service)}</span>
-                      <button
+                      <button aria-label="Remove service"
                         type="button"
                         onClick={() => handleRemoveService(idx)}
                         className="text-zinc-400 hover:text-red-400"
@@ -2187,7 +2187,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
         {/* FULL 32-PRESET SELECTOR MODAL / DIALOG */}
         {isChangingPreset && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md">
             <div className="w-full max-w-lg bg-zinc-950 border border-zinc-700 rounded-3xl p-5 shadow-2xl space-y-3.5 max-h-[85vh] flex flex-col">
               
               <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
@@ -2195,7 +2195,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   <h3 className="text-sm font-extrabold text-white">Select Business Industry Preset</h3>
                   <p className="text-[10px] text-zinc-400 font-mono">Choose from 40 tailored operational configurations</p>
                 </div>
-                <button
+                <button aria-label="Close"
                   type="button"
                   onClick={() => setIsChangingPreset(false)}
                   className="w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center"

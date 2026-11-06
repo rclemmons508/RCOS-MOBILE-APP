@@ -137,14 +137,14 @@ const QuoteInvoiceModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl bg-zinc-950 border border-zinc-800 p-5 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
             {isQuote ? <FileText className="w-4 h-4 text-lime-400" /> : <DollarSign className="w-4 h-4 text-emerald-400" />}
             <span>{isQuote ? 'New Quote' : 'New Invoice'}</span>
           </h3>
-          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-white p-1 cursor-pointer">
+          <button aria-label="Close" type="button" onClick={onClose} className="text-zinc-500 hover:text-white p-1 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>

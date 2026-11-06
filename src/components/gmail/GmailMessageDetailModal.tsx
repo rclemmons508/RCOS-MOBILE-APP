@@ -112,7 +112,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+      <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
         <div className="w-full max-w-2xl max-h-[94vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden text-left">
           
           {/* Top Bar with Navigation & Actions */}
@@ -168,7 +168,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               </button>
 
               {/* Close */}
-              <button
+              <button aria-label="Close"
                 type="button"
                 onClick={onClose}
                 className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer ml-1"

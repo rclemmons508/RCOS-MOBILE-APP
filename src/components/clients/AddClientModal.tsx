@@ -60,7 +60,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
       <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
@@ -70,7 +70,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
             </div>
             <h3 className="text-sm font-bold text-white">{initialClient ? 'Edit Client Account' : 'Onboard New Client'}</h3>
           </div>
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={onClose}
             className="p-1 text-zinc-400 hover:text-white transition-colors cursor-pointer"

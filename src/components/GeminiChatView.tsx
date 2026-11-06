@@ -488,7 +488,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
         </button>
 
         {onClose && (
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"

@@ -435,14 +435,14 @@ export const JobsTab: React.FC<JobsTabProps> = ({
 
       {/* Dispatch New Task Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                 <Briefcase className="w-4 h-4 text-amber-400" />
                 <span>Dispatch New RCOS Task</span>
               </h3>
-              <button
+              <button aria-label="Close"
                 type="button"
                 onClick={() => setShowCreateModal(false)}
                 className="text-zinc-400 hover:text-white cursor-pointer"

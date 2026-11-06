@@ -136,7 +136,7 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div 
         className="w-full max-w-lg bg-zinc-950 border border-lime-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl shadow-lime-500/10 flex flex-col max-h-[92vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -162,7 +162,7 @@ export const ProactiveIndustrySuggestionModal: React.FC<ProactiveIndustrySuggest
             </div>
           </div>
 
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={() => {
               haptic.light();

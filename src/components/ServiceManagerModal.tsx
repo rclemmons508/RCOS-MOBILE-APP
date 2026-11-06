@@ -122,7 +122,7 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
 
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div 
         className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -143,7 +143,7 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
             </div>
           </div>
 
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
@@ -221,7 +221,7 @@ export const ServiceManagerModal: React.FC<ServiceManagerModalProps> = ({
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-lime-400" />
                   <span>{svc}</span>
-                  <button
+                  <button aria-label="Remove service"
                     type="button"
                     onClick={() => handleRemoveService(idx)}
                     className="text-zinc-500 hover:text-rose-400 transition cursor-pointer ml-0.5"

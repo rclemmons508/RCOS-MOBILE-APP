@@ -205,7 +205,7 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
 
       {/* AI Draft Proposal Modal */}
       {selectedClient && generatedDraft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
           <div className="w-full max-w-md bg-zinc-950 border border-purple-500/40 rounded-3xl p-4 sm:p-5 space-y-3.5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
               <div className="flex items-center gap-2">
@@ -214,7 +214,7 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
                   RCOS AI Draft for {selectedClient.name}
                 </h3>
               </div>
-              <button
+              <button aria-label="Close"
                 type="button"
                 onClick={() => setGeneratedDraft('')}
                 className="text-zinc-400 hover:text-white cursor-pointer"

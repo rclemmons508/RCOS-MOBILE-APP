@@ -255,14 +255,14 @@ export const AgentInboxModal: React.FC<AgentInboxModalProps> = ({
   const handled = messages.filter((m) => m.status === 'answered' || m.status === 'dismissed');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative w-full sm:max-w-lg bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col">
         <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-zinc-800">
           <Inbox className="w-5 h-5 text-lime-400" />
           <div className="text-base font-extrabold text-white">Agent Inbox</div>
           <div className="text-[10px] text-zinc-500">Your team messages you here</div>
-          <button onClick={onClose} className="ml-auto p-2 rounded-xl bg-zinc-900 text-zinc-400">
+          <button aria-label="Close" onClick={onClose} className="ml-auto p-2 rounded-xl bg-zinc-900 text-zinc-400">
             <X className="w-4 h-4" />
           </button>
         </div>

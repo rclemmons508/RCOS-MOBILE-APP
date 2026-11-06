@@ -33,7 +33,7 @@ export const DepartmentTransferModal: React.FC<DepartmentTransferModalProps> = (
   const shownDepartments = visibleDepartments.length > 0 ? visibleDepartments : RCOS_DEPARTMENTS;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-3xl p-4 sm:p-5 shadow-2xl space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-zinc-900">
           <div className="flex items-center gap-2">
@@ -45,7 +45,7 @@ export const DepartmentTransferModal: React.FC<DepartmentTransferModalProps> = (
               <p className="text-[11px] text-zinc-400">Route active call to requested department</p>
             </div>
           </div>
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition cursor-pointer"

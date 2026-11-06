@@ -51,7 +51,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
   const tap = () => haptic.light();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative w-full sm:max-w-lg bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col">
         <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-zinc-800">
