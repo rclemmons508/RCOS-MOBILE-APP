@@ -2911,6 +2911,16 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
     return res.status(400).json({ error: 'Invalid decision type' });
   }
 
+  // Tenant isolation (audit #3): the action must belong to the business in
+  // the URL (the membership middleware only vouches for that business).
+  const existingAction = db.getAction(req.params.actionId);
+  if (!existingAction || existingAction.businessId !== business.id) {
+    return res.status(404).json({ error: 'Action not found' });
+  }
+  if (RcosEngine.isDecidedStatus(existingAction.status)) {
+    return res.status(409).json({ error: `This item was already ${existingAction.status === 'rejected' ? 'rejected' : 'approved'}.`, action: existingAction });
+  }
+
   const updatedAction = await RcosEngine.handleApprovalDecision(
     business,
     req.params.actionId,
