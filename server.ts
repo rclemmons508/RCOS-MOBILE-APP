@@ -30,7 +30,7 @@ import { telephonyRouter } from './server/telephony';
 import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails } from './server/tenancy';
 import { sendVonageSms } from './server/vonage';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
-import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
+import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
 import { z } from 'zod';
@@ -622,6 +622,29 @@ app.get('/api/business/:id/gmail-token', gmailTokenLimiter, requireVerifiedAuth,
     console.error('[gmail-oauth] gmail-token failed:', (e as Error)?.message);
     res.status(500).json({ error: 'Could not fetch a Gmail token right now.' });
   }
+});
+
+// Start a Gmail connection bound to the signed-in user (audit #10).
+// Verified Firebase sign-in required (requireVerifiedAuth), and the
+// /api/business/:id middleware has already proven membership. Returns
+// { url, state, expiresAt }: the app opens `url` in the system browser
+// instead of building /oauth/gmail/start?businessId=..&userEmail=.. itself.
+// The token is stored for THIS caller's verified email only, and the
+// callback refuses a Gmail account that does not match it.
+app.post('/api/business/:id/gmail/oauth-start', gmailTokenLimiter, requireVerifiedAuth, (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const caller = verifiedCaller(req);
+  const email = (caller?.email || '').trim().toLowerCase();
+  if (!caller || !email) {
+    return res.status(401).json({ error: 'Verify your email address (or sign in with Google), then connect Gmail.' });
+  }
+  if (!businessIsMember(business, caller)) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  const started = createGmailOAuthState(business.id, email, caller.uid);
+  if (!started) return res.status(503).json({ error: 'Too many Gmail logins in progress. Please try again in a few minutes.' });
+  res.json(started);
 });
 
 // Permanently delete an account and all of its data. Owner-only, and
