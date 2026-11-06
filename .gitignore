@@ -14,3 +14,11 @@ android/app/src/main/assets/public/assets/*.css
 android/app/src/main/assets/public/assets/*.map
 android/app/build/
 android/.gradle/
+
+# Runtime JSON database + Gmail token store (written by the server; never
+# commit). The server creates data/rcos_db.json on first boot. On Railway,
+# point DATA_DIR at a persistent volume.
+data/*.json
+data/*.json.*
+data/*.bak
+data/*.tmp
