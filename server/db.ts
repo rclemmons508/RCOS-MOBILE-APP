@@ -330,6 +330,8 @@ export const db = {
     const data = ensureDb();
     if (!data.pendingIntake) data.pendingIntake = [];
     data.pendingIntake.push(entry);
+    // Bounded queue (audit #22): keep the newest 500 leads.
+    if (data.pendingIntake.length > 500) data.pendingIntake = data.pendingIntake.slice(-500);
     saveDb(data);
     return entry;
   },

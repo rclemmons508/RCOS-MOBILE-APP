@@ -1,4 +1,25 @@
 import type { BusinessAccount, BusinessMember } from '../src/types';
+import { db } from './db';
+
+// The operator's own business — where website demo leads (and, when no
+// TWILIO_BUSINESS_ID is set, phone quotes) belong (audit #11).
+// OPERATOR_BUSINESS_ID when set AND that business exists; otherwise the
+// only business on a single-tenant server; otherwise undefined (never
+// "whichever business happens to be first").
+export function operatorBusinessId(): string | undefined {
+  const fromEnv = (process.env.OPERATOR_BUSINESS_ID || '').trim();
+  if (fromEnv) return db.getBusiness(fromEnv) ? fromEnv : undefined;
+  const all = db.getAllBusinesses();
+  return all.length === 1 ? all[0].id : undefined;
+}
+
+// True only for an EXPLICITLY configured operator business that exists.
+// Queued leads are flushed only into this — never into a business just
+// because it is the first/only one (a stranger's new business, audit #11).
+export function explicitOperatorBusinessId(): string | undefined {
+  const fromEnv = (process.env.OPERATOR_BUSINESS_ID || '').trim();
+  return fromEnv && db.getBusiness(fromEnv) ? fromEnv : undefined;
+}
 
 // Shared owner/member matchers (moved out of server.ts so the telephony
 // router can use the same proof). `caller` is the VERIFIED caller from

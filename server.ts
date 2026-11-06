@@ -27,7 +27,7 @@ import { withBehaviorProtocol, withBusinessKnowledge, resolveBusinessKnowledge }
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
-import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails } from './server/tenancy';
+import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails, explicitOperatorBusinessId, operatorBusinessId } from './server/tenancy';
 import { sendVonageSms } from './server/vonage';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
@@ -825,11 +825,36 @@ function demoSubmissionToRequest(businessId: string, f: {
   };
 }
 
+// Demo leads queued while no operator business could be resolved are
+// flushed ONLY into the explicitly configured OPERATOR_BUSINESS_ID
+// (audit #11) — never into whatever business is created next. Runs at
+// startup, on each demo submission, and when that business is created.
+function flushPendingIntakeToOperator(): void {
+  const target = explicitOperatorBusinessId();
+  if (!target) return;
+  const pending = db.takePendingIntake();
+  for (const p of pending) {
+    db.saveRequest(demoSubmissionToRequest(target, {
+      name: p.name,
+      company: p.company,
+      industry: p.industry,
+      message: p.message,
+      phone: p.phone,
+      email: p.email,
+      createdAt: p.createdAt,
+    }));
+  }
+  if (pending.length > 0) console.log(`[demo-request] flushed ${pending.length} queued lead(s) into the operator business.`);
+}
+
 // Public demo-request intake for the RC Solutions website.
 // Gate-exempt + CORS-open by design (no account needed to ask for a demo).
-// Saved as a CustomerRequest on the operator's first business, so it shows up in
-// the app's Customer Requests with an SLA badge. No engine auto-trigger — the
-// operator follows up personally.
+// Saved as a CustomerRequest on the OPERATOR's business (OPERATOR_BUSINESS_ID,
+// else the only business on a single-tenant server — see
+// server/tenancy.ts operatorBusinessId), so it shows up in the app's
+// Customer Requests with an SLA badge. With several businesses and no
+// OPERATOR_BUSINESS_ID the lead is queued, never handed to an arbitrary
+// tenant. No engine auto-trigger — the operator follows up personally.
 app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res: Response) => {
   const b = req.body || {};
   // Honeypot: bots fill it, humans never see it.
@@ -846,13 +871,18 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
   const phone = (b.phone || '').toString().slice(0, 30);
   const email = (b.email || '').toString().slice(0, 100);
 
-  const businesses = db.getAllBusinesses();
-  if (businesses.length === 0) {
-    // No business exists yet (e.g. right after an account reset) — queue the
-    // lead instead of losing it. It flushes into Customer Requests as soon as
-    // a business is created, and the website still shows its success page.
+  const operatorId = operatorBusinessId();
+  if (!operatorId) {
+    // No operator business can be resolved (none exists yet, or several
+    // exist and OPERATOR_BUSINESS_ID is unset) — queue the lead instead of
+    // losing it or handing it to a stranger. It flushes into Customer
+    // Requests once OPERATOR_BUSINESS_ID names an existing business, and
+    // the website still shows its success page.
+    if (!(process.env.OPERATOR_BUSINESS_ID || '').trim() && db.getAllBusinesses().length > 1) {
+      console.warn('[demo-request] Several businesses exist and OPERATOR_BUSINESS_ID is not set — lead queued. Set OPERATOR_BUSINESS_ID to receive website leads.');
+    }
     const pending: PendingIntake = {
-      id: `pend_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `pend_${crypto.randomUUID()}`,
       name,
       company,
       industry,
@@ -865,9 +895,8 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
     const queued = db.savePendingIntake(pending);
     return res.status(201).json({ ok: true, id: queued.id });
   }
-  const business = businesses[0];
-
-  const saved = db.saveRequest(demoSubmissionToRequest(business.id, {
+  flushPendingIntakeToOperator();
+  const saved = db.saveRequest(demoSubmissionToRequest(operatorId, {
     name, company, industry, message, phone, email,
     createdAt: new Date().toISOString(),
   }));
@@ -1240,20 +1269,11 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     return res.status(200).json(saved);
   }
 
-  // Flush any demo leads that arrived while no business existed. They were
-  // queued instead of lost; they now become Customer Requests on this business.
-  const pending = db.takePendingIntake();
-  for (const p of pending) {
-    db.saveRequest(demoSubmissionToRequest(saved.id, {
-      name: p.name,
-      company: p.company,
-      industry: p.industry,
-      message: p.message,
-      phone: p.phone,
-      email: p.email,
-      createdAt: p.createdAt,
-    }));
-  }
+  // Queued demo leads go ONLY to the explicitly configured operator
+  // business (audit #11): a no-op unless this new business IS
+  // OPERATOR_BUSINESS_ID. They are never flushed into an arbitrary new
+  // tenant's business.
+  if (saved.id === explicitOperatorBusinessId()) flushPendingIntakeToOperator();
 
   res.status(201).json(saved);
 });
@@ -3493,6 +3513,7 @@ async function startServer() {
 
   httpServer.listen(PORT, () => {
     console.log(`[RCOS] Operational server running on port ${PORT}`);
+    try { flushPendingIntakeToOperator(); } catch (e) { console.error('[demo-request] startup flush failed:', (e as Error)?.message); }
   });
 }
 

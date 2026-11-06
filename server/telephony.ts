@@ -17,7 +17,7 @@ import { db, defaultPhoneBusinessId } from './db';
 import { executeGeminiWithFallback, PRIMARY_MODEL } from './gemini';
 import { ActionRecord, PhoneCall, VoicemailRecord } from '../src/types';
 import { isGateOn, requireVerifiedAuth, verifiedCaller } from './auth';
-import { businessIsMember, businessIsOwner } from './tenancy';
+import { businessIsMember, businessIsOwner, operatorBusinessId } from './tenancy';
 import { checkDestination, envInt, normalizeE164, isAllowedDestination, takeDailyQuota } from './phone-policy';
 import type { BusinessAccount, TelephonyConfig } from '../src/types';
 
@@ -615,10 +615,34 @@ Respond in JSON format:
   // 3. Request Quote Approval
   if (parsed.intent === 'request_quote') {
     const amt = parsed.quoteDetails?.estimatedAmount || 1200;
-    const defaultBiz = db.getAllBusinesses()[0] || { id: 'biz_rc_solutions', dollarThreshold: 250 };
+    // Phone quotes belong to the business that owns the line
+    // (TWILIO_BUSINESS_ID), else OPERATOR_BUSINESS_ID / the only business
+    // (audit #11) — never "whichever business is first". With no owner
+    // resolvable the quote is not created; the caller is asked to leave a
+    // message instead.
+    const quoteBusinessId = defaultPhoneBusinessId() || operatorBusinessId();
+    if (!quoteBusinessId || !db.getBusiness(quoteBusinessId)) {
+      console.warn('[Twilio] Phone quote requested but no business owns the line (set TWILIO_BUSINESS_ID). Taking a message instead.');
+      activeCall.status = 'voicemail';
+      db.saveCall(activeCall);
+      twiml.say(
+        { voice: (config.ttsVoice as any) || 'Polly.Joanna' },
+        'I will have someone follow up with a quote. Please leave your name and details after the tone.'
+      );
+      twiml.record({
+        action: '/api/twilio/voice/voicemail',
+        transcribe: true,
+        transcribeCallback: '/api/twilio/voice/voicemail-transcription',
+        maxLength: 120,
+        playBeep: true,
+        finishOnKey: '#'
+      });
+      res.type('text/xml');
+      return res.send(twiml.toString());
+    }
     const quoteAction: ActionRecord = {
-      id: `act_${Date.now()}`,
-      businessId: defaultBiz.id,
+      id: `act_${randomUUID()}`,
+      businessId: quoteBusinessId,
       employeeId: 'executive_assistant',
       actionType: 'generate_quote',
       riskCategory: 'commitment_outbound',
