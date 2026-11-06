@@ -49,21 +49,26 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 
+/**
+ * Gmail OAuth scopes — the MINIMUM the client code uses (audit #9).
+ * Every call in src/lib/gmail.ts and what covers it:
+ *   GET  /profile, /labels, /messages, /messages/{id}   → gmail.modify (read)
+ *   POST /messages/{id}/modify (read/unread, star)      → gmail.modify
+ *   POST /messages/{id}/trash, /untrash                 → gmail.modify
+ *   POST /drafts                                        → gmail.modify (compose)
+ *   POST /messages/send                                 → gmail.send (also within modify;
+ *                                                         listed so the consent screen says "send")
+ * Dropped: full https://mail.google.com/ (only needed for PERMANENT delete —
+ * "Delete permanently" now falls back to Trash, which Gmail empties after
+ * 30 days; see deleteGmailMessage), gmail.settings.basic/.sharing,
+ * gmail.insert, gmail.labels/.metadata/.readonly/.compose (all covered by
+ * gmail.modify) and every gmail.addons.* scope (Workspace add-on only).
+ * NOTE: the server-side native OAuth flow (server/gmail-oauth.ts) keeps
+ * its own copy of this list and should be cut to match.
+ */
 export const GMAIL_SCOPES = [
-  'https://mail.google.com/',
-  'https://www.googleapis.com/auth/gmail.addons.current.action.compose',
-  'https://www.googleapis.com/auth/gmail.addons.current.message.action',
-  'https://www.googleapis.com/auth/gmail.addons.current.message.metadata',
-  'https://www.googleapis.com/auth/gmail.addons.current.message.readonly',
-  'https://www.googleapis.com/auth/gmail.compose',
-  'https://www.googleapis.com/auth/gmail.insert',
-  'https://www.googleapis.com/auth/gmail.labels',
-  'https://www.googleapis.com/auth/gmail.metadata',
   'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/gmail.settings.basic',
-  'https://www.googleapis.com/auth/gmail.settings.sharing',
 ];
 
 // Configure Standard Google Auth Provider for user login (only profile, email, openid)

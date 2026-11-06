@@ -540,12 +540,21 @@ export async function untrashGmailMessage(id: string): Promise<any> {
 }
 
 /**
- * Permanently Delete Message
+ * "Delete permanently". A true permanent delete needs the full
+ * https://mail.google.com/ scope, which the app no longer requests (see
+ * GMAIL_SCOPES). Tokens granted before the scope cut can still delete;
+ * otherwise the message is moved to Trash (Gmail empties Trash after 30 days).
  */
-export async function deleteGmailMessage(id: string): Promise<any> {
-  return await fetchWithAuth(`/messages/${id}`, {
-    method: 'DELETE',
-  });
+export async function deleteGmailMessage(id: string): Promise<{ outcome: 'deleted' | 'trashed' }> {
+  try {
+    await fetchWithAuth(`/messages/${id}`, {
+      method: 'DELETE',
+    });
+    return { outcome: 'deleted' };
+  } catch {
+    await trashGmailMessage(id);
+    return { outcome: 'trashed' };
+  }
 }
 
 /**

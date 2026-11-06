@@ -347,10 +347,15 @@ export const GmailTab: React.FC<GmailTabProps> = ({
   // Permanent Delete
   const handlePermanentDelete = async (messageId: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    let outcome: 'deleted' | 'trashed' = 'deleted';
     if (isLiveConnected && token) {
-      await deleteGmailMessage(messageId);
+      outcome = (await deleteGmailMessage(messageId)).outcome;
     }
-    setStatusNotice('Message permanently deleted from Gmail.');
+    setStatusNotice(
+      outcome === 'deleted'
+        ? 'Message permanently deleted from Gmail.'
+        : 'Message moved to Gmail Trash. Gmail deletes it for good after 30 days.'
+    );
     setTimeout(() => setStatusNotice(null), 3000);
   };
 
