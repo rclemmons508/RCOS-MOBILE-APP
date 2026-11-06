@@ -248,6 +248,20 @@ export const db = {
     return idx >= 0 ? data.businesses[idx] : business;
   },
 
+  // Patch only the given fields on the CURRENT stored record (audit #13).
+  // Use after an await (e.g. a Gemini call) instead of saving a business
+  // object read before the await, which would silently revert any change
+  // (roster, settings) made in the meantime. Returns undefined when the
+  // business no longer exists (deleted meanwhile) — nothing is recreated.
+  updateBusiness(id: string, patch: Partial<BusinessAccount>): BusinessAccount | undefined {
+    const data = ensureDb();
+    const idx = data.businesses.findIndex(b => b.id === id);
+    if (idx < 0) return undefined;
+    data.businesses[idx] = { ...data.businesses[idx], ...patch, id, updatedAt: new Date().toISOString() };
+    saveDb(data);
+    return data.businesses[idx];
+  },
+
   deleteBusiness(id: string): boolean {
     const data = ensureDb();
     const initLen = data.businesses.length;
@@ -321,6 +335,17 @@ export const db = {
     }
     saveDb(data);
     return idx >= 0 ? data.requests[idx] : req;
+  },
+
+  // Field-level patch on the CURRENT stored request (audit #13). Returns
+  // undefined when the request no longer exists — never resurrects it.
+  updateRequest(id: string, patch: Partial<CustomerRequest>): CustomerRequest | undefined {
+    const data = ensureDb();
+    const idx = data.requests.findIndex(r => r.id === id);
+    if (idx < 0) return undefined;
+    data.requests[idx] = { ...data.requests[idx], ...patch, id, updatedAt: new Date().toISOString() };
+    saveDb(data);
+    return data.requests[idx];
   },
 
   // Pending demo-lead intake — website submissions that arrived while no

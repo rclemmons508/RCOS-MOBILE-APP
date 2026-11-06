@@ -1959,8 +1959,12 @@ Return ONLY valid JSON:
       createdAt: new Date().toISOString()
     }));
 
-    business.starterDrafts = drafts;
-    db.saveBusiness(business);
+    // Patch only starterDrafts on the current record (audit #13): saving
+    // the `business` object read before the Gemini call would revert any
+    // roster/settings change made while it ran.
+    if (!db.updateBusiness(business.id, { starterDrafts: drafts })) {
+      return res.status(404).json({ error: 'Business not found' });
+    }
     res.json({ drafts });
   } catch (err) {
     console.error('Starter generation error:', err);
@@ -3073,15 +3077,17 @@ app.post('/api/business/:id/requests', publicIntakeRateLimiter, async (req: Requ
       };
       db.saveAction(action);
 
-      // Advance stage to Qualification
-      saved.stage = 'Qualification';
-      db.saveRequest(saved);
+      // Advance stage to Qualification — patch only `stage` on the current
+      // record (audit #13): re-saving the `saved` object captured before the
+      // Gemini calls would revert edits the owner made meanwhile, or
+      // resurrect a request deleted in the meantime.
+      if (!db.updateRequest(saved.id, { stage: 'Qualification' })) return;
 
       await RcosEngine.executeAction(business, action, instruction);
 
-      // Advance stage to Execution
-      saved.stage = 'Execution';
-      db.saveRequest(saved);
+      // Advance stage to Execution (same field-level patch).
+      const current = db.getRequest(saved.id);
+      if (current && current.stage === 'Qualification') db.updateRequest(saved.id, { stage: 'Execution' });
     } catch (e) {
       console.error('Automated intake routing error:', e);
     }
