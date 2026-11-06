@@ -1234,8 +1234,37 @@ export default function App() {
   );
 
 
+  // Latest notification preferences for sendPushNotification, which is
+  // called from long-lived callbacks/intervals that would otherwise keep
+  // reading the preferences captured when they were created.
+  const notifPreferencesRef = useRef(notifPreferences);
+  notifPreferencesRef.current = notifPreferences;
+  // One shared AudioContext for every chime. Browsers cap live contexts
+  // (~6 in Chromium); creating one per notification silenced chimes.
+  const chimeCtxRef = useRef<AudioContext | null>(null);
+  const getChimeContext = (): AudioContext | null => {
+    try {
+      if (!chimeCtxRef.current || chimeCtxRef.current.state === 'closed') {
+        const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+        if (!Ctor) return null;
+        chimeCtxRef.current = new Ctor();
+      }
+      const ctx = chimeCtxRef.current;
+      if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+      return ctx;
+    } catch {
+      return null;
+    }
+  };
+  useEffect(() => () => {
+    const ctx = chimeCtxRef.current;
+    chimeCtxRef.current = null;
+    if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => {});
+  }, []);
+
   // Helper to trigger live push notification
   const sendPushNotification = (newNotif: Omit<RCOSNotification, 'id' | 'timestamp' | 'read'>) => {
+    const notifPreferences = notifPreferencesRef.current;
     const fullNotif: RCOSNotification = {
       ...newNotif,
       id: uniqueId('notif-'),
@@ -1284,7 +1313,8 @@ export default function App() {
 
         if (allowAudioChime) {
           try {
-            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const ctx = getChimeContext();
+            if (!ctx) throw new Error('AudioContext unavailable');
             const osc = ctx.createOscillator();
             const gainNode = ctx.createGain();
             osc.type = 'sine';
@@ -1397,7 +1427,7 @@ export default function App() {
     if (!bizId) return;
     const q = quoteAction.result?.quoteDetails;
     const job: Job = {
-      id: `job_${Date.now()}`,
+      id: uniqueId('job_'),
       title: q?.items?.[0]?.description || quoteAction.title || 'Scheduled job',
       clientName: q?.clientName || 'Client',
       clientPhone: '',
@@ -2092,7 +2122,7 @@ export default function App() {
               availableDepartments={activeBusiness.availableDepartments}
               onSendMessage={(text) => {
                 const newMessage = {
-                  id: 'msg-' + Date.now(),
+                  id: uniqueId('msg-'),
                   senderId: currentUser?.id || 'usr-operator',
                   senderName: currentUser?.fullName || 'Lead Operator',
                   avatar: currentUser?.avatar,
@@ -2123,7 +2153,7 @@ export default function App() {
               onOpenAuthModal={() => setIsAuthModalOpen(true)}
               onAddJobFromEmail={(jobData) => {
                 const newJob: Job = {
-                  id: `job-${Date.now()}`,
+                  id: uniqueId('job-'),
                   title: jobData.title || 'Email Dispatch Request',
                   clientName: jobData.clientName || 'Gmail Client',
                   clientPhone: jobData.clientPhone || '',
@@ -2138,7 +2168,7 @@ export default function App() {
                 };
                 setJobs(prev => [newJob, ...prev]);
                 setActivePushToast({
-                  id: `notif-${Date.now()}`,
+                  id: uniqueId('notif-'),
                   title: 'New Dispatch Job Created',
                   message: `Job "${newJob.title}" originated from Gmail was added to the queue.`,
                   type: 'emergency_dispatch',
