@@ -31,6 +31,14 @@ import { sendVonageSms } from './server/vonage';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
+import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
+import { z } from 'zod';
+
+// Crash-safety backstops (audit #4): async route rejections go to the JSON
+// error handler instead of killing the process, and any stray rejection /
+// exception is logged rather than exiting Node. Installed before any route.
+installProcessErrorLoggers();
+installAsyncErrorRouting();
 
 dotenv.config();
 // Verify Firebase login tokens on API routes (gate activates once FIREBASE_SERVICE_ACCOUNT is set)
@@ -1939,8 +1947,12 @@ function generateAgentChatFallback(agentId: string, prompt: string): string {
 
 // 1. Multi-Agent chat endpoint
 app.post('/api/agent/chat', aiRateLimiter, async (req: Request, res: Response) => {
-  const { agentId = 'agent-orchestrator', prompt, history = [] } = req.body;
-  if (!prompt) {
+  const agentId = typeof req.body?.agentId === 'string' ? req.body.agentId : 'agent-orchestrator';
+  const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt : '';
+  const history: any[] = Array.isArray(req.body?.history)
+    ? req.body.history.filter((h: any) => h && typeof h === 'object' && typeof h.content === 'string')
+    : [];
+  if (!prompt.trim()) {
     return res.status(400).json({ error: 'Prompt is required' });
   }
 
@@ -1984,8 +1996,9 @@ app.post('/api/agent/chat', aiRateLimiter, async (req: Request, res: Response) =
 
 // 2. Real Voice Receptionist TTS endpoint (gemini-3.8-flash-lite-tts)
 app.post('/api/phone/tts', ttsLimiter, async (req: Request, res: Response) => {
-  const { text = '', voiceName = 'Kore' } = req.body;
-  if (!text || !text.trim()) {
+  const text = typeof req.body?.text === 'string' ? req.body.text : '';
+  const voiceName = typeof req.body?.voiceName === 'string' && req.body.voiceName.trim() ? req.body.voiceName.trim().slice(0, 40) : 'Kore';
+  if (!text.trim()) {
     return res.status(400).json({ error: 'Text is required for TTS synthesis' });
   }
 
@@ -2005,16 +2018,18 @@ app.post('/api/phone/tts', ttsLimiter, async (req: Request, res: Response) => {
 
 // 2b. Intelligent Multi-Turn Voice Receptionist Engine
 app.post('/api/phone/receptionist-chat', aiRateLimiter, async (req: Request, res: Response) => {
-  const { 
-    userSpeech = '', 
-    callerName = 'Inbound Caller', 
-    callerNumber = '(555) 019-4820',
-    callerTopic = 'Service Inquiry',
-    conversationHistory = [],
-    answeredBy = 'ai_receptionist', // 'ai_receptionist' | 'human_operator'
-    businessId,
-    withAudio = true
-  } = req.body;
+  // Coerce every field to its expected type (audit #4): a number or object
+  // here used to throw inside the fallback generator, i.e. inside catch.
+  const rb = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, any>;
+  const str = (v: unknown, dflt: string) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : dflt);
+  const userSpeech = str(rb.userSpeech, '');
+  const callerName = str(rb.callerName, 'Inbound Caller') || 'Inbound Caller';
+  const callerNumber = str(rb.callerNumber, '(555) 019-4820');
+  const callerTopic = str(rb.callerTopic, 'Service Inquiry') || 'Service Inquiry';
+  const conversationHistory: any[] = Array.isArray(rb.conversationHistory) ? rb.conversationHistory : [];
+  const answeredBy = rb.answeredBy === 'human_operator' ? 'human_operator' : 'ai_receptionist';
+  const businessId = typeof rb.businessId === 'string' ? rb.businessId : undefined;
+  const withAudio = rb.withAudio === undefined ? true : !!rb.withAudio;
 
   // Gate ON: resolve to the caller's own business, never to the first
   // business on the server. A caller with no business gets a 403
@@ -2545,7 +2560,9 @@ app.post('/api/phone/request-invoice', quoteInvoiceLimiter, requireInvoiceAmount
 
 // 2f. Backward compatibility simulate call endpoint
 app.post('/api/phone/simulate-call', aiRateLimiter, async (req: Request, res: Response) => {
-  const { userSpeech = '', callerName = 'Caller', callerTopic = 'General Inquiry' } = req.body;
+  const userSpeech = typeof req.body?.userSpeech === 'string' ? req.body.userSpeech : '';
+  const callerName = typeof req.body?.callerName === 'string' && req.body.callerName ? req.body.callerName : 'Caller';
+  const callerTopic = typeof req.body?.callerTopic === 'string' && req.body.callerTopic ? req.body.callerTopic : 'General Inquiry';
 
   const fallbackData = () => {
     const isUrgent =
@@ -2596,7 +2613,12 @@ Respond concisely as the RCOS Voice AI Assistant (max 2-3 sentences). Then outpu
 
 // 3. Analyze uploaded RCOS system files
 app.post('/api/rcos/analyze-files', aiRateLimiter, async (req: Request, res: Response) => {
-  const { files = [] } = req.body;
+  const files: Array<{ name: string; size?: unknown }> = Array.isArray(req.body?.files)
+    ? req.body.files
+        .filter((f: any) => f && typeof f === 'object')
+        .map((f: any) => ({ name: String(f.name ?? 'unnamed').slice(0, 200), size: typeof f.size === 'number' || typeof f.size === 'string' ? f.size : undefined }))
+        .slice(0, 200)
+    : [];
   const count = files.length;
   const fileNames = files.map((f: any) => f.name).slice(0, 5).join(', ');
 
@@ -2764,31 +2786,60 @@ app.get('/api/business/:id/requests', (req: Request, res: Response) => {
   res.json(requests);
 });
 
+// Public intake body (audit #4/#20). Every text field is coerced to a
+// string (a numeric phone like 5551234 used to crash the process via
+// `.slice` on a number) and capped; enums fall back to safe defaults
+// instead of storing arbitrary values/types.
+const intakeText = (max: number) => z.preprocess(
+  (v) => (typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : undefined),
+  z.string().optional()
+).transform((v) => (v ?? '').trim().slice(0, max));
+const INTAKE_URGENCIES = ['low', 'normal', 'routine', 'soon', 'urgent', 'emergency'] as const;
+const INTAKE_CONTACTS = ['phone', 'sms', 'text', 'email', 'call', 'any'] as const;
+const PublicIntakeSchema = z.object({
+  customerName: intakeText(100),
+  customerPhone: intakeText(30),
+  customerEmail: intakeText(100),
+  preferredContact: z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(INTAKE_CONTACTS)).catch('phone'),
+  serviceLocation: intakeText(200),
+  serviceType: intakeText(100),
+  description: intakeText(2000),
+  urgency: z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(INTAKE_URGENCIES)).catch('routine'),
+  preferredDateTime: intakeText(100),
+  flexibility: intakeText(100),
+  specialInstructions: intakeText(1000),
+});
+
 app.post('/api/business/:id/requests', publicIntakeRateLimiter, async (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) {
     return res.status(404).json({ error: 'Business not found' });
   }
 
-  const b = req.body;
-  if (!b.customerName || typeof b.customerName !== 'string' || b.customerName.trim().length === 0) {
+  const parsedBody = PublicIntakeSchema.safeParse(req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {});
+  if (!parsedBody.success) {
+    return res.status(400).json({ error: 'Invalid request details' });
+  }
+  const b = parsedBody.data;
+  if (!b.customerName) {
     return res.status(400).json({ error: 'Customer name is required' });
   }
+  const firstService = Array.isArray(business.services) && typeof business.services[0] === 'string' ? business.services[0] : '';
 
   const newRequest: CustomerRequest = {
-    id: `req_${Date.now()}`,
+    id: `req_${crypto.randomUUID()}`,
     businessId: business.id,
-    customerName: b.customerName.trim().slice(0, 100),
-    customerPhone: (b.customerPhone || '').slice(0, 30),
-    customerEmail: (b.customerEmail || '').slice(0, 100),
-    preferredContact: b.preferredContact || 'phone',
-    serviceLocation: (b.serviceLocation || 'Client address').slice(0, 200),
-    serviceType: (b.serviceType || business.services[0] || 'General Service').slice(0, 100),
-    description: (b.description || 'Request submitted through portal').slice(0, 2000),
-    urgency: b.urgency || 'routine',
-    preferredDateTime: (b.preferredDateTime || 'Flexible / Next Available').slice(0, 100),
-    flexibility: (b.flexibility || 'Standard business hours').slice(0, 100),
-    specialInstructions: (b.specialInstructions || '').slice(0, 1000),
+    customerName: b.customerName,
+    customerPhone: b.customerPhone,
+    customerEmail: b.customerEmail,
+    preferredContact: b.preferredContact,
+    serviceLocation: b.serviceLocation || 'Client address',
+    serviceType: (b.serviceType || firstService || 'General Service').slice(0, 100),
+    description: b.description || 'Request submitted through portal',
+    urgency: b.urgency,
+    preferredDateTime: b.preferredDateTime || 'Flexible / Next Available',
+    flexibility: b.flexibility || 'Standard business hours',
+    specialInstructions: b.specialInstructions,
     stage: 'Intake',
     status: 'in_progress',
     createdAt: new Date().toISOString(),
@@ -2921,14 +2972,20 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
     return res.status(409).json({ error: `This item was already ${existingAction.status === 'rejected' ? 'rejected' : 'approved'}.`, action: existingAction });
   }
 
-  const updatedAction = await RcosEngine.handleApprovalDecision(
-    business,
-    req.params.actionId,
-    decision,
-    editedContent,
-    reviewerNote,
-    editedAmounts
-  );
+  let updatedAction: ActionRecord | null;
+  try {
+    updatedAction = await RcosEngine.handleApprovalDecision(
+      business,
+      req.params.actionId,
+      decision,
+      typeof editedContent === 'string' || (editedContent && typeof editedContent === 'object') ? editedContent : undefined,
+      typeof reviewerNote === 'string' ? reviewerNote.slice(0, 2000) : undefined,
+      editedAmounts && typeof editedAmounts === 'object' ? editedAmounts : undefined
+    );
+  } catch (err) {
+    console.error('[Approvals] Decision failed:', err);
+    return res.status(500).json({ error: 'Could not record this decision. Please try again.' });
+  }
 
   if (!updatedAction) {
     return res.status(404).json({ error: 'Action not found' });
@@ -3201,6 +3258,21 @@ app.all('/api/*', (req: Request, res: Response) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
+// Final error handler (audit #4): any thrown/rejected handler error (async
+// rejections are routed here by server/async-errors.ts) becomes a JSON 500
+// instead of an HTML stack page or a dead process. Body-parser errors keep
+// their 4xx status (e.g. malformed JSON → 400, too large → 413).
+function jsonErrorHandler(err: any, req: Request, res: Response, next: express.NextFunction) {
+  const status = Number(err?.status || err?.statusCode);
+  const clientError = Number.isInteger(status) && status >= 400 && status < 500;
+  if (!clientError) console.error(`[RCOS] Unhandled error on ${req.method} ${req.originalUrl}:`, err);
+  if (res.headersSent) return next(err);
+  if (clientError) {
+    return res.status(status).json({ error: err?.type === 'entity.parse.failed' ? 'Invalid JSON body' : (err?.expose && err?.message) || 'Bad request' });
+  }
+  return res.status(500).json({ error: 'Something went wrong on the server. Please try again.' });
+}
+
 // ==================== VITE SPA INTEGRATION ====================
 async function startServer() {
   const httpServer = http.createServer(app);
@@ -3221,6 +3293,17 @@ async function startServer() {
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
     });
   }
+
+  // Registered last so it sees errors from every route and middleware.
+  app.use(jsonErrorHandler);
+
+  // A listen failure (e.g. port in use) must still exit so the host
+  // restarts the service — the uncaughtException logger would otherwise
+  // keep a non-listening process alive.
+  httpServer.on('error', (err) => {
+    console.error('[RCOS] HTTP server error — exiting:', err);
+    process.exit(1);
+  });
 
   // Gracefully handle any WebSocket upgrade requests
   httpServer.on('upgrade', (_req, socket) => {
