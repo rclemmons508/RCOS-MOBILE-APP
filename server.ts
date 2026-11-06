@@ -259,12 +259,38 @@ app.use('/api', (req: Request, res: Response, next) => {
 // matching the recorded owner id, or the token email matching an
 // owner email recorded on the business. A business with no owner
 // identity anywhere is NOT opened up: gate ON fails closed on it.
+// Roster allow-list shared by POST /api/businesses and PUT
+// /api/business/:id (audit #12): every member is coerced to the known
+// shape, so a malformed entry (e.g. no email) can never be stored and
+// later crash the membership matchers for every tenant.
+function sanitizeMembers(raw: unknown[]): BusinessMember[] {
+  return raw
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && !Array.isArray(m))
+    .map((m) => ({
+      userId: String(m.userId ?? ''),
+      email: String(m.email ?? ''),
+      name: String(m.name ?? ''),
+      role: m.role === 'owner' || m.role === 'member' ? m.role : 'member',
+      ...(m.avatar !== undefined && m.avatar !== null ? { avatar: String(m.avatar) } : {}),
+      joinedAt: String(m.joinedAt ?? '')
+    })) as BusinessMember[];
+}
+
+function deriveMemberEmails(members: Array<{ email?: unknown; role?: unknown }>): Record<string, 'owner' | 'member'> {
+  const out: Record<string, 'owner' | 'member'> = {};
+  for (const m of members) {
+    const email = String(m.email || '').toLowerCase().trim();
+    if (email) out[email] = m.role === 'owner' ? 'owner' : 'member';
+  }
+  return out;
+}
+
 function businessMemberFor(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): BusinessMember | undefined {
   if (!caller) return undefined;
   const email = (caller.email || '').toLowerCase().trim();
   return (business.members || []).find((m) => (
-    (email !== '' && m.email.toLowerCase() === email) ||
-    (!!caller.uid && !!m.userId && m.userId === caller.uid)
+    (email !== '' && String(m?.email || '').toLowerCase().trim() === email) ||
+    (!!caller.uid && !!m?.userId && m.userId === caller.uid)
   ));
 }
 
@@ -970,10 +996,45 @@ app.post('/api/businesses', (req: Request, res: Response) => {
       return res.status(403).json({ error: 'You can only create a business for yourself.' });
     }
   }
+  // Business id (audit #2): never let a client-chosen id replace someone
+  // else's business. No id → minted server-side. A supplied id (the app
+  // generates one so its Firestore copy and the server copy share it) must
+  // be well-formed, and if it already exists the POST is refused with 409
+  // UNLESS the caller is that business's owner (re-opened setup re-saves
+  // the same record). Gate ON: owner = verified token. Gate OFF: owner =
+  // the same X-User-Email identity the other gate-off owner checks use,
+  // and an existing business with no owner identity at all is never
+  // overwritten through this route.
+  let businessId: string;
+  let existingBusiness: BusinessAccount | undefined;
+  if (data?.id !== undefined && data?.id !== null && data?.id !== '') {
+    if (typeof data.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(data.id)) {
+      return res.status(400).json({ error: 'Invalid business id.' });
+    }
+    businessId = data.id;
+    existingBusiness = db.getBusiness(businessId);
+    if (existingBusiness) {
+      let callerOwnsIt: boolean;
+      if (isGateOn()) {
+        callerOwnsIt = businessIsOwner(existingBusiness, verifiedCaller(req));
+      } else {
+        const email = teamRequesterEmail(req);
+        callerOwnsIt = email !== '' && (
+          teamIsOwner(existingBusiness, email) || businessOwnerEmails(existingBusiness).includes(email)
+        );
+      }
+      if (!callerOwnsIt) {
+        return res.status(409).json({ error: 'A business with this id already exists.' });
+      }
+    }
+  } else {
+    businessId = `biz_${crypto.randomUUID()}`;
+  }
+  const sanitizedMembers = Array.isArray(data.members) ? sanitizeMembers(data.members) : undefined;
   const newBusiness: BusinessAccount = {
-    id: data.id || `biz_${Date.now()}`,
-    ownerId: typeof data.ownerId === 'string' ? data.ownerId : undefined,
-    members: Array.isArray(data.members) ? data.members : undefined,
+    id: businessId,
+    ownerId: typeof data.ownerId === 'string' ? data.ownerId : existingBusiness?.ownerId,
+    members: sanitizedMembers ?? existingBusiness?.members,
     contactName: typeof data.contactName === 'string' ? data.contactName : undefined,
     contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : undefined,
     contactEmail: typeof data.contactEmail === 'string' ? data.contactEmail : undefined,
@@ -1020,10 +1081,11 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     documentContactInfo: data.documentContactInfo && typeof data.documentContactInfo === 'object' && ['phone', 'email', 'website', 'address'].some((f) => typeof data.documentContactInfo[f] === 'string' && data.documentContactInfo[f].trim())
       ? Object.fromEntries(['phone', 'email', 'website', 'address'].filter((f) => typeof data.documentContactInfo[f] === 'string' && data.documentContactInfo[f].trim()).map((f) => [f, data.documentContactInfo[f].trim()]))
       : undefined,
-    starterDrafts: [],
-    createdAt: new Date().toISOString(),
+    starterDrafts: existingBusiness?.starterDrafts || [],
+    createdAt: existingBusiness?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  if (newBusiness.members) newBusiness.memberEmails = deriveMemberEmails(newBusiness.members);
 
   // Departments offered for transfers are worked out from the industry +
   // services at onboarding (and on every save) — a business with no
@@ -1031,6 +1093,11 @@ app.post('/api/businesses', (req: Request, res: Response) => {
   newBusiness.availableDepartments = availableDepartmentsFor(newBusiness);
 
   const saved = db.saveBusiness(newBusiness);
+  if (existingBusiness) {
+    // Owner re-saving their own business (re-opened setup): not a new
+    // business, so do not hand it the pending demo-lead queue.
+    return res.status(200).json(saved);
+  }
 
   // Flush any demo leads that arrived while no business existed. They were
   // queued instead of lost; they now become Customer Requests on this business.
@@ -1114,26 +1181,12 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
     if (Object.keys(picked).length > 0) updates.documentContactInfo = picked;
   }
   if (Array.isArray(body.members)) {
-    updates.members = body.members
-      .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && !Array.isArray(m))
-      .map((m) => ({
-        userId: String(m.userId ?? ''),
-        email: String(m.email ?? ''),
-        name: String(m.name ?? ''),
-        role: m.role === 'owner' || m.role === 'member' ? m.role : 'member',
-        ...(m.avatar !== undefined && m.avatar !== null ? { avatar: String(m.avatar) } : {}),
-        joinedAt: String(m.joinedAt ?? '')
-      }));
+    updates.members = sanitizeMembers(body.members);
     // Stage 2 audit (C2): the Firestore rules check member access against a
     // denormalized `memberEmails` map (rules cannot search the `members`
     // list). Derive it from the roster whenever the roster is updated so
     // the server copy carries it too; an explicitly provided map wins.
-    const derivedMemberEmails: Record<string, 'owner' | 'member'> = {};
-    for (const m of updates.members as Array<{ email: string; role: string }>) {
-      const email = String(m.email || '').toLowerCase().trim();
-      if (email) derivedMemberEmails[email] = m.role === 'owner' ? 'owner' : 'member';
-    }
-    updates.memberEmails = derivedMemberEmails;
+    updates.memberEmails = deriveMemberEmails(updates.members);
   }
   if (body.memberEmails && typeof body.memberEmails === 'object' && !Array.isArray(body.memberEmails)) {
     const rec: Record<string, 'owner' | 'member'> = {};
@@ -1202,7 +1255,7 @@ function teamRequesterEmail(req: Request): string {
 function teamMemberFor(business: BusinessAccount, email: string): BusinessMember | undefined {
   const clean = (email || '').toLowerCase();
   if (!clean) return undefined;
-  return (business.members || []).find(m => m.email.toLowerCase() === clean);
+  return (business.members || []).find(m => String(m?.email || '').toLowerCase().trim() === clean);
 }
 
 function teamIsOwner(business: BusinessAccount, email: string): boolean {
