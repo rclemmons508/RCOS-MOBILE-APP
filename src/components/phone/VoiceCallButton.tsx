@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { PhoneCall as PhoneIcon, PhoneOff, Loader2, Mic, Volume2, VolumeX } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
@@ -27,43 +27,98 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
   // Set the moment the agent's audio track is heard — including during
   // room.connect(), before the no-agent watchdog below is armed.
   const agentHeardRef = useRef(false);
+  // <audio> elements attached for remote tracks, so they can be detached.
+  const audioElsRef = useRef<HTMLMediaElement[]>([]);
+  // True once enableEarpieceForCall() ran, so the route is always restored.
+  const audioRoutedRef = useRef(false);
+  // Bumped by every start/teardown so a startCall() still awaiting the
+  // token or room.connect() knows it was cancelled (unmount / End call).
+  const callGenRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const startTimer = () => {
     setCallSeconds(0);
-    timerRef.current = window.setInterval(() => setCallSeconds((s) => s + 1), 1000);
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = window.setInterval(() => {
+      if (mountedRef.current) setCallSeconds((s) => s + 1);
+    }, 1000);
   };
   const stopTimer = () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = null;
   };
 
-  const endCall = () => {
+  /**
+   * Release everything a call holds: timers, the LiveKit room (which also
+   * stops the local mic track), any attached <audio> elements, and the
+   * Android audio route. Safe to call repeatedly and after unmount.
+   */
+  const teardown = () => {
+    callGenRef.current += 1;
     stopTimer();
     if (agentTimeoutRef.current) window.clearTimeout(agentTimeoutRef.current);
     agentTimeoutRef.current = null;
     const room = roomRef.current;
     roomRef.current = null;
-    if (room) room.disconnect();
+    if (room) {
+      room.removeAllListeners();
+      try {
+        // Stop the mic explicitly; disconnect(true) also stops local tracks.
+        room.localParticipant.trackPublications.forEach((pub) => pub.track?.stop());
+      } catch {
+        /* ignore */
+      }
+      void room.disconnect(true).catch(() => {});
+    }
+    audioElsRef.current.forEach((el) => {
+      try {
+        el.pause();
+        el.srcObject = null;
+      } catch {
+        /* ignore */
+      }
+      el.remove();
+    });
+    audioElsRef.current = [];
+    if (audioRoutedRef.current) {
+      audioRoutedRef.current = false;
+      void restoreAudioAfterCall();
+    }
+  };
+
+  const endCall = () => {
+    teardown();
+    if (!mountedRef.current) return;
     setSpeakerOn(false);
-    void restoreAudioAfterCall();
     setState('idle');
   };
+
+  // The Phone tab unmounts on every tab switch: never leave a live mic,
+  // a connected room or MODE_IN_COMMUNICATION behind.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      teardown();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const failNoAgent = () => {
     // Never kill a call the agent actually answered.
     if (agentHeardRef.current) return;
     agentTimeoutRef.current = null;
-    const room = roomRef.current;
-    roomRef.current = null;
-    if (room) room.disconnect();
-    stopTimer();
+    teardown();
+    if (!mountedRef.current) return;
     setSpeakerOn(false);
-    void restoreAudioAfterCall();
     setState('error');
     setError('The AI receptionist did not answer. The voice worker may be offline — check that the rcos-voice-agent service is running in Railway.');
   };
 
   const startCall = async () => {
+    teardown(); // drop any half-open previous attempt
+    const gen = callGenRef.current;
+    const cancelled = () => gen !== callGenRef.current || !mountedRef.current;
     setError(null);
     agentHeardRef.current = false;
     setState('connecting');
@@ -73,6 +128,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
         method: 'POST',
         body: JSON.stringify({ businessId: businessId || 'default' }),
       });
+      if (cancelled()) return;
 
       // 2. Connect to the voice room and turn on the microphone
       const room = new Room();
@@ -86,16 +142,28 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
           const el = track.attach();
           el.style.display = 'none';
           document.body.appendChild(el);
+          audioElsRef.current.push(el);
         }
       });
-      room.on(RoomEvent.Disconnected, () => endCall());
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        const detached = track.detach();
+        detached.forEach((el) => el.remove());
+        audioElsRef.current = audioElsRef.current.filter((el) => !detached.includes(el));
+      });
+      room.on(RoomEvent.Disconnected, () => {
+        if (roomRef.current === room) endCall();
+      });
 
       // Route call audio to the earpiece (never the loudspeaker) before any audio plays
+      audioRoutedRef.current = true;
       await enableEarpieceForCall();
+      if (cancelled()) return;
       setSpeakerOn(false);
 
       await room.connect(url, token);
+      if (cancelled()) return;
       await room.localParticipant.setMicrophoneEnabled(true);
+      if (cancelled()) return;
 
       setState('in-call');
       startTimer();
@@ -109,6 +177,12 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
         agentTimeoutRef.current = window.setTimeout(failNoAgent, 25000);
       }
     } catch (e: any) {
+      // A failed connect must not leave the room half-open, the mic live
+      // or Android stuck in call audio mode.
+      const wasCancelled = cancelled();
+      teardown();
+      if (wasCancelled || !mountedRef.current) return;
+      setSpeakerOn(false);
       setState('error');
       setError(
         e?.message ||
