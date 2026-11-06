@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   Reply, 
@@ -13,7 +13,8 @@ import {
   Sparkles,
   Briefcase
 } from 'lucide-react';
-import DOMPurify from 'dompurify';
+import { sanitizeEmailHtml } from '../../lib/sanitizeEmailHtml';
+import { safeOpenUrl } from '../../lib/safeOpen';
 import { GmailMessageDetail } from '../../lib/gmail';
 import { GmailConfirmModal, GmailActionType } from './GmailConfirmModal';
 
@@ -43,6 +44,11 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<GmailActionType>('trash');
   const [isProcessing, setIsProcessing] = useState(false);
+  // Remote images stay blocked until the user asks, per message.
+  const [loadImages, setLoadImages] = useState(false);
+  useEffect(() => {
+    setLoadImages(false);
+  }, [message?.id]);
 
   if (!isOpen || !message) return null;
 
@@ -59,15 +65,23 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
   // instead — React escapes it, so it can never become markup.
   const isPlainTextFallback =
     !!message.bodyText && message.bodyHtml === `<pre>${message.bodyText}</pre>`;
-  const sanitizedBodyHtml = isPlainTextFallback
-    ? ''
-    : DOMPurify.sanitize(message.bodyHtml || '', {
-        FORBID_TAGS: [
-          'script', 'style', 'iframe', 'object', 'embed', 'form', 'input',
-          'button', 'select', 'textarea', 'link', 'meta', 'base', 'title',
-          'noscript', 'template', 'frame', 'frameset', 'applet',
-        ],
-      });
+  // Sender styling (style/class/id) is stripped so an email can't overlay
+  // or imitate the app's UI, and remote images (tracking pixels) are
+  // blocked until the user taps "Load images". See lib/sanitizeEmailHtml.ts.
+  const sanitized = isPlainTextFallback
+    ? { html: '', blockedImages: 0 }
+    : sanitizeEmailHtml(message.bodyHtml || '', { loadImages });
+  const sanitizedBodyHtml = sanitized.html;
+
+  // Links inside the email must never navigate the app's own WebView:
+  // open them through the shared safe opener (http/https/mailto/tel only).
+  const handleBodyClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const anchor = (e.target as HTMLElement | null)?.closest?.('a');
+    if (!anchor) return;
+    e.preventDefault();
+    const href = anchor.getAttribute('href');
+    if (href) void safeOpenUrl(href, { allowContact: true });
+  };
 
   const handleRequestTrash = () => {
     setConfirmAction('trash');
@@ -236,6 +250,25 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               </div>
             )}
 
+            {/* Remote images blocked notice */}
+            {!isPlainTextFallback && (sanitized.blockedImages > 0 || loadImages) && (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-[11px] text-zinc-400">
+                <span>
+                  {loadImages
+                    ? 'Images from the sender are shown.'
+                    : `${sanitized.blockedImages} remote image${sanitized.blockedImages === 1 ? '' : 's'} blocked to protect your privacy.`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLoadImages((v) => !v)}
+                  aria-pressed={loadImages}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold cursor-pointer shrink-0"
+                >
+                  {loadImages ? 'Hide images' : 'Load images'}
+                </button>
+              </div>
+            )}
+
             {/* Email Body Rendering — sanitized HTML, or escaped plain text */}
             <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/30 border border-zinc-800/80 min-h-[160px] text-zinc-200 text-xs sm:text-sm leading-relaxed overflow-x-auto">
               {isPlainTextFallback ? (
@@ -244,7 +277,8 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
                 </pre>
               ) : (
                 <div
-                  className="prose prose-invert max-w-none text-zinc-200 text-xs sm:text-sm"
+                  className="prose prose-invert max-w-none text-zinc-200 text-xs sm:text-sm [&_img]:max-w-full [&_img]:h-auto"
+                  onClick={handleBodyClick}
                   dangerouslySetInnerHTML={{ __html: sanitizedBodyHtml }}
                 />
               )}
