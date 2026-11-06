@@ -28,7 +28,7 @@ import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { sendVonageSms } from './server/vonage';
-import { initAuth, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
+import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 
@@ -200,7 +200,9 @@ registerGmailOAuthPublic(app);
 
 // ---- Login gate ----
 // Every /api route below this line requires a valid Firebase login token,
-// which the phone app already attaches (see src/lib/api.ts).
+// which the phone app already attaches (see src/lib/api.ts). With
+// NODE_ENV=production and no usable FIREBASE_SERVICE_ACCOUNT the gate
+// fails CLOSED (503) unless ALLOW_OPEN_API=true (see server/auth.ts).
 // Public exceptions (registered above or skipped here):
 //   /api/health, /api/firebase-config, and the public intake form
 //   POST /api/business/:id/requests (customers must be able to reach you without an account).
@@ -370,12 +372,15 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   // Firebase login gate
   const gateOn = isAuthReady();
   const gateBroken = isAuthMisconfigured();
+  const lockedClosed = isApiLockedClosed();
   checks.push({
     id: 'auth', label: 'Login Gate',
-    status: gateOn ? 'pass' : gateBroken ? 'fail' : 'warn',
+    status: gateOn ? 'pass' : (gateBroken || lockedClosed) ? 'fail' : 'warn',
     detail: gateOn
       ? 'Firebase Admin active — API requires login'
-      : gateBroken
+      : lockedClosed
+        ? 'Login gate not configured — signed-in API locked (503) in production'
+        : gateBroken
         ? 'FIREBASE_SERVICE_ACCOUNT is set but unusable — API still open'
         : 'FIREBASE_SERVICE_ACCOUNT not set — API open'
   });

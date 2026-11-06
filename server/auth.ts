@@ -14,6 +14,28 @@ let authReady = false;
 // startup banner below makes it unmistakable.
 let authMisconfigured = false;
 
+// Fail-closed switch (audit #1). In production (NODE_ENV=production) a
+// missing or unusable FIREBASE_SERVICE_ACCOUNT no longer opens the API:
+// every non-public /api route answers 503 until the gate is configured.
+// The only way to run production with the gate off is the explicit
+// opt-in ALLOW_OPEN_API=true (e.g. a short setup window). Outside
+// production the old open-for-setup behavior is unchanged. The process
+// still boots either way (no Railway restart loop) — public routes
+// (health, intake/booking, demo form, team join, Twilio webhooks,
+// voice-worker posts) keep working.
+function isProduction(): boolean {
+  return (process.env.NODE_ENV || '').toLowerCase() === 'production';
+}
+
+export function isOpenApiAllowed(): boolean {
+  return (process.env.ALLOW_OPEN_API || '').trim().toLowerCase() === 'true';
+}
+
+// True when the gate is not usable AND we must fail closed.
+export function isApiLockedClosed(): boolean {
+  return !authReady && isProduction() && !isOpenApiAllowed();
+}
+
 function gateBanner(lines: string[]): void {
   const edge = '='.repeat(72);
   console.warn(`\n${edge}`);
@@ -21,8 +43,25 @@ function gateBanner(lines: string[]): void {
   console.warn(`${edge}\n`);
 }
 
+function lockedBanner(reason: string): void {
+  const edge = '!'.repeat(72);
+  console.error(`\n${edge}`);
+  console.error(`[auth] LOGIN GATE UNAVAILABLE — API IS LOCKED (503) IN PRODUCTION.`);
+  console.error(`[auth] ${reason}`);
+  console.error('[auth] Every signed-in /api route now answers 503 until FIREBASE_SERVICE_ACCOUNT');
+  console.error('[auth] is set to a valid service-account key and the server is redeployed.');
+  console.error('[auth] Public routes (health, booking/intake, demo form, team join, Twilio');
+  console.error('[auth] webhooks) keep working. To deliberately run OPEN (not recommended),');
+  console.error('[auth] set ALLOW_OPEN_API=true.');
+  console.error(`${edge}\n`);
+}
+
 export function initAuth(): void {
   const svc = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!svc && isProduction() && !isOpenApiAllowed()) {
+    lockedBanner('FIREBASE_SERVICE_ACCOUNT is not set.');
+    return;
+  }
   if (!svc) {
     gateBanner([
       'LOGIN GATE IS OFF — MOST OF THE API IS OPEN.',
@@ -43,6 +82,11 @@ export function initAuth(): void {
     console.log('[auth] Firebase Admin ready — API login gate is ON.');
   } catch (e) {
     authMisconfigured = true;
+    if (isProduction() && !isOpenApiAllowed()) {
+      lockedBanner('FIREBASE_SERVICE_ACCOUNT is set but unusable (not valid service-account JSON).');
+      console.error('[auth] Could not start Firebase Admin.', e);
+      return;
+    }
     gateBanner([
       'LOGIN GATE IS OFF — FIREBASE_SERVICE_ACCOUNT IS SET BUT UNUSABLE.',
       'The value could not be read as a service-account key (not valid JSON',
@@ -81,9 +125,19 @@ export function isAuthMisconfigured(): boolean {
 }
 
 export async function requireAuth(req: Request, res: Response, next: () => void) {
-  // Fail open (with the loud warning above) until the service account is configured,
-  // so the app keeps working during setup. Once configured, bad/missing tokens are rejected.
-  if (!authReady) return next();
+  // Gate not configured: in production fail CLOSED (503) unless the
+  // explicit ALLOW_OPEN_API=true opt-in is set; outside production fail
+  // open (with the loud warning above) so local setup keeps working.
+  // Once configured, bad/missing tokens are rejected.
+  if (!authReady) {
+    if (isApiLockedClosed()) {
+      return res.status(503).json({
+        error: 'The server login gate is not configured yet, so signed-in features are temporarily unavailable.',
+        code: 'auth_gate_unavailable',
+      });
+    }
+    return next();
+  }
 
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
