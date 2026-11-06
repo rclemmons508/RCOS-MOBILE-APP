@@ -27,6 +27,7 @@ import { withBehaviorProtocol, withBusinessKnowledge, resolveBusinessKnowledge }
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
+import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails } from './server/tenancy';
 import { sendVonageSms } from './server/vonage';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
@@ -169,18 +170,30 @@ const voiceTokenLimiter = createRateLimiter('voice-token', 10, 60000); // 10 Liv
 const quoteInvoiceLimiter = createRateLimiter('quote-invoice', 30, 60000); // 30 quote/invoice creations / min (M9)
 const teamMessageLimiter = createRateLimiter('team-message', 60, 60000); // 60 team-chat posts / min (H10)
 const ttsLimiter = createRateLimiter('tts', 30, 60000); // 30 TTS syntheses / min
+const twilioWebhookLimiter = createRateLimiter('twilio-webhook', 600, 60000); // signed carrier webhooks
+const outboundCallLimiter = createRateLimiter('outbound-call', 5, 60000); // 5 outbound dials / min / user (audit #8)
+const telephonyConfigLimiter = createRateLimiter('telephony-config', 10, 60000); // 10 config writes / min (audit #7)
+
+// Twilio's signed webhook paths, relative to the /api mount.
+const TWILIO_WEBHOOK_PATHS = new Set([
+  '/twilio/voice/incoming',
+  '/twilio/voice/human-fallback',
+  '/twilio/voice/handle-speech',
+  '/twilio/voice/dial-status',
+  '/twilio/voice/voicemail',
+  '/twilio/voice/voicemail-transcription',
+  '/twilio/voice/status',
+]);
+function isTwilioWebhookPath(p: string): boolean {
+  return TWILIO_WEBHOOK_PATHS.has(p);
+}
 
 // Telephony provider: 'twilio' mounts the Twilio PSTN router. Anything else parks it —
 // testing/review builds use the in-app WebRTC voice call instead (see /api/voice/token).
 // Set TELEPHONY_PROVIDER=twilio in the environment to re-enable the carrier.
+// The router itself is mounted further down, AFTER the login gate and the
+// default rate limiters (audit #7) — see "Twilio carrier router" below.
 const telephonyProvider = (process.env.TELEPHONY_PROVIDER || 'webrtc').toLowerCase();
-if (telephonyProvider === 'twilio') {
-  app.use('/api/twilio', telephonyRouter);
-} else {
-  app.use('/api/twilio', (_req: Request, res: Response) =>
-    res.status(503).json({ error: 'Phone carrier is parked (TELEPHONY_PROVIDER is not "twilio"). Use the in-app voice call instead.' })
-  );
-}
 
 // ==================== API ROUTES ====================
 
@@ -233,6 +246,12 @@ app.use('/api', (req: Request, res: Response, next) => {
   // handler. GET does NOT skip: reading the call routing log requires a
   // signed-in user (the old blanket skip let anyone read it).
   if (req.method === 'POST' && req.path === '/voice/routing-log') return next();
+  // Twilio carrier webhooks: Twilio cannot sign in as a user — the
+  // X-Twilio-Signature (checked fail-closed inside server/telephony.ts)
+  // is the credential. Only these exact webhook paths skip the gate; the
+  // user-facing /twilio/config, /twilio/test-carrier and
+  // /twilio/voice/outbound-call routes stay gated.
+  if (req.method === 'POST' && isTwilioWebhookPath(req.path)) return next();
   // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
   if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
     if (voiceSecretMatches(req.headers['x-voice-secret'])) return next();
@@ -248,12 +267,33 @@ app.use('/api', (req: Request, res: Response, next) => {
 // verification probe while the gate is off).
 app.use('/api', (req: Request, res: Response, next) => {
   if (req.path === '/diagnostics/scan') return next();
+  // Signed Twilio webhooks get their own, larger bucket (keyed by Twilio's
+  // egress IP) so a busy phone line cannot exhaust the user limiters.
+  if (req.method === 'POST' && isTwilioWebhookPath(req.path)) return twilioWebhookLimiter(req, res, next);
   return generalApiLimiter(req, res, next);
 });
 app.use('/api', (req: Request, res: Response, next) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  if (isTwilioWebhookPath(req.path)) return next();
   return writeLimiter(req, res, next);
 });
+
+// ---- Twilio carrier router (audit #7) ----
+// Mounted after the login gate and the default limiters so the config and
+// outbound-call routes are rate limited (plus outboundCallLimiter below)
+// and the webhooks pass the twilio-webhook limiter. 'twilio' mounts it;
+// anything else parks it (testing/review builds use the in-app WebRTC
+// voice call instead — see /api/voice/token).
+if (telephonyProvider === 'twilio') {
+  app.use('/api/twilio/voice/outbound-call', outboundCallLimiter);
+  app.use('/api/twilio/config', (req: Request, res: Response, next) =>
+    req.method === 'POST' ? telephonyConfigLimiter(req, res, next) : next());
+  app.use('/api/twilio', telephonyRouter);
+} else {
+  app.use('/api/twilio', (_req: Request, res: Response) =>
+    res.status(503).json({ error: 'Phone carrier is parked (TELEPHONY_PROVIDER is not "twilio"). Use the in-app voice call instead.' })
+  );
+}
 
 // ---- Per-business ownership (login-gate ON only) ----
 // When the gate is OFF (today's deployment, FIREBASE_SERVICE_ACCOUNT
@@ -290,38 +330,6 @@ function deriveMemberEmails(members: Array<{ email?: unknown; role?: unknown }>)
     if (email) out[email] = m.role === 'owner' ? 'owner' : 'member';
   }
   return out;
-}
-
-function businessMemberFor(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): BusinessMember | undefined {
-  if (!caller) return undefined;
-  const email = (caller.email || '').toLowerCase().trim();
-  return (business.members || []).find((m) => (
-    (email !== '' && String(m?.email || '').toLowerCase().trim() === email) ||
-    (!!caller.uid && !!m?.userId && m.userId === caller.uid)
-  ));
-}
-
-function businessOwnerEmails(business: BusinessAccount): string[] {
-  return [
-    String((business as any).contactEmail || '').toLowerCase().trim(),
-    String((business as any).ownerEmail || '').toLowerCase().trim(),
-  ].filter(Boolean);
-}
-
-function businessIsMember(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): boolean {
-  if (!caller) return false;
-  if (businessMemberFor(business, caller)) return true;
-  const email = (caller.email || '').toLowerCase().trim();
-  if (email !== '' && businessOwnerEmails(business).includes(email)) return true;
-  return !!caller.uid && !!business.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === caller.uid;
-}
-
-function businessIsOwner(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): boolean {
-  if (!caller) return false;
-  if (businessMemberFor(business, caller)?.role === 'owner') return true;
-  if (!!caller.uid && !!business.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === caller.uid) return true;
-  const email = (caller.email || '').toLowerCase().trim();
-  return email !== '' && businessOwnerEmails(business).includes(email);
 }
 
 // Gate-ON owner check for a single route. Returns true when the request
