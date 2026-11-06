@@ -509,14 +509,15 @@ export default function App() {
     if (!businessAccount?.id) return;
     const unsubJobs = firestoreService.listenToJobs(businessAccount.id, (loadedJobs) => {
       followupsJobsLoadedRef.current = true;
-      if (Array.isArray(loadedJobs) && loadedJobs.length > 0) {
+      // Empty snapshots apply too, so stale jobs never survive a switch.
+      if (Array.isArray(loadedJobs)) {
         setJobs(loadedJobs);
       }
     });
 
     const unsubClients = firestoreService.listenToClients(businessAccount.id, (loadedClients) => {
       followupsClientsLoadedRef.current = true;
-      if (Array.isArray(loadedClients) && loadedClients.length > 0) {
+      if (Array.isArray(loadedClients)) {
         setClients(loadedClients);
       }
     });
@@ -1120,6 +1121,36 @@ export default function App() {
   activeTabRef.current = activeTab;
   const teamSeenIdsRef = useRef<Set<string>>(new Set());
   const firstTeamPollRef = useRef(true);
+
+  // Wipe everything that belongs to the signed-in operator / their company
+  // (audit High #3). Run on logout, leave-team and before a sign-in, so the
+  // next operator never sees the previous one's jobs, clients, approvals,
+  // inbox, notifications, requests, calls or chat, and the "seen" refs
+  // start over (they re-seed from the new company's data on first load).
+  const resetPerUserState = () => {
+    setJobs([]);
+    setClients([]);
+    setActions([]);
+    setCustomerRequests([]);
+    setCalls([]);
+    setMessages([]);
+    setNotifications([]);
+    setActivePushToast(null);
+    setAgentMessages([]);
+    agentMessagesRef.current = [];
+    setTeamUnreadCount(0);
+    setInvoicePrefill(null);
+    pendingJobInvoiceRef.current = null;
+    seenInboxIdsRef.current = new Set();
+    firstInboxPollRef.current = true;
+    teamSeenIdsRef.current = new Set();
+    firstTeamPollRef.current = true;
+    followupsJobsLoadedRef.current = false;
+    followupsClientsLoadedRef.current = false;
+    followupsRequestsLoadedRef.current = false;
+    seenRoutingRef.current = { bizId: '', primed: false, keys: [] };
+    pendingRoutingInboxRef.current = new Map();
+  };
   const refreshTeamUnread = useCallback(async () => {
     const bizId = businessAccount?.id;
     const email = currentUser?.email;
@@ -1646,6 +1677,11 @@ export default function App() {
     if (currentUser && currentUser.email.toLowerCase() !== user.email.toLowerCase()) {
       setCachedAccessToken(null);
     }
+    // Start from a clean slate: no data from whoever was signed in before.
+    // Dropping the company first makes the Firestore listeners resubscribe
+    // (and deliver a fresh snapshot) even when the same company is reloaded.
+    resetPerUserState();
+    if (currentUser) setBusinessAccount(null);
     authService.saveActiveSession(user);
     setCurrentUser(user);
     setIsAuthModalOpen(false);
@@ -1810,6 +1846,7 @@ export default function App() {
     // The signed-out operator's own cached company stays on disk for
     // their return; it is scoped to them and never loads for anyone else.
     setBusinessAccount(null);
+    resetPerUserState();
     setIsOnboardingOpen(true);
     setCurrentUser(null);
     setIsAuthModalOpen(false);
@@ -1836,6 +1873,7 @@ export default function App() {
     } catch { /* login record already gone */ }
     clearBusinessStateForUser(currentUser);
     setBusinessAccount(null);
+    resetPerUserState();
     await authService.logout();
     unenrollBiometrics();
     setCurrentUser(null);
