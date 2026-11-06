@@ -122,6 +122,27 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // The map key is scoped per limiter name, so a busy AI route cannot
 // burn the delete-account budget (or vice versa).
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+// Bounded (audit #22): expired buckets are swept every minute, and the map
+// never holds more than RATE_LIMIT_MAX_KEYS entries — when full, expired
+// entries are dropped first and then the oldest inserted (Map keeps
+// insertion order), so rotating IPs cannot grow memory without bound.
+const RATE_LIMIT_MAX_KEYS = 50_000;
+function sweepRateLimits(now = Date.now()): void {
+  for (const [k, v] of rateLimitMap) if (now > v.resetAt) rateLimitMap.delete(k);
+}
+setInterval(() => sweepRateLimits(), 60_000).unref();
+function rememberRateLimit(key: string, value: { count: number; resetAt: number }): void {
+  if (!rateLimitMap.has(key) && rateLimitMap.size >= RATE_LIMIT_MAX_KEYS) {
+    sweepRateLimits();
+    while (rateLimitMap.size >= RATE_LIMIT_MAX_KEYS) {
+      const oldest = rateLimitMap.keys().next().value;
+      if (oldest === undefined) break;
+      rateLimitMap.delete(oldest);
+    }
+  }
+  rateLimitMap.delete(key); // re-insert so insertion order tracks recency
+  rateLimitMap.set(key, value);
+}
 function limiterKey(req: Request): string {
   const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
   if (caller?.uid) return `uid:${caller.uid}`;
@@ -135,7 +156,7 @@ function createRateLimiter(name: string, maxRequests: number, windowMs: number) 
     const record = rateLimitMap.get(key);
 
     if (!record || now > record.resetAt) {
-      rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+      rememberRateLimit(key, { count: 1, resetAt: now + windowMs });
       return next();
     }
 
@@ -1660,6 +1681,10 @@ app.post('/api/team/join', teamInviteLimiter, (req: Request, res: Response) => {
 // The stream carries only message ids + sender names; the client fetches
 // the full message text through the normal guarded route on each event.
 const teamEventSubscribers = new Map<string, Set<Response>>();
+// Connection caps (audit #22): per business and server-wide.
+const MAX_TEAM_STREAMS_PER_BUSINESS = 50;
+const MAX_TEAM_STREAMS_TOTAL = 2000;
+let totalTeamStreams = 0;
 function broadcastTeamMessage(businessId: string, msg: TeamMessage): void {
   const subs = teamEventSubscribers.get(businessId);
   if (!subs || subs.size === 0) return;
@@ -1668,7 +1693,7 @@ function broadcastTeamMessage(businessId: string, msg: TeamMessage): void {
     try {
       sub.write(payload);
     } catch {
-      subs.delete(sub);
+      if (subs.delete(sub)) totalTeamStreams = Math.max(0, totalTeamStreams - 1);
     }
   }
 }
@@ -1686,6 +1711,11 @@ app.get('/api/business/:id/team-events', (req: Request, res: Response) => {
   if (hasMembers && !teamMemberFor(business, email)) {
     return res.status(403).json({ error: 'Only people on this team can follow the team chat live.' });
   }
+  const existingSubs = teamEventSubscribers.get(business.id);
+  if ((existingSubs?.size || 0) >= MAX_TEAM_STREAMS_PER_BUSINESS || totalTeamStreams >= MAX_TEAM_STREAMS_TOTAL) {
+    // The client's 30-second safety-net poll still delivers messages.
+    return res.status(429).json({ error: 'Too many live team-chat connections right now.' });
+  }
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -1699,6 +1729,7 @@ app.get('/api/business/:id/team-events', (req: Request, res: Response) => {
     teamEventSubscribers.set(business.id, subs);
   }
   subs.add(res);
+  totalTeamStreams++;
   const heartbeat = setInterval(() => {
     try {
       res.write(': heartbeat\n\n');
@@ -1708,8 +1739,8 @@ app.get('/api/business/:id/team-events', (req: Request, res: Response) => {
   }, 25000);
   req.on('close', () => {
     clearInterval(heartbeat);
-    subs.delete(res);
-    if (subs.size === 0) teamEventSubscribers.delete(business.id);
+    if (subs.delete(res)) totalTeamStreams = Math.max(0, totalTeamStreams - 1);
+    if (subs.size === 0 && teamEventSubscribers.get(business.id) === subs) teamEventSubscribers.delete(business.id);
   });
 });
 
