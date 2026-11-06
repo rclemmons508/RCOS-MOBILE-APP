@@ -21,6 +21,7 @@ import {
 } from '../types';
 import { teamService } from '../services/teamService';
 import { apiFetch } from '../lib/api';
+import { withBusinessId, filterToBusiness } from '../lib/businessScope';
 import { haptic } from '../utils/haptics';
 
 /**
@@ -223,9 +224,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<VoicemailRecord[]>('/api/phone/voicemails')
+    // Scoped to this business; records naming another business are dropped.
+    apiFetch<VoicemailRecord[]>(withBusinessId('/api/phone/voicemails', businessId))
       .then((data) => {
-        if (!cancelled && Array.isArray(data)) setVoicemails(data);
+        if (!cancelled && Array.isArray(data)) setVoicemails(filterToBusiness(data, businessId));
       })
       .catch(() => {
         // Voicemails stay out of the list; requests still show. Never faked.
@@ -233,7 +235,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [businessId]);
 
   const needsRows = useMemo<InboxRow[]>(() => {
     const rows: { row: InboxRow; time: number }[] = [];

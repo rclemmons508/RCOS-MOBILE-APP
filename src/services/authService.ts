@@ -9,9 +9,14 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  updateProfile,
+  type User as FirebaseUser,
 } from 'firebase/auth';
 import { setCachedAccessToken } from '../lib/gmail';
 import { Capacitor } from '@capacitor/core';
+import { createPasswordHash, checkPassword } from './passwordHash';
 
 const STORAGE_KEY_SESSION = 'rcos_active_session';
 const STORAGE_KEY_USERS = 'rcos_registered_users';
@@ -40,6 +45,14 @@ interface StoredSession extends User {
  */
 const FIREBASE_RESET_SENT_PREFIX = 'rcos_firebase_reset_sent:';
 
+/** Firebase codes meaning "these credentials are not valid" (enumeration-safe). */
+const INVALID_CREDENTIAL_CODES = new Set([
+  'auth/user-not-found',
+  'auth/wrong-password',
+  'auth/invalid-credential',
+  'auth/invalid-login-credentials',
+]);
+
 function firebaseResetAlreadySent(email: string): boolean {
   try {
     return localStorage.getItem(`${FIREBASE_RESET_SENT_PREFIX}${email.toLowerCase()}`) === '1';
@@ -54,37 +67,12 @@ function markFirebaseResetSent(email: string): void {
   } catch { /* storage unavailable — the email may be sent again next login */ }
 }
 
-/**
- * SHA-256 hex digest of `salt:password`. Only the hash is ever stored —
- * the password itself is never written to disk. Used to check the typed
- * password at login and before sensitive actions (e.g. Delete Account).
- */
-async function hashPassword(password: string, salt: string): Promise<string> {
-  // WebCrypto is unavailable on plain-HTTP pages (not a secure context).
-  // Fall back to a simple deterministic hash so password checks still work
-  // there instead of crashing login — weaker, but far better than no check.
-  if (!crypto?.subtle) {
-    let h1 = 0xdeadbeef;
-    let h2 = 0x41c6ce57;
-    const input = `${salt}:${password}`;
-    for (let i = 0; i < input.length; i++) {
-      const ch = input.charCodeAt(i);
-      h1 = Math.imul(h1 ^ ch, 2654435761);
-      h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    return ((h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0'));
-  }
-  const data = new TextEncoder().encode(`${salt}:${password}`);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function makeSalt(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+/** Remove credential fields from a user object (sessions and returned users never carry them). */
+function withoutCredentials<T extends Partial<User>>(user: T): T {
+  const { passwordHash: _h, passwordSalt: _s, ...rest } = user;
+  void _h;
+  void _s;
+  return rest as T;
 }
 
 export const SEED_USERS: User[] = [];
@@ -159,7 +147,7 @@ class AuthService {
           void _createdAt;
           void _lastActiveAt;
           return {
-            ...user,
+            ...withoutCredentials(user),
             preferences: prefs
           };
         }
@@ -187,7 +175,7 @@ class AuthService {
           createdAt = prev.sessionCreatedAt;
         }
       } catch {}
-      const stored: StoredSession = { ...user, sessionCreatedAt: createdAt, sessionLastActiveAt: now };
+      const stored: StoredSession = { ...withoutCredentials(user), sessionCreatedAt: createdAt, sessionLastActiveAt: now };
       localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(stored));
       localStorage.setItem('rcos_auth_user', JSON.stringify({ email: user.email, displayName: user.fullName, uid: user.id }));
       // Also register or update in users list
@@ -210,7 +198,8 @@ class AuthService {
   }
 
   /**
-   * Synchronously clear active session
+   * Synchronously clear active session (the Firebase sign-out it starts
+   * runs in the background).
    */
   clearActiveSession(): void {
     try {
@@ -218,169 +207,218 @@ class AuthService {
       localStorage.removeItem('rcos_auth_user');
       setCachedAccessToken(null);
     } catch {}
-  }
-
-  /**
-   * Mirror the just-verified local login into Firebase Auth, so the phone
-   * app holds a real Firebase session (and apiFetch can attach its ID
-   * token). The local login NEVER depends on this: every Firebase
-   * failure is swallowed here with a warning and local login proceeds,
-   * because the login gate is off and the app must keep working.
-   *
-   * How each case is handled (password is already verified locally
-   * before this runs):
-   * - Already signed into Firebase as this user → nothing to do.
-   * - Signed into Firebase as someone else (e.g. switch-user) → sign
-   *   out first, then sign in as this user.
-   * - Sign-in fails with user-not-found / invalid-credential → legacy
-   *   account (predates Firebase): create the Firebase user with the
-   *   JUST-VERIFIED password, then the session exists. With email
-   *   enumeration protection on, Firebase reports a missing account as
-   *   invalid-credential, so both codes take this path and the create
-   *   call tells them apart.
-   * - Create fails with email-already-in-use → the Firebase password
-   *   drifted (it was changed without the local record): send ONE
-   *   password-reset email for this account (tracked in localStorage so
-   *   it never spams) and proceed with local login. Next login, after
-   *   the reset, works.
-   * - Sign-in fails with wrong-password (older Firebase behavior) →
-   *   same drift recovery as above.
-   * - Network / rate-limit / any other Firebase error → warn and
-   *   proceed with local login. The session heals on the next login.
-   */
-  private async syncFirebaseSession(email: string, password?: string): Promise<void> {
-    if (!isFirebaseConfigured) return;
-    if (!password) return; // No password (e.g. PIN/biometric login) — nothing to mirror.
-    const cleanEmail = (email || '').trim().toLowerCase();
-    try {
-      const current = auth.currentUser;
-      if (current?.email?.toLowerCase() === cleanEmail) {
-        return; // Already signed into Firebase as this user.
-      }
-      if (current) {
-        // Signed in as someone else (switch-user) — sign out first.
-        await signOut(auth).catch(() => {});
-      }
-      try {
-        await signInWithEmailAndPassword(auth, cleanEmail, password);
-        return;
-      } catch (signInErr: any) {
-        const code = String(signInErr?.code || '');
-        if (code === 'auth/wrong-password') {
-          // Drift (older Firebase behavior): Firebase password differs.
-          await this.sendDriftResetEmail(cleanEmail);
-          return;
-        }
-        if (code !== 'auth/user-not-found' && code !== 'auth/invalid-credential') {
-          // Network, rate-limit, or anything else — local login proceeds.
-          console.warn('[AuthService] Firebase sign-in skipped (local login continues):', code || signInErr?.message);
-          return;
-        }
-        // user-not-found / invalid-credential: legacy account (or
-        // enumeration protection hiding a missing account). Create it
-        // with the just-verified password.
-        try {
-          await createUserWithEmailAndPassword(auth, cleanEmail, password);
-          return;
-        } catch (createErr: any) {
-          const createCode = String(createErr?.code || '');
-          if (createCode === 'auth/email-already-in-use') {
-            // The Firebase account exists but its password differs —
-            // drift. One reset email, then local login proceeds.
-            await this.sendDriftResetEmail(cleanEmail);
-            return;
-          }
-          console.warn('[AuthService] Firebase account creation skipped (local login continues):', createCode || createErr?.message);
-          return;
-        }
-      }
-    } catch (e: any) {
-      console.warn('[AuthService] Firebase session sync skipped (local login continues):', e?.message || e);
-    }
+    // Always end the Firebase session too (audit High #4): otherwise
+    // apiFetch keeps attaching the previous user's ID token after an
+    // expired / cleared local session.
+    void signOut(auth).catch(() => {});
   }
 
   /**
    * Drift recovery: the Firebase password no longer matches the local
    * one. Send ONE password-reset email for this account — tracked in
-   * localStorage so it never spams on every login. The user resets via
-   * email; the next login works.
+   * localStorage so it never spams on every login.
    */
-  private async sendDriftResetEmail(email: string): Promise<void> {
-    if (firebaseResetAlreadySent(email)) return;
+  private async sendDriftResetEmail(email: string, force = false): Promise<void> {
+    if (!force && firebaseResetAlreadySent(email)) return;
     try {
       await sendPasswordResetEmail(auth, email);
       markFirebaseResetSent(email);
-      console.warn('[AuthService] Firebase password differs from local password — a password-reset email was sent once for this account.');
+      console.warn('[AuthService] Firebase password differs from the old local password — a password-reset email was sent once for this account.');
     } catch (e: any) {
       console.warn('[AuthService] Could not send Firebase password-reset email:', e?.message || e);
+    }
+  }
+
+  /** Sign Firebase out when it holds a different user than `email`. */
+  private async signOutOtherFirebaseUser(email: string): Promise<void> {
+    const current = auth.currentUser;
+    if (current && (current.email || '').toLowerCase() !== email) {
+      await signOut(auth).catch(() => {});
     }
   }
 
   /**
    * Sign In with Email and Password.
    *
-   * The password IS checked (it used to be ignored) and unknown emails do
-   * NOT auto-create an account. Both old behaviors meant a deleted account
-   * came straight back the next time its email was typed — that is the
-   * bug this fixes.
+   * When Firebase is configured, FIREBASE AUTH IS THE AUTHORITY:
+   * signInWithEmailAndPassword decides who you are. The device's local
+   * user list is only a profile cache (company id, preferences) and can
+   * never sign anyone in on its own, except:
+   * - Legacy migration: a local-only account that predates Firebase
+   *   (never linked) whose password verifies against its local hash is
+   *   created in Firebase with that password, then signed in. If Firebase
+   *   already has that email (auth/email-already-in-use), Firebase wins:
+   *   the local hash is discarded, one reset email is sent, and the login
+   *   is refused until the Firebase password is used.
+   * - Offline fallback: when Firebase cannot be reached, a never-linked
+   *   local-only account may sign in with its local hash. Accounts linked
+   *   to Firebase never fall back to the local store.
    *
-   * A password is required on EVERY login path (audit H3): a blank or
-   * missing password never authenticates. Accounts with no stored hash
-   * (e.g. created by Google sign-in, audit B4) do NOT fall through to
-   * authenticated, and do NOT adopt the typed password (audit B3: a typo
-   * would permanently become the password). A hashless account must sign
-   * in with Google, or set a password explicitly via setLocalPassword()
-   * first — there is no silent migration any more.
+   * When Firebase is NOT configured the local store is the only login,
+   * as before (password required, hashless accounts refused).
    */
   async loginWithEmail(email: string, password?: string): Promise<User> {
     const cleanEmail = (email || '').trim().toLowerCase();
-    const users = this.getRegisteredUsers();
-    const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
-
-    if (!existing) {
-      throw new Error('No account found for that email. Please check the email or create a new account.');
-    }
-
+    if (!cleanEmail) throw new Error('Please enter an email address.');
     // Blank / missing password never authenticates — on any account.
     if (!password || !password.trim()) {
       throw new Error('Please enter your password.');
     }
+    const existing = this.getRegisteredUsers().find(u => u.email.toLowerCase() === cleanEmail);
 
-    if (existing.passwordHash) {
-      if ((await hashPassword(password, existing.passwordSalt || '')) !== existing.passwordHash) {
-        throw new Error('Wrong password. Please try again.');
+    if (!isFirebaseConfigured) {
+      return this.loginWithLocalStore(existing, password);
+    }
+
+    await this.signOutOtherFirebaseUser(cleanEmail);
+    let firebaseUser: FirebaseUser | null = null;
+    try {
+      firebaseUser = (await signInWithEmailAndPassword(auth, cleanEmail, password)).user;
+    } catch (err: any) {
+      const code = String(err?.code || '');
+      if (code === 'auth/network-request-failed') {
+        // Offline: only a never-linked, local-only account may use its local hash.
+        if (existing && !existing.firebaseLinked && existing.passwordHash) {
+          return this.loginWithLocalStore(existing, password);
+        }
+        throw new Error("Can't reach the sign-in service. Check your internet connection and try again.");
       }
-    } else {
+      if (code === 'auth/too-many-requests') {
+        throw new Error('Too many sign-in attempts. Please wait a few minutes and try again.');
+      }
+      if (code === 'auth/user-disabled') {
+        throw new Error('This account has been disabled. Contact your company owner.');
+      }
+      if (code === 'auth/invalid-email') {
+        throw new Error('Please enter a valid email address.');
+      }
+      if (!INVALID_CREDENTIAL_CODES.has(code)) {
+        console.warn('[AuthService] Firebase sign-in failed:', code || err?.message);
+        throw new Error('Sign-in failed. Please try again.');
+      }
+      // Firebase rejected the credentials. The only other way in is the
+      // one-time migration of a legacy local-only account.
+      const migrated = await this.migrateLegacyLocalAccount(existing, cleanEmail, password);
+      if (migrated === 'local-only') {
+        return this.finishLocalLogin(existing as User);
+      }
+      firebaseUser = migrated;
+    }
+    return this.finishFirebaseLogin(firebaseUser, existing);
+  }
+
+  /**
+   * One-time migration of an account that only ever lived in this
+   * device's local store. Returns the new Firebase user, or 'local-only'
+   * when the local password verified but Firebase could not take the
+   * account right now (offline / provider error) — the local login then
+   * proceeds and migration retries on the next login. Throws for a wrong
+   * password or when Firebase already owns the email.
+   */
+  private async migrateLegacyLocalAccount(
+    existing: User | undefined,
+    email: string,
+    password: string
+  ): Promise<FirebaseUser | 'local-only'> {
+    const wrong = new Error('Wrong email or password. Please try again.');
+    if (!existing) throw wrong;
+    if (existing.firebaseLinked) throw wrong;
+    if (!existing.passwordHash) {
+      throw new Error('Wrong email or password. If you created this account with Google, please sign in with Google.');
+    }
+    if (!(await this.verifyLocalHash(existing, password))) throw wrong;
+    try {
+      return (await createUserWithEmailAndPassword(auth, email, password)).user;
+    } catch (err: any) {
+      const code = String(err?.code || '');
+      if (code === 'auth/email-already-in-use') {
+        // Firebase already has this email with a different password.
+        // Firebase is the authority: the local hash is no longer trusted.
+        this.clearLocalCredentials(email);
+        this.upsertUser({ ...withoutCredentials(existing), firebaseLinked: true });
+        // Forced: this path runs once per account (the record is now linked).
+        await this.sendDriftResetEmail(email, true);
+        throw new Error(
+          'This account\'s password was changed on another device. Sign in with your current password, ' +
+          `or use the password-reset email sent to ${email}.`
+        );
+      }
+      console.warn('[AuthService] Legacy account not migrated to Firebase yet (local login continues):', code || err?.message);
+      return 'local-only';
+    }
+  }
+
+  /** Local-store login (Firebase not configured, or offline fallback). */
+  private async loginWithLocalStore(existing: User | undefined, password: string): Promise<User> {
+    if (!existing) {
+      throw new Error('No account found for that email. Please check the email or create a new account.');
+    }
+    if (!existing.passwordHash) {
       // Hashless account: refuse, do not adopt, do not authenticate.
       throw new Error(
         'This account has no password yet (it was created with Google sign-in). ' +
         'Please sign in with Google, or set a password for this account first.'
       );
     }
+    if (!(await this.verifyLocalHash(existing, password))) {
+      throw new Error('Wrong password. Please try again.');
+    }
+    return this.finishLocalLogin(existing);
+  }
 
+  private finishLocalLogin(existing: User): User {
     const loggedIn: User = {
-      ...existing,
+      ...withoutCredentials(existing),
       authenticated: true,
       lastLogin: 'Just now',
       preferences: userPreferencesService.getUserPreferences(existing.email)
     };
     this.upsertUser(loggedIn);
     this.saveActiveSession(loggedIn);
-    // Mirror into Firebase with the just-verified password (best effort).
-    await this.syncFirebaseSession(cleanEmail, password);
+    return loggedIn;
+  }
+
+  /**
+   * Firebase verified this user. The local record becomes a profile cache
+   * only: it is marked linked and its local hash is dropped, so it can
+   * never be used to sign in without Firebase again. A Firebase user with
+   * no local record (e.g. a new phone) gets a fresh profile record.
+   */
+  private finishFirebaseLogin(firebaseUser: FirebaseUser, existing: User | undefined): User {
+    const email = (firebaseUser.email || '').toLowerCase();
+    const base: User = existing
+      ? withoutCredentials(existing)
+      : {
+          id: firebaseUser.uid,
+          email,
+          fullName: firebaseUser.displayName || email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          role: 'Operations Lead',
+          avatar: firebaseUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(email)}`,
+          organization: '',
+          authenticated: true,
+        };
+    const loggedIn: User = {
+      ...base,
+      email: base.email || email,
+      firebaseLinked: true,
+      authenticated: true,
+      lastLogin: 'Just now',
+      preferences: userPreferencesService.getUserPreferences(base.email || email)
+    };
+    this.upsertUser(loggedIn);
+    this.clearLocalCredentials(loggedIn.email);
+    this.saveActiveSession(loggedIn);
     return loggedIn;
   }
 
   /**
    * Explicit set-password step for hashless accounts (audit B4 / H3).
    *
-   * Only works when the account has NO stored hash (e.g. created by
-   * Google sign-in). It sets the salted hash and does NOT log the user
-   * in — they sign in with the new password afterwards. It refuses when
-   * a hash already exists (changing an existing password needs a real
-   * password-change flow) and when the new password is too short. This
-   * is the only way a hashless account gains a local password — login
-   * itself never adopts one.
+   * Local-store only: when Firebase is configured, passwords belong to
+   * Firebase and this refuses (it would otherwise let anyone holding the
+   * phone give a Google-created account a password and sign in as it).
+   * Without Firebase it only works when the account has NO stored hash,
+   * sets the salted hash, and does NOT log the user in.
    */
   async setLocalPassword(email: string, newPassword: string): Promise<void> {
     const cleanEmail = (email || '').trim().toLowerCase();
@@ -392,30 +430,41 @@ class AuthService {
     if (idx < 0) {
       throw new Error('No account found for that email.');
     }
+    if (isFirebaseConfigured || users[idx].firebaseLinked) {
+      throw new Error('This account\'s password is managed by your sign-in account. Please sign in with Google or with your existing password.');
+    }
     if (users[idx].passwordHash) {
       throw new Error('This account already has a password set.');
     }
-    const salt = makeSalt();
-    users[idx] = {
-      ...users[idx],
-      passwordHash: await hashPassword(newPassword, salt),
-      passwordSalt: salt,
-    };
-    this.saveRegisteredUsers(users);
+    const { hash, salt } = await createPasswordHash(newPassword);
+    this.writeLocalCredentials(cleanEmail, hash, salt);
   }
 
   /**
    * Strict password check for sensitive actions (e.g. Delete Account).
-   * True only when the account has a stored password hash and it matches.
-   * Legacy accounts with no hash return false — they must log in with
-   * their password once first (which migrates them), then retry.
+   * Firebase-backed accounts are re-authenticated with Firebase; local-only
+   * accounts are checked against their local hash (legacy hashes upgrade).
    */
   async verifyPassword(email: string, password: string): Promise<boolean> {
     const cleanEmail = (email || '').trim().toLowerCase();
+    if (!password) return false;
     const user = this.getRegisteredUsers().find(u => u.email.toLowerCase() === cleanEmail);
+    if (isFirebaseConfigured && (user?.firebaseLinked || !user?.passwordHash)) {
+      try {
+        const current = auth.currentUser;
+        if (current && (current.email || '').toLowerCase() === cleanEmail) {
+          await reauthenticateWithCredential(current, EmailAuthProvider.credential(cleanEmail, password));
+        } else {
+          await signInWithEmailAndPassword(auth, cleanEmail, password);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
     if (!user?.passwordHash) return false;
     try {
-      return (await hashPassword(password, user.passwordSalt || '')) === user.passwordHash;
+      return await this.verifyLocalHash(user, password);
     } catch {
       return false;
     }
@@ -446,7 +495,7 @@ class AuthService {
     const users = this.getRegisteredUsers();
     const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
     if (idx < 0) return null;
-    const updated = { ...users[idx], ...patch };
+    const updated = { ...users[idx], ...withoutCredentials(patch) };
     users[idx] = updated;
     this.saveRegisteredUsers(users);
     try {
@@ -455,11 +504,17 @@ class AuthService {
         this.saveActiveSession(updated);
       }
     } catch { /* session already updated via the users list */ }
-    return updated;
+    return withoutCredentials(updated);
   }
 
   /**
-   * Register a new Operator account
+   * Register a new Operator account.
+   *
+   * Never creates or overwrites a login for an email that already exists
+   * locally or (when configured) in Firebase. With Firebase configured the
+   * account is created in Firebase Auth (createUserWithEmailAndPassword
+   * decides; auth/email-already-in-use is refused) and NO local password
+   * hash is stored. Without Firebase, a PBKDF2 local hash is stored.
    */
   async registerUser(data: {
     fullName: string;
@@ -475,6 +530,48 @@ class AuthService {
   }): Promise<User> {
     const cleanEmail = (data.email || '').trim().toLowerCase();
     if (!cleanEmail) throw new Error('Email is required.');
+    const exists = () => this.getRegisteredUsers().some(u => u.email.toLowerCase() === cleanEmail);
+    // Never register over an existing login (account takeover): the old
+    // code upserted, which replaced that account's password hash and
+    // signed the registrant in as its owner, with their cached company.
+    if (exists()) {
+      throw new Error('An account with this email already exists. Please sign in instead.');
+    }
+    const password = data.password || '';
+    if (password.length < 6) {
+      throw new Error('Password must be at least 6 characters.');
+    }
+
+    // Firebase decides first, before anything is written on this device.
+    let firebaseUser: FirebaseUser | null = null;
+    let localCredentials: { hash: string; salt: string } | null = null;
+    if (isFirebaseConfigured) {
+      if (auth.currentUser) await signOut(auth).catch(() => {});
+      try {
+        firebaseUser = (await createUserWithEmailAndPassword(auth, cleanEmail, password)).user;
+      } catch (err: any) {
+        const code = String(err?.code || '');
+        if (code === 'auth/email-already-in-use') {
+          throw new Error('An account with this email already exists. Please sign in instead.');
+        }
+        if (code === 'auth/weak-password') throw new Error('That password is too weak. Use at least 6 characters.');
+        if (code === 'auth/invalid-email') throw new Error('Please enter a valid email address.');
+        if (code === 'auth/network-request-failed') {
+          throw new Error('You need an internet connection to create an account.');
+        }
+        console.warn('[AuthService] Firebase registration failed:', code || err?.message);
+        throw new Error('Could not create the account. Please try again.');
+      }
+      const displayName = data.fullName.trim();
+      if (displayName) await updateProfile(firebaseUser, { displayName }).catch(() => {});
+    } else {
+      // Store only a salted PBKDF2 hash of the password — never the password itself.
+      localCredentials = await createPasswordHash(password);
+    }
+    // Re-check right before writing (another flow may have created it meanwhile).
+    if (exists()) {
+      throw new Error('An account with this email already exists. Please sign in instead.');
+    }
 
     // The biometrics flag must never claim biometrics are on while the
     // master switch is off (audit M7): the switch wins over any caller
@@ -490,7 +587,7 @@ class AuthService {
     });
 
     const newUser: User = {
-      id: `usr_${Date.now()}`,
+      id: firebaseUser?.uid || `usr_${Date.now()}`,
       email: cleanEmail,
       fullName: data.fullName.trim() || cleanEmail.split('@')[0].toUpperCase(),
       role: data.role || 'Operations Lead',
@@ -500,7 +597,8 @@ class AuthService {
       authenticated: true,
       biometricsEnabled: biometricsOn,
       lastLogin: 'Just now',
-      preferences: savedPrefs
+      preferences: savedPrefs,
+      ...(firebaseUser ? { firebaseLinked: true } : {}),
     };
 
     // If user chose to enable biometrics during registration, enroll them.
@@ -515,23 +613,11 @@ class AuthService {
       ).catch(() => {});
     }
 
-    // Store only a salted hash of the password — never the password itself.
-    // Without this, login could never tell a right password from a wrong one.
-    if (data.password) {
-      const salt = makeSalt();
-      newUser.passwordHash = await hashPassword(data.password, salt);
-      newUser.passwordSalt = salt;
-    }
-
     this.upsertUser(newUser);
-    this.saveActiveSession(newUser);
-    // Mirror the new account into Firebase Auth (best effort): the phone
-    // app needs a Firebase session so its API calls can carry a token
-    // once the login gate turns on. A Firebase failure must never fail
-    // the local registration — the next login heals it.
-    if (data.password) {
-      await this.syncFirebaseSession(cleanEmail, data.password);
+    if (localCredentials) {
+      this.writeLocalCredentials(cleanEmail, localCredentials.hash, localCredentials.salt);
     }
+    this.saveActiveSession(newUser);
     return newUser;
   }
 
@@ -589,7 +675,11 @@ class AuthService {
         preferences: prefs
       };
 
+      // Google (via Firebase) verified this email: the local record becomes a
+      // profile cache only, and any old local password hash is dropped.
+      user.firebaseLinked = true;
       this.upsertUser(user);
+      this.clearLocalCredentials(email);
       this.saveActiveSession(user);
       return user;
     }
@@ -644,17 +734,73 @@ class AuthService {
     return matchedUser;
   }
 
+  /**
+   * Insert or update a user's PROFILE fields in the local users list.
+   * Credentials are never written here: any passwordHash/passwordSalt on
+   * `user` is ignored and an existing record keeps its own. Only
+   * writeLocalCredentials() / clearLocalCredentials() change them, so a
+   * profile save, session save, or sign-in can never overwrite another
+   * login's password.
+   */
   private upsertUser(user: User): void {
     try {
       const users = this.getRegisteredUsers();
+      const profile = withoutCredentials(user);
       const idx = users.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
       if (idx >= 0) {
-        users[idx] = { ...users[idx], ...user };
+        const { passwordHash, passwordSalt } = users[idx];
+        users[idx] = { ...users[idx], ...profile, passwordHash, passwordSalt };
+        if (!passwordHash) delete users[idx].passwordHash;
+        if (!passwordSalt) delete users[idx].passwordSalt;
       } else {
-        users.push(user);
+        users.push(profile);
       }
       this.saveRegisteredUsers(users);
     } catch {}
+  }
+
+  /** Store a (PBKDF2) local hash for an existing record. */
+  private writeLocalCredentials(email: string, hash: string, salt: string): void {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const users = this.getRegisteredUsers();
+    const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    if (idx < 0) return;
+    users[idx] = { ...users[idx], passwordHash: hash, passwordSalt: salt };
+    this.saveRegisteredUsers(users);
+  }
+
+  /** Drop the local hash for a record (e.g. once Firebase owns the account). */
+  private clearLocalCredentials(email: string): void {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const users = this.getRegisteredUsers();
+    const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    if (idx < 0 || (!users[idx].passwordHash && !users[idx].passwordSalt)) return;
+    const next = { ...users[idx] };
+    delete next.passwordHash;
+    delete next.passwordSalt;
+    users[idx] = next;
+    this.saveRegisteredUsers(users);
+  }
+
+  /**
+   * Check a password against a record's local hash. Legacy hashes
+   * (single SHA-256 / 64-bit fallback) still verify, and on success are
+   * transparently re-hashed with PBKDF2 so existing users are never
+   * locked out and never stay on the weak format.
+   */
+  private async verifyLocalHash(record: User, password: string): Promise<boolean> {
+    if (!record.passwordHash) return false;
+    const result = await checkPassword(password, record.passwordHash, record.passwordSalt || '');
+    if (result === 'mismatch') return false;
+    if (result === 'ok-needs-upgrade') {
+      try {
+        const { hash, salt } = await createPasswordHash(password);
+        this.writeLocalCredentials(record.email, hash, salt);
+      } catch {
+        /* no WebCrypto here — keep the legacy hash; upgrade on a later login */
+      }
+    }
+    return true;
   }
 }
 

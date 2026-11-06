@@ -32,6 +32,7 @@ import { VoicemailsView } from '../phone/VoicemailsView';
 import { RealPhoneSetupModal } from '../phone/RealPhoneSetupModal';
 import { VoiceCallButton } from '../phone/VoiceCallButton';
 import { apiFetch } from '../../lib/api';
+import { withBusinessId, filterToBusiness } from '../../lib/businessScope';
 import { firestoreService } from '../../services/firestoreService';
 
 interface PhoneSystemTabProps {
@@ -176,18 +177,23 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   }, [businessId, currentUser?.businessId]);
 
   // Fetch voicemails & calls on mount + poll periodically for real PSTN calls
+  // Scoped to this business (?businessId=), and records naming another
+  // business are dropped client-side as well.
+  const scopedBusinessId = businessId || currentUser?.businessId || '';
   useEffect(() => {
     const fetchRealData = () => {
-      apiFetch<VoicemailRecord[]>('/api/phone/voicemails')
-        .then(data => {
+      apiFetch<VoicemailRecord[]>(withBusinessId('/api/phone/voicemails', scopedBusinessId))
+        .then(raw => {
+          const data = Array.isArray(raw) ? filterToBusiness(raw, scopedBusinessId) : raw;
           if (Array.isArray(data) && data.length > 0) {
             setVoicemails(data);
           }
         })
         .catch(() => {});
 
-      apiFetch<PhoneCall[]>('/api/phone/calls')
-        .then(data => {
+      apiFetch<PhoneCall[]>(withBusinessId('/api/phone/calls', scopedBusinessId))
+        .then(raw => {
+          const data = Array.isArray(raw) ? filterToBusiness(raw, scopedBusinessId) : raw;
           if (Array.isArray(data) && data.length > 0) {
             setCallsList(prev => {
               // Combine and dedup
@@ -206,7 +212,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     fetchRealData();
     const interval = setInterval(fetchRealData, 6000);
     return () => clearInterval(interval);
-  }, []);
+  }, [scopedBusinessId]);
 
   // Sync propCalls if updated from outside
   useEffect(() => {
@@ -346,22 +352,22 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     setCallsList(prev => [finalCall, ...prev]);
 
     // Persist to server
-    apiFetch('/api/phone/calls', {
+    apiFetch(withBusinessId('/api/phone/calls', scopedBusinessId), {
       method: 'POST',
       body: JSON.stringify(finalCall)
     }).catch(() => {});
 
     // Sync voicemails
-    apiFetch<VoicemailRecord[]>('/api/phone/voicemails')
+    apiFetch<VoicemailRecord[]>(withBusinessId('/api/phone/voicemails', scopedBusinessId))
       .then(data => {
-        if (Array.isArray(data)) setVoicemails(data);
+        if (Array.isArray(data)) setVoicemails(filterToBusiness(data, scopedBusinessId));
       })
       .catch(() => {});
   };
 
   const handleDeleteVoicemail = async (id: string) => {
     try {
-      await apiFetch(`/api/phone/voicemails/${id}`, { method: 'DELETE' });
+      await apiFetch(withBusinessId(`/api/phone/voicemails/${encodeURIComponent(id)}`, scopedBusinessId), { method: 'DELETE' });
     } catch {}
     setVoicemails(prev => prev.filter(v => v.id !== id));
   };
