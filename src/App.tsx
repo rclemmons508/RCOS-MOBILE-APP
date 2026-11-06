@@ -1829,6 +1829,19 @@ export default function App() {
     });
   };
 
+  // Field-level business save (audit #18): send ONLY the changed fields
+  // to the server PUT (an allow-listed partial update) and to Firestore
+  // (updateDoc). Saving the whole business record made the last writer
+  // overwrite every teammate's concurrent edits to unrelated fields.
+  const saveBusinessFields = async (businessId: string, patch: Partial<BusinessAccount>) => {
+    if (!businessId) return;
+    await apiFetch(`/api/business/${businessId}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch)
+    }).catch(() => null);
+    await firestoreService.updateBusinessFields(businessId, patch).catch(() => null);
+  };
+
   // Settings → My Profile save: business record (contact info + picture),
   // login user record (name + avatar shown in headers), and the Firebase
   // display name when a Firebase user is signed in. The login email itself
@@ -1871,11 +1884,10 @@ export default function App() {
       setBusinessAccount(updatedBiz);
       setCachedBusiness(currentUser, updatedBiz);
       if (updatedBiz.id) {
-        await apiFetch(`/api/business/${updatedBiz.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(updatedBiz)
-        }).catch(() => null);
-        await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+        // Only the roster changed. (Server PUT is owner-only while the
+        // login gate is on; a member's own entry then syncs on the next
+        // owner save — the local copy above is already updated.)
+        await saveBusinessFields(updatedBiz.id, { members: updatedMembers });
       }
     }
     if (auth.currentUser) {
@@ -1913,11 +1925,7 @@ export default function App() {
     };
     setBusinessAccount(updatedBiz);
     setCachedBusiness(currentUser, updatedBiz);
-    await apiFetch(`/api/business/${updatedBiz.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updatedBiz)
-    }).catch(() => null);
-    await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+    await saveBusinessFields(updatedBiz.id, { contactPhone: c.contactPhone, contactEmail: c.contactEmail });
   };
 
   // Settings → Teach Your Team save: the owner's business knowledge lives
@@ -1932,11 +1940,7 @@ export default function App() {
     };
     setBusinessAccount(updatedBiz);
     setCachedBusiness(currentUser, updatedBiz);
-    await apiFetch(`/api/business/${updatedBiz.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updatedBiz)
-    }).catch(() => null);
-    await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+    await saveBusinessFields(updatedBiz.id, { businessKnowledge: knowledge });
   };
 
   const handleLogout = async () => {
@@ -2426,11 +2430,7 @@ export default function App() {
             setBusinessAccount(updatedBiz);
             setCachedBusiness(currentUser, updatedBiz);
             if (updatedBiz.id) {
-              apiFetch(`/api/business/${updatedBiz.id}`, {
-                method: 'PUT',
-                body: JSON.stringify(updatedBiz)
-              }).catch(() => null);
-              firestoreService.saveBusiness(updatedBiz).catch(() => null);
+              void saveBusinessFields(updatedBiz.id, { services: updatedServices });
             }
             sendPushNotification({
               type: 'system_alert',

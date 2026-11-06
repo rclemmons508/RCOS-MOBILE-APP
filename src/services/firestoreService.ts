@@ -4,6 +4,7 @@ import {
   getDoc,
   getDocs, 
   setDoc, 
+  updateDoc,
   deleteDoc, 
   onSnapshot, 
   query, 
@@ -57,6 +58,28 @@ const normalizeDocValue = (value: unknown): unknown => {
 
 const normalizeDoc = <T,>(data: Record<string, unknown>): T => normalizeDocValue(data) as T;
 
+/**
+ * Denormalized `memberEmails` map the Firestore rules check membership
+ * against ({ "<lowercase email>": "owner" | "member" }): rules cannot
+ * search the `members` list of maps. Always derived from the roster.
+ */
+export function deriveMemberEmails(
+  members: BusinessAccount['members'] | undefined
+): Record<string, 'owner' | 'member'> {
+  const memberEmails: Record<string, 'owner' | 'member'> = {};
+  for (const m of members || []) {
+    const email = String(m?.email || '').toLowerCase().trim();
+    if (!email) continue;
+    // An email listed twice keeps its strongest role.
+    if (memberEmails[email] === 'owner') continue;
+    memberEmails[email] = m?.role === 'owner' ? 'owner' : 'member';
+  }
+  return memberEmails;
+}
+
+/** Fields a field-level business update may never touch from the client. */
+const PROTECTED_BUSINESS_FIELDS = new Set(['id', 'ownerId', 'createdAt', 'memberEmails']);
+
 export const firestoreService = {
   // ==================== BUSINESS ====================
   async getBusiness(businessId: string): Promise<BusinessAccount | null> {
@@ -92,6 +115,31 @@ export const firestoreService = {
       await setDoc(docRef, payload, { merge: true });
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `businesses/${business.id}`);
+    }
+  },
+
+  /**
+   * Field-level update of an existing business doc (updateDoc): only the
+   * given fields change, so concurrent edits by teammates to OTHER fields
+   * are never overwritten by a stale full-record save. When the roster
+   * changes, its memberEmails mirror is updated in the same write.
+   */
+  async updateBusinessFields(businessId: string, patch: Partial<BusinessAccount>): Promise<void> {
+    if (!businessId) return;
+    const docRef = doc(db, 'businesses', businessId);
+    const payload: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined || PROTECTED_BUSINESS_FIELDS.has(k)) continue;
+      payload[k] = v;
+    }
+    if (Array.isArray(patch.members)) {
+      payload.memberEmails = deriveMemberEmails(patch.members);
+    }
+    payload.updatedAt = new Date().toISOString();
+    try {
+      await updateDoc(docRef, payload);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `businesses/${businessId}`);
     }
   },
 
