@@ -40,6 +40,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
 
   // Google sign-in cannot run real OAuth inside the native WebView, so the
@@ -123,6 +125,30 @@ const [joinPassword, setJoinPassword] = useState('');
     }
   };
 
+  // Forgot password: Firebase sends the reset link to the typed email.
+  const handleForgotPassword = async () => {
+    setErrorMsg(null);
+    setInfoMsg(null);
+    const email = loginEmail.trim();
+    if (!email) {
+      setErrorMsg('Type your email address above, then tap "Forgot password?" to get a reset link.');
+      return;
+    }
+    setIsSendingReset(true);
+    try {
+      await authService.requestPasswordReset(email);
+      setInfoMsg(
+        `If an account exists for ${email}, we've sent a password-reset link to it. ` +
+        'It can take a few minutes. Check your Spam or Junk folder if you don\'t see it, ' +
+        'then come back here and sign in with your new password.'
+      );
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not send the password-reset email. Please try again.');
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
   // Email Sign In Handler
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,6 +158,7 @@ const [joinPassword, setJoinPassword] = useState('');
     }
     setIsLoading(true);
     setErrorMsg(null);
+    setInfoMsg(null);
     try {
       const user = await authService.loginWithEmail(loginEmail, loginPassword);
       await haptic.success();
@@ -288,9 +315,17 @@ const [joinPassword, setJoinPassword] = useState('');
 
         {/* Global Error Banner */}
         {errorMsg && (
-          <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-mono flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-            <span className="truncate">{errorMsg}</span>
+          <div role="alert" className="p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-mono flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+            <span className="break-words">{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Info Banner (e.g. password-reset email sent) */}
+        {infoMsg && (
+          <div role="status" className="p-3 rounded-2xl bg-lime-500/10 border border-lime-500/30 text-lime-200 text-xs font-mono flex items-start gap-2">
+            <Mail className="w-4 h-4 shrink-0 text-lime-400 mt-0.5" />
+            <span className="break-words">{infoMsg}</span>
           </div>
         )}
 
@@ -392,6 +427,7 @@ const [joinPassword, setJoinPassword] = useState('');
               onClick={() => {
                 setTab('signin');
                 setErrorMsg(null);
+                setInfoMsg(null);
               }}
               className={`py-2 rounded-xl transition cursor-pointer ${
                 tab === 'signin'
@@ -406,6 +442,7 @@ const [joinPassword, setJoinPassword] = useState('');
               onClick={() => {
                 setTab('register');
                 setErrorMsg(null);
+                setInfoMsg(null);
               }}
               className={`py-2 rounded-xl transition cursor-pointer ${
                 tab === 'register'
@@ -420,6 +457,7 @@ const [joinPassword, setJoinPassword] = useState('');
               onClick={() => {
                 setTab('join');
                 setErrorMsg(null);
+                setInfoMsg(null);
               }}
               className={`py-2 rounded-xl transition cursor-pointer ${
                 tab === 'join'
@@ -488,10 +526,11 @@ const [joinPassword, setJoinPassword] = useState('');
                 </label>
                 <button
                   type="button"
-                  onClick={() => setErrorMsg('Enter your email and password to sign in, or click Register Account to create one.')}
-                  className="text-zinc-400 hover:text-white cursor-pointer text-[10px]"
+                  onClick={handleForgotPassword}
+                  disabled={isSendingReset}
+                  className="text-zinc-400 hover:text-white cursor-pointer text-[11px] underline-offset-2 hover:underline disabled:opacity-60"
                 >
-                  Forgot password?
+                  {isSendingReset ? 'Sending reset link…' : 'Forgot password?'}
                 </button>
               </div>
 
