@@ -23,15 +23,36 @@ const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'rcos_db.json');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* exists */ }
 
+// Calls and voicemails are owned by one business (audit #6). The shared
+// PhoneCall / VoicemailRecord types live in src/ (client-owned), so the
+// server-side owner field is added here. Legacy records may lack it.
+export type ScopedPhoneCall = PhoneCall & { businessId?: string };
+export type ScopedVoicemail = VoicemailRecord & { businessId?: string };
+
+// The business that owns records arriving with no business of their own
+// (Twilio PSTN webhooks hit one global number): TWILIO_BUSINESS_ID when
+// set, else the only business on a single-tenant server, else undefined
+// (unattributed — hidden from every tenant once the login gate is on).
+export function defaultPhoneBusinessId(): string | undefined {
+  const fromEnv = (process.env.TWILIO_BUSINESS_ID || '').trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const all = ensureDb().businesses;
+    return all.length === 1 ? all[0].id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 interface DatabaseSchema {
   businesses: BusinessAccount[];
   requests: CustomerRequest[];
   actions: ActionRecord[];
   chatMessages: ChatMessage[];
   jobPacks: JobPack[];
-  voicemails?: VoicemailRecord[];
+  voicemails?: ScopedVoicemail[];
   telephonyConfig?: TelephonyConfig;
-  calls?: PhoneCall[];
+  calls?: ScopedPhoneCall[];
   agentMessages?: AgentInboxMessage[];
   teamMessages?: TeamMessage[];
   teamInvites?: TeamInvite[];
@@ -244,9 +265,9 @@ export const db = {
    * Delete one or more businesses and ALL of their scoped records:
    * customer requests, actions (quotes/invoices/approvals), chat messages,
    * and agent inbox messages.
-   * Voicemails and calls carry no business id, so they are only removed
-   * when no businesses remain at all (then they could only have belonged
-   * to the deleted businesses). Shared seed job packs are never touched —
+   * Voicemails and calls owned by a deleted business are removed; legacy
+   * ones with no business id are only removed when no businesses remain
+   * at all (then they could only have belonged to the deleted businesses). Shared seed job packs are never touched —
    * they are starter templates, not user data.
    */
   deleteBusinessData(businessIds: string[]): { deletedBusinessIds: string[] } {
@@ -266,6 +287,8 @@ export const db = {
     if (data.teamInvites) {
       data.teamInvites = data.teamInvites.filter(i => !targets.has(i.businessId));
     }
+    if (data.voicemails) data.voicemails = data.voicemails.filter(v => !(v.businessId && targets.has(v.businessId)));
+    if (data.calls) data.calls = data.calls.filter(c => !(c.businessId && targets.has(c.businessId)));
     // Unattributed records: only safe to clear when nothing remains.
     if (data.businesses.length === 0) {
       data.voicemails = [];
@@ -384,24 +407,33 @@ export const db = {
   },
 
   // Voicemails & Transcribed Messages
-  getVoicemails(): VoicemailRecord[] {
+  getVoicemails(): ScopedVoicemail[] {
     const data = ensureDb();
     return (data.voicemails || []).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   },
 
-  saveVoicemail(vm: VoicemailRecord): VoicemailRecord {
+  saveVoicemail(vm: ScopedVoicemail): ScopedVoicemail {
     const data = ensureDb();
     if (!data.voicemails) data.voicemails = [];
     const idx = data.voicemails.findIndex(v => v.id === vm.id);
+    // Keep the owner: an update never changes or drops a record's business, and a new
+    // record with none is attributed to the phone line's business.
+    const businessId = (idx >= 0 ? data.voicemails[idx].businessId : undefined) || vm.businessId || defaultPhoneBusinessId();
+    const record: ScopedVoicemail = businessId ? { ...vm, businessId } : vm;
     if (idx >= 0) {
-      data.voicemails[idx] = vm;
+      data.voicemails[idx] = record;
     } else {
-      data.voicemails.unshift(vm);
+      data.voicemails.unshift(record);
     }
     saveDb(data);
-    return vm;
+    return record;
+  },
+
+  getVoicemail(id: string): ScopedVoicemail | undefined {
+    const data = ensureDb();
+    return (data.voicemails || []).find(v => v.id === id);
   },
 
   deleteVoicemail(id: string): boolean {
@@ -450,22 +482,29 @@ export const db = {
   },
 
   // Phone Calls
-  getCalls(): PhoneCall[] {
+  getCalls(): ScopedPhoneCall[] {
     const data = ensureDb();
     return data.calls || [];
   },
 
-  saveCall(call: PhoneCall): PhoneCall {
+  findCall(call: { id?: string; twilioCallSid?: string }): ScopedPhoneCall | undefined {
+    const data = ensureDb();
+    return (data.calls || []).find(c => (!!call.id && c.id === call.id) || (!!call.twilioCallSid && c.twilioCallSid === call.twilioCallSid));
+  },
+
+  saveCall(call: ScopedPhoneCall): ScopedPhoneCall {
     const data = ensureDb();
     if (!data.calls) data.calls = [];
     const idx = data.calls.findIndex(c => c.id === call.id || (call.twilioCallSid && c.twilioCallSid === call.twilioCallSid));
+    const businessId = (idx >= 0 ? data.calls[idx].businessId : undefined) || call.businessId || defaultPhoneBusinessId();
+    const record: ScopedPhoneCall = businessId ? { ...call, businessId } : call;
     if (idx >= 0) {
-      data.calls[idx] = { ...data.calls[idx], ...call };
+      data.calls[idx] = { ...data.calls[idx], ...record };
     } else {
-      data.calls.unshift(call);
+      data.calls.unshift(record);
     }
     saveDb(data);
-    return call;
+    return record;
   },
 
   // Proactive agent messages (the Agent Inbox)

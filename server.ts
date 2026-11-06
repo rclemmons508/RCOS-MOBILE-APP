@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'url';
-import { db } from './server/db';
+import { db, ScopedPhoneCall, ScopedVoicemail } from './server/db';
 import { RcosEngine } from './server/engine';
 import { ai, PRIMARY_MODEL, FAST_MODEL, PRO_MODEL, executeGeminiWithFallback, generateSpeechAudio } from './server/gemini';
 import { 
@@ -235,8 +235,7 @@ app.use('/api', (req: Request, res: Response, next) => {
   if (req.method === 'POST' && req.path === '/voice/routing-log') return next();
   // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
   if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
-    const secret = process.env.VOICE_AGENT_SECRET;
-    if (secret && req.headers['x-voice-secret'] === secret) return next();
+    if (voiceSecretMatches(req.headers['x-voice-secret'])) return next();
   }
   return requireAuth(req, res, next);
 });
@@ -349,8 +348,7 @@ app.use('/api/business/:id', (req: Request, res: Response, next) => {
   if (businessId === 'analyze-document') return next();
   if (req.method === 'POST' && req.path === '/requests') return next();
   if (req.method === 'POST' && req.path === '/agent-messages') {
-    const secret = process.env.VOICE_AGENT_SECRET;
-    if (secret && req.headers['x-voice-secret'] === secret) return next();
+    if (voiceSecretMatches(req.headers['x-voice-secret'])) return next();
   }
   const business = db.getBusiness(businessId);
   if (!business) return res.status(404).json({ error: 'Business not found' });
@@ -373,6 +371,85 @@ function callerBusinesses(req: Request): BusinessAccount[] {
   const caller = verifiedCaller(req);
   if (!caller) return [];
   return all.filter((b) => businessIsMember(b, caller));
+}
+
+// ---- Business scope for the phone / voice data routes (audit #6, #16) ----
+// /api/phone/calls, /api/phone/voicemails and /api/voice/routing-log are not
+// under /api/business/:id, so they scope themselves here. The client names
+// the business with ?businessId=<id> (or body.businessId on writes).
+//   - businessId given: the business must exist (404) and, gate ON, the
+//     verified caller must be on it (401/403). Only its records are used.
+//   - no businessId, gate ON: every business the caller is on.
+//   - no businessId, gate OFF: everything (today's behavior; with the
+//     gate off the API is open anyway — and in production it is now 503).
+// Legacy records with no businessId are shown only when the server holds
+// exactly one business and it is in scope (no other tenant can own them).
+type PhoneScope = { all: true } | { all: false; businessIds: string[] };
+function resolvePhoneScope(req: Request, res: Response, explicitId?: unknown): PhoneScope | null {
+  const raw = explicitId !== undefined ? explicitId : req.query.businessId;
+  const businessId = typeof raw === 'string' ? raw.trim() : '';
+  if (businessId) {
+    const business = db.getBusiness(businessId);
+    if (!business) {
+      res.status(404).json({ error: 'Business not found' });
+      return null;
+    }
+    if (isGateOn()) {
+      const caller = verifiedCaller(req);
+      if (!caller) {
+        res.status(401).json({ error: 'Please sign in to use this feature.' });
+        return null;
+      }
+      if (!businessIsMember(business, caller)) {
+        res.status(403).json({ error: 'You are not on this team.' });
+        return null;
+      }
+    }
+    return { all: false, businessIds: [businessId] };
+  }
+  if (!isGateOn()) return { all: true };
+  return { all: false, businessIds: callerBusinesses(req).map((b) => b.id) };
+}
+
+function phoneScopeFilter(scope: PhoneScope): (record: { businessId?: unknown }) => boolean {
+  if (scope.all) return () => true;
+  const ids = new Set(scope.businessIds);
+  const all = db.getAllBusinesses();
+  const sole = all.length === 1 ? all[0].id : null;
+  return (record) => {
+    const owner = typeof record?.businessId === 'string' && record.businessId ? record.businessId : '';
+    if (owner) return ids.has(owner);
+    return !!sole && ids.has(sole);
+  };
+}
+
+// The business a phone write (POST call / voicemail) belongs to.
+// Returns the id, undefined (gate OFF, none named: the db layer attributes
+// it to the phone line's business), or null after sending an error.
+function resolvePhoneWriteBusiness(req: Request, res: Response): { businessId: string | undefined; scope: PhoneScope } | null {
+  const named = typeof req.query.businessId === 'string' && req.query.businessId.trim()
+    ? req.query.businessId
+    : typeof req.body?.businessId === 'string' && req.body.businessId.trim()
+      ? req.body.businessId
+      : undefined;
+  if (named !== undefined) {
+    const scope = resolvePhoneScope(req, res, named);
+    if (!scope) return null;
+    return { businessId: (scope as { businessIds: string[] }).businessIds[0], scope };
+  }
+  if (!isGateOn()) return { businessId: undefined, scope: { all: true } };
+  const mine = callerBusinesses(req);
+  if (mine.length === 1) return { businessId: mine[0].id, scope: { all: false, businessIds: [mine[0].id] } };
+  res.status(400).json({ error: 'businessId is required.' });
+  return null;
+}
+
+function voiceSecretMatches(provided: unknown): boolean {
+  const secret = process.env.VOICE_AGENT_SECRET;
+  if (!secret || typeof provided !== 'string') return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 // Resolve the business for a body-named route. Gate ON: a named
@@ -841,20 +918,45 @@ app.post('/api/voice/token', voiceTokenLimiter, requireVerifiedAuth, async (req:
 // WebRTC voice: routing decisions logged by the voice-agent worker.
 // The worker proves it's allowed to write here with a shared secret
 // (VOICE_AGENT_SECRET), since it has no Firebase user token.
-const voiceRoutingLog: any[] = [];
+// Each entry carries the businessId the worker read from the room metadata
+// (set by /api/voice/token), and GET returns only the caller's business
+// (?businessId=<id>, see resolvePhoneScope) — it used to return every
+// tenant's callers to any signed-in user (audit #16).
+type VoiceRoutingEntry = {
+  businessId?: string;
+  department: string;
+  summary: string;
+  urgency: string;
+  callerName: string;
+  source: string;
+  at: string;
+};
+const voiceRoutingLog: VoiceRoutingEntry[] = [];
 app.post('/api/voice/routing-log', (req: Request, res: Response) => {
-  const secret = process.env.VOICE_AGENT_SECRET;
-  if (!secret || req.headers['x-voice-secret'] !== secret) {
+  if (!voiceSecretMatches(req.headers['x-voice-secret'])) {
     return res.status(401).json({ error: 'Not allowed.' });
   }
-  const entry = { ...req.body, at: new Date().toISOString() };
+  const b = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const text = (v: unknown, max: number, dflt = '') => (typeof v === 'string' ? v.slice(0, max) : dflt);
+  const businessId = text(b.businessId, 100);
+  const entry: VoiceRoutingEntry = {
+    ...(businessId ? { businessId } : {}),
+    department: text(b.department, 60),
+    summary: text(b.summary, 1000),
+    urgency: text(b.urgency, 30),
+    callerName: text(b.callerName, 100, 'Unknown caller'),
+    source: text(b.source, 60),
+    at: new Date().toISOString(),
+  };
   voiceRoutingLog.unshift(entry);
   if (voiceRoutingLog.length > 200) voiceRoutingLog.pop();
-  console.log('[voice] routing:', entry.department, '-', entry.summary);
+  console.log('[voice] routing:', entry.businessId || '(no business)', entry.department);
   res.json({ ok: true });
 });
-app.get('/api/voice/routing-log', (_req: Request, res: Response) => {
-  res.json(voiceRoutingLog);
+app.get('/api/voice/routing-log', (req: Request, res: Response) => {
+  const scope = resolvePhoneScope(req, res);
+  if (!scope) return;
+  res.json(voiceRoutingLog.filter(phoneScopeFilter(scope)));
 });
 
 // Proactive Agent Inbox ------------------------------------------------------
@@ -2248,8 +2350,9 @@ Respond in JSON with exact format:
     // Side-effect: If actionTriggered is take_message, save to voicemails DB
     if (parsed.actionTriggered && parsed.actionTriggered.type === 'take_message') {
       const m = parsed.actionTriggered;
-      const newVoicemail: VoicemailRecord = {
-        id: `vm_${Date.now()}`,
+      const newVoicemail: ScopedVoicemail = {
+        id: `vm_${crypto.randomUUID()}`,
+        businessId: defaultBiz.id,
         callerName: m.callerName || callerName,
         callerNumber: m.callerNumber || callerNumber,
         company: callerName.includes('(') ? callerName.replace(/.*\((.*?)\).*/, '$1') : 'RC Client',
@@ -2288,10 +2391,15 @@ Respond in JSON with exact format:
 });
 
 // 2b-2. Calls Log Store (Web & Real PSTN Carrier Calls)
+// Business-scoped (audit #6): pass ?businessId=<id> (see resolvePhoneScope).
+// Writes are allow-listed and may only create/update records of the named
+// business — a call id or Twilio SID belonging to another business is a 404.
+const PHONE_CALL_STRING_FIELDS = ['callerName', 'callerNumber', 'type', 'status', 'timestamp', 'duration', 'summary', 'sentiment', 'actionRequired', 'answeredBy', 'transferredTo', 'department', 'voicemailAudioBase64', 'twilioCallSid', 'recordingUrl', 'forwardedToNumber'] as const;
 app.get('/api/phone/calls', (req: Request, res: Response) => {
   try {
-    const list = db.getCalls();
-    res.json(list);
+    const scope = resolvePhoneScope(req, res);
+    if (!scope) return;
+    res.json(db.getCalls().filter(phoneScopeFilter(scope)));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch calls', details: err?.message });
   }
@@ -2299,18 +2407,44 @@ app.get('/api/phone/calls', (req: Request, res: Response) => {
 
 app.post('/api/phone/calls', (req: Request, res: Response) => {
   try {
-    const saved = db.saveCall(req.body);
+    const target = resolvePhoneWriteBusiness(req, res);
+    if (!target) return;
+    const body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) as Record<string, unknown>;
+    const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim().slice(0, 100) : undefined;
+    const twilioCallSid = typeof body.twilioCallSid === 'string' && body.twilioCallSid ? body.twilioCallSid : undefined;
+    const existing = (id || twilioCallSid) ? db.findCall({ id, twilioCallSid }) : undefined;
+    if (existing && !phoneScopeFilter(target.scope)(existing)) {
+      return res.status(404).json({ error: 'Call not found' });
+    }
+    const call: Record<string, unknown> = { id: existing?.id || id || `call_${crypto.randomUUID()}` };
+    for (const field of PHONE_CALL_STRING_FIELDS) {
+      if (body[field] !== undefined && body[field] !== null) call[field] = String(body[field]);
+    }
+    if (Array.isArray(body.transcript)) call.transcript = body.transcript.filter((t) => t && typeof t === 'object').slice(0, 500);
+    if (Array.isArray(body.actionsTriggered)) call.actionsTriggered = body.actionsTriggered.filter((t) => t && typeof t === 'object').slice(0, 100);
+    if (typeof body.isRealPstnCall === 'boolean') call.isRealPstnCall = body.isRealPstnCall;
+    if (!existing) {
+      call.callerName = call.callerName ?? 'Inbound Caller';
+      call.callerNumber = call.callerNumber ?? '';
+      call.type = call.type ?? 'inbound';
+      call.status = call.status ?? 'completed';
+      call.timestamp = call.timestamp ?? new Date().toISOString();
+      call.duration = call.duration ?? '0m 0s';
+    }
+    if (target.businessId) call.businessId = target.businessId;
+    const saved = db.saveCall(call as unknown as ScopedPhoneCall);
     res.status(201).json(saved);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to save call', details: err?.message });
   }
 });
 
-// 2c. Voicemails & Transcribed Messages Store
+// 2c. Voicemails & Transcribed Messages Store (business-scoped, same rules)
 app.get('/api/phone/voicemails', (req: Request, res: Response) => {
   try {
-    const list = db.getVoicemails();
-    res.json(list);
+    const scope = resolvePhoneScope(req, res);
+    if (!scope) return;
+    res.json(db.getVoicemails().filter(phoneScopeFilter(scope)));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch voicemails', details: err?.message });
   }
@@ -2318,20 +2452,30 @@ app.get('/api/phone/voicemails', (req: Request, res: Response) => {
 
 app.post('/api/phone/voicemails', (req: Request, res: Response) => {
   try {
-    const body = req.body;
-    const vm: VoicemailRecord = {
-      id: body.id || `vm_${Date.now()}`,
-      callerName: body.callerName || 'Inbound Caller',
-      callerNumber: body.callerNumber || '(555) 019-4820',
-      company: body.company || 'Commercial Partner',
-      timestamp: body.timestamp || new Date().toISOString(),
-      duration: body.duration || '0m 45s',
-      transcription: body.transcription || 'No transcription provided.',
-      summary: body.summary || 'Voicemail transcribed by RCOS Voice Receptionist.',
-      urgency: body.urgency || 'medium',
-      department: body.department || 'Operations',
-      audioBase64: body.audioBase64,
-      reviewed: !!body.reviewed
+    const target = resolvePhoneWriteBusiness(req, res);
+    if (!target) return;
+    const body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) as Record<string, any>;
+    const str = (v: unknown, dflt: string) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : dflt);
+    const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim().slice(0, 100) : undefined;
+    const existing = id ? db.getVoicemail(id) : undefined;
+    if (existing && !phoneScopeFilter(target.scope)(existing)) {
+      return res.status(404).json({ error: 'Voicemail not found' });
+    }
+    const urgency = ['low', 'medium', 'high', 'urgent'].includes(body.urgency) ? body.urgency : 'medium';
+    const vm: ScopedVoicemail = {
+      id: id || `vm_${crypto.randomUUID()}`,
+      callerName: str(body.callerName, '') || 'Inbound Caller',
+      callerNumber: str(body.callerNumber, '') || '(555) 019-4820',
+      company: str(body.company, '') || 'Commercial Partner',
+      timestamp: str(body.timestamp, '') || new Date().toISOString(),
+      duration: str(body.duration, '') || '0m 45s',
+      transcription: str(body.transcription, '') || 'No transcription provided.',
+      summary: str(body.summary, '') || 'Voicemail transcribed by RCOS Voice Receptionist.',
+      urgency,
+      department: str(body.department, '') || 'Operations',
+      audioBase64: typeof body.audioBase64 === 'string' ? body.audioBase64 : undefined,
+      reviewed: !!body.reviewed,
+      ...(target.businessId ? { businessId: target.businessId } : {}),
     };
     const saved = db.saveVoicemail(vm);
     res.status(201).json(saved);
@@ -2342,6 +2486,12 @@ app.post('/api/phone/voicemails', (req: Request, res: Response) => {
 
 app.delete('/api/phone/voicemails/:id', (req: Request, res: Response) => {
   try {
+    const scope = resolvePhoneScope(req, res);
+    if (!scope) return;
+    const existing = db.getVoicemail(req.params.id);
+    if (!existing || !phoneScopeFilter(scope)(existing)) {
+      return res.status(404).json({ error: 'Voicemail not found' });
+    }
     const deleted = db.deleteVoicemail(req.params.id);
     res.json({ success: deleted });
   } catch (err: any) {
