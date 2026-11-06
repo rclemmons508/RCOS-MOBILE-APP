@@ -1,6 +1,14 @@
 <?xml version='1.0' encoding='utf-8'?>
 <widget version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-  <access origin="*" />
+  
+  <access origin="https://rcos-mobile-app-production.up.railway.app" />
+  <access origin="https://*.googleapis.com" />
+  <access origin="https://*.google.com" />
+  <access origin="https://*.gstatic.com" />
+  <access origin="https://*.firebaseapp.com" />
+  <access origin="https://*.firebaseio.com" />
+  <access origin="https://*.livekit.cloud" />
+  <access origin="wss://*.livekit.cloud" />
   
   
 </widget>
