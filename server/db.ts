@@ -27,7 +27,13 @@ try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* exists */ }
 // PhoneCall / VoicemailRecord types live in src/ (client-owned), so the
 // server-side owner field is added here. Legacy records may lack it.
 export type ScopedPhoneCall = PhoneCall & { businessId?: string };
-export type ScopedVoicemail = VoicemailRecord & { businessId?: string };
+export type ScopedVoicemail = VoicemailRecord & {
+  businessId?: string;
+  // Twilio identifiers, so a later transcription webhook attaches to
+  // exactly this voicemail (audit #25) — never matched by caller number.
+  twilioCallSid?: string;
+  twilioRecordingSid?: string;
+};
 
 // The business that owns records arriving with no business of their own
 // (Twilio PSTN webhooks hit one global number): TWILIO_BUSINESS_ID when
@@ -262,17 +268,11 @@ export const db = {
     return data.businesses[idx];
   },
 
+  // Same cleanup as deleteBusinessData (audit #25): the old copy here left
+  // agent inbox messages, calls and voicemails behind. Gmail tokens live in
+  // a separate store — callers also run deleteGmailTokens(id).
   deleteBusiness(id: string): boolean {
-    const data = ensureDb();
-    const initLen = data.businesses.length;
-    data.businesses = data.businesses.filter(b => b.id !== id);
-    data.requests = data.requests.filter(r => r.businessId !== id);
-    data.actions = data.actions.filter(a => a.businessId !== id);
-    data.chatMessages = data.chatMessages.filter(m => m.businessId !== id);
-    if (data.teamMessages) data.teamMessages = data.teamMessages.filter(m => m.businessId !== id);
-    if (data.teamInvites) data.teamInvites = data.teamInvites.filter(i => i.businessId !== id);
-    saveDb(data);
-    return data.businesses.length < initLen;
+    return this.deleteBusinessData([id]).deletedBusinessIds.length > 0;
   },
 
   /**

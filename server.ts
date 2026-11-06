@@ -1461,7 +1461,10 @@ app.delete('/api/business/:id', (req: Request, res: Response) => {
   // previously had no ownership check at all. (The guarded, confirm-
   // gated delete-account route is separate and unchanged.)
   if (!requireBusinessOwner(req, res, business)) return;
+  // Same full cleanup as delete-account (audit #25): requests, actions,
+  // chat, agent inbox, team data, calls/voicemails, and Gmail tokens.
   const deleted = db.deleteBusiness(req.params.id);
+  if (deleted) deleteGmailTokens(req.params.id);
   res.json({ success: deleted });
 });
 
@@ -2601,17 +2604,22 @@ app.post('/api/phone/voicemails', (req: Request, res: Response) => {
     const vm: ScopedVoicemail = {
       id: id || `vm_${crypto.randomUUID()}`,
       callerName: str(body.callerName, '') || 'Inbound Caller',
-      callerNumber: str(body.callerNumber, '') || '(555) 019-4820',
-      company: str(body.company, '') || 'Commercial Partner',
+      callerNumber: str(body.callerNumber, '') || 'Unknown number',
+      company: str(body.company, ''),
       timestamp: str(body.timestamp, '') || new Date().toISOString(),
-      duration: str(body.duration, '') || '0m 45s',
+      duration: str(body.duration, ''),
       transcription: str(body.transcription, '') || 'No transcription provided.',
-      summary: str(body.summary, '') || 'Voicemail transcribed by RCOS Voice Receptionist.',
+      summary: str(body.summary, ''),
       urgency,
       department: str(body.department, '') || 'Operations',
       audioBase64: typeof body.audioBase64 === 'string' ? body.audioBase64 : undefined,
       reviewed: !!body.reviewed,
       ...(target.businessId ? { businessId: target.businessId } : {}),
+      // Server-owned fields are never taken from the client, and an update
+      // keeps them (carrier ids for transcript matching, recording url).
+      ...(existing?.audioUrl ? { audioUrl: existing.audioUrl } : {}),
+      ...(existing?.twilioCallSid ? { twilioCallSid: existing.twilioCallSid } : {}),
+      ...(existing?.twilioRecordingSid ? { twilioRecordingSid: existing.twilioRecordingSid } : {}),
     };
     const saved = db.saveVoicemail(vm);
     res.status(201).json(saved);

@@ -13,7 +13,7 @@
 import { Request, Response, Router } from 'express';
 import twilio from 'twilio';
 import { randomUUID } from 'node:crypto';
-import { db, defaultPhoneBusinessId } from './db';
+import { db, defaultPhoneBusinessId, ScopedVoicemail } from './db';
 import { executeGeminiWithFallback, PRIMARY_MODEL } from './gemini';
 import { ActionRecord, PhoneCall, VoicemailRecord } from '../src/types';
 import { isGateOn, requireVerifiedAuth, verifiedCaller } from './auth';
@@ -785,7 +785,10 @@ telephonyRouter.post('/voice/voicemail', requireTwilioSignature, (req: Request, 
 
   console.log(`[PSTN Voicemail] New recording received: ${recordingUrl} (Duration: ${recordingDuration}s)`);
 
-  const newVoicemail: VoicemailRecord = {
+  const recordingSid = typeof req.body.RecordingSid === 'string' ? req.body.RecordingSid : undefined;
+  const newVoicemail: ScopedVoicemail = {
+    ...(typeof callSid === 'string' && callSid ? { twilioCallSid: callSid } : {}),
+    ...(recordingSid ? { twilioRecordingSid: recordingSid } : {}),
     id: `vm_${randomUUID()}`,
     callerName: callerNumber,
     callerNumber: callerNumber,
@@ -827,15 +830,24 @@ telephonyRouter.post('/voice/voicemail', requireTwilioSignature, (req: Request, 
  * Twilio carrier speech-to-text callback for completed voicemails
  */
 telephonyRouter.post('/voice/voicemail-transcription', requireTwilioSignature, (req: Request, res: Response) => {
-  const transcriptionText = req.body.TranscriptionText || '';
-  const recordingUrl = req.body.RecordingUrl;
-  const callerNumber = req.body.From || '';
+  const transcriptionText = typeof req.body.TranscriptionText === 'string' ? req.body.TranscriptionText : '';
+  const recordingUrl = typeof req.body.RecordingUrl === 'string' ? req.body.RecordingUrl : '';
+  const recordingSid = typeof req.body.RecordingSid === 'string' ? req.body.RecordingSid : '';
+  const callSid = typeof req.body.CallSid === 'string' ? req.body.CallSid : '';
 
-  console.log(`[PSTN Transcription] Text: "${transcriptionText}" for recording ${recordingUrl}`);
+  console.log(`[PSTN Transcription] Received transcription for recording ${recordingSid || '(no sid)'}`);
 
   if (transcriptionText) {
+    // Match by Twilio identifiers only (audit #25): RecordingSid, then
+    // CallSid, then the exact recording URL for voicemails stored before
+    // the sids were recorded. Never by caller number — a repeat caller's
+    // transcript used to land on their older voicemail.
     const voicemails = db.getVoicemails();
-    const vm = voicemails.find(v => v.audioUrl?.includes(recordingUrl) || v.callerNumber === callerNumber);
+    const vm =
+      (recordingSid && voicemails.find(v => v.twilioRecordingSid === recordingSid)) ||
+      (callSid && voicemails.find(v => v.twilioCallSid === callSid)) ||
+      (recordingUrl && voicemails.find(v => v.audioUrl === `${recordingUrl}.mp3` || v.audioUrl === recordingUrl)) ||
+      undefined;
     if (vm) {
       vm.transcription = transcriptionText;
       const lower = transcriptionText.toLowerCase();
