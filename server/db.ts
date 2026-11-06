@@ -23,15 +23,36 @@ const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'rcos_db.json');
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* exists */ }
 
+// Calls and voicemails are owned by one business (audit #6). The shared
+// PhoneCall / VoicemailRecord types live in src/ (client-owned), so the
+// server-side owner field is added here. Legacy records may lack it.
+export type ScopedPhoneCall = PhoneCall & { businessId?: string };
+export type ScopedVoicemail = VoicemailRecord & { businessId?: string };
+
+// The business that owns records arriving with no business of their own
+// (Twilio PSTN webhooks hit one global number): TWILIO_BUSINESS_ID when
+// set, else the only business on a single-tenant server, else undefined
+// (unattributed — hidden from every tenant once the login gate is on).
+export function defaultPhoneBusinessId(): string | undefined {
+  const fromEnv = (process.env.TWILIO_BUSINESS_ID || '').trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const all = ensureDb().businesses;
+    return all.length === 1 ? all[0].id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 interface DatabaseSchema {
   businesses: BusinessAccount[];
   requests: CustomerRequest[];
   actions: ActionRecord[];
   chatMessages: ChatMessage[];
   jobPacks: JobPack[];
-  voicemails?: VoicemailRecord[];
+  voicemails?: ScopedVoicemail[];
   telephonyConfig?: TelephonyConfig;
-  calls?: PhoneCall[];
+  calls?: ScopedPhoneCall[];
   agentMessages?: AgentInboxMessage[];
   teamMessages?: TeamMessage[];
   teamInvites?: TeamInvite[];
@@ -64,67 +85,142 @@ export function getDefaultTelephonyConfig(): TelephonyConfig {
   };
 }
 
+const DB_BAK_FILE = `${DB_FILE}.bak`;
+
+// Atomic JSON persistence (audit #5). The old code rewrote rcos_db.json in
+// place with writeFileSync (a crash mid-write left a truncated file) and,
+// on ANY parse failure, returned an empty database that the next write
+// then persisted over the real file — wiping every tenant. Now:
+//   - writes go to a temp file, are fsynced, then renamed over the real
+//     file (rename is atomic on the same filesystem);
+//   - before each write the current, known-good file is copied to .bak;
+//   - a missing file is the ONLY case that starts an empty database
+//     (after first trying to restore from .bak);
+//   - an unreadable file falls back to .bak (the corrupt file is kept as
+//     rcos_db.json.corrupt-<time>), and if .bak is unreadable too every
+//     read and write throws (routes answer 500) instead of serving or
+//     saving an empty database.
+let lastReadWasGood = false;
+
+function atomicWriteFile(file: string, content: string): void {
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(tmp, 'w');
+    fs.writeFileSync(fd, content, 'utf-8');
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch { /* ignore */ } }
+    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+    throw err;
+  }
+}
+
+function parseDbText(raw: string): DatabaseSchema {
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.businesses)) {
+    throw new Error('Database file does not contain a valid database object');
+  }
+  for (const key of ['requests', 'actions', 'chatMessages', 'jobPacks', 'voicemails', 'teamMessages', 'teamInvites'] as const) {
+    if (!Array.isArray(parsed[key])) parsed[key] = [];
+  }
+  return parsed as DatabaseSchema;
+}
+
+function readBackup(): DatabaseSchema | null {
+  if (!fs.existsSync(DB_BAK_FILE)) return null;
+  try {
+    return parseDbText(fs.readFileSync(DB_BAK_FILE, 'utf-8'));
+  } catch (err) {
+    console.error('[db] Backup file is also unreadable:', DB_BAK_FILE, err);
+    return null;
+  }
+}
+
+function freshDb(): DatabaseSchema {
+  // Initial seeded job packs from presets, but strictly ZERO mock businesses/requests/actions
+  const initialJobPacks: JobPack[] = [];
+  for (const p of INDUSTRY_PRESETS) {
+    if (p.sampleJobPacks) {
+      initialJobPacks.push(...p.sampleJobPacks);
+    }
+  }
+  return {
+    businesses: [],
+    requests: [],
+    actions: [],
+    chatMessages: [],
+    jobPacks: initialJobPacks,
+    voicemails: [],
+    teamMessages: [],
+    teamInvites: [],
+    pendingIntake: []
+  };
+}
+
 function ensureDb(): DatabaseSchema {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
   if (!fs.existsSync(DB_FILE)) {
-    // Initial seeded job packs from presets, but strictly ZERO mock businesses/requests/actions
-    const initialJobPacks: JobPack[] = [];
-    for (const p of INDUSTRY_PRESETS) {
-      if (p.sampleJobPacks) {
-        initialJobPacks.push(...p.sampleJobPacks);
-      }
+    // A missing main file with a good backup means a write was interrupted
+    // between steps — restore rather than starting empty.
+    const fromBak = readBackup();
+    if (fromBak) {
+      console.error('[db] Database file missing — restored from backup', DB_BAK_FILE);
+      atomicWriteFile(DB_FILE, JSON.stringify(fromBak, null, 2));
+      lastReadWasGood = true;
+      return fromBak;
     }
-
-    const emptyDb: DatabaseSchema = {
-      businesses: [],
-      requests: [],
-      actions: [],
-      chatMessages: [],
-      jobPacks: initialJobPacks,
-      voicemails: [],
-      teamMessages: [],
-      teamInvites: [],
-      pendingIntake: []
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(emptyDb, null, 2), 'utf-8');
+    const emptyDb = freshDb();
+    atomicWriteFile(DB_FILE, JSON.stringify(emptyDb, null, 2));
+    lastReadWasGood = true;
     return emptyDb;
   }
 
   try {
-    const raw = fs.readFileSync(DB_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (!parsed.voicemails) parsed.voicemails = [];
-    if (!parsed.teamMessages) parsed.teamMessages = [];
-    if (!parsed.teamInvites) parsed.teamInvites = [];
-    return parsed;
+    const data = parseDbText(fs.readFileSync(DB_FILE, 'utf-8'));
+    lastReadWasGood = true;
+    return data;
   } catch (err) {
-    console.error('Failed to read db file, initializing clean DB', err);
-    const fallbackDb: DatabaseSchema = {
-      businesses: [],
-      requests: [],
-      actions: [],
-      chatMessages: [],
-      jobPacks: [],
-      voicemails: [],
-      teamMessages: [],
-      teamInvites: [],
-      pendingIntake: []
-    };
-    return fallbackDb;
+    lastReadWasGood = false;
+    console.error('[db] DATABASE FILE IS UNREADABLE:', DB_FILE, err);
+    const fromBak = readBackup();
+    if (fromBak) {
+      const corruptCopy = `${DB_FILE}.corrupt-${Date.now()}`;
+      try { fs.copyFileSync(DB_FILE, corruptCopy); } catch { /* best effort */ }
+      atomicWriteFile(DB_FILE, JSON.stringify(fromBak, null, 2));
+      console.error(`[db] Restored database from ${DB_BAK_FILE}; the unreadable file was kept as ${corruptCopy}.`);
+      lastReadWasGood = true;
+      return fromBak;
+    }
+    // No usable backup: refuse to continue rather than hand out (and then
+    // persist) an empty database over the real data.
+    throw new Error('Database file is unreadable and no valid backup exists; refusing to read or write until it is repaired.');
   }
 }
 
 function saveDb(data: DatabaseSchema): void {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!lastReadWasGood && fs.existsSync(DB_FILE)) {
+    // Never overwrite a file we could not read (see ensureDb).
+    throw new Error('Refusing to write: the database file could not be read.');
+  }
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    // Rotate the last known-good file into .bak, then atomically replace.
+    if (fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE, DB_BAK_FILE);
+    atomicWriteFile(DB_FILE, JSON.stringify(data, null, 2));
   } catch (err) {
-    console.error('Error saving DB to', DB_FILE, err);
+    console.error('[db] Error saving DB to', DB_FILE, err);
+    // Surface the failure (audit #23) — the caller must not report success
+    // for data that was never saved.
+    throw err;
   }
 }
 
@@ -169,9 +265,9 @@ export const db = {
    * Delete one or more businesses and ALL of their scoped records:
    * customer requests, actions (quotes/invoices/approvals), chat messages,
    * and agent inbox messages.
-   * Voicemails and calls carry no business id, so they are only removed
-   * when no businesses remain at all (then they could only have belonged
-   * to the deleted businesses). Shared seed job packs are never touched —
+   * Voicemails and calls owned by a deleted business are removed; legacy
+   * ones with no business id are only removed when no businesses remain
+   * at all (then they could only have belonged to the deleted businesses). Shared seed job packs are never touched —
    * they are starter templates, not user data.
    */
   deleteBusinessData(businessIds: string[]): { deletedBusinessIds: string[] } {
@@ -191,6 +287,8 @@ export const db = {
     if (data.teamInvites) {
       data.teamInvites = data.teamInvites.filter(i => !targets.has(i.businessId));
     }
+    if (data.voicemails) data.voicemails = data.voicemails.filter(v => !(v.businessId && targets.has(v.businessId)));
+    if (data.calls) data.calls = data.calls.filter(c => !(c.businessId && targets.has(c.businessId)));
     // Unattributed records: only safe to clear when nothing remains.
     if (data.businesses.length === 0) {
       data.voicemails = [];
@@ -309,24 +407,33 @@ export const db = {
   },
 
   // Voicemails & Transcribed Messages
-  getVoicemails(): VoicemailRecord[] {
+  getVoicemails(): ScopedVoicemail[] {
     const data = ensureDb();
     return (data.voicemails || []).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   },
 
-  saveVoicemail(vm: VoicemailRecord): VoicemailRecord {
+  saveVoicemail(vm: ScopedVoicemail): ScopedVoicemail {
     const data = ensureDb();
     if (!data.voicemails) data.voicemails = [];
     const idx = data.voicemails.findIndex(v => v.id === vm.id);
+    // Keep the owner: an update never changes or drops a record's business, and a new
+    // record with none is attributed to the phone line's business.
+    const businessId = (idx >= 0 ? data.voicemails[idx].businessId : undefined) || vm.businessId || defaultPhoneBusinessId();
+    const record: ScopedVoicemail = businessId ? { ...vm, businessId } : vm;
     if (idx >= 0) {
-      data.voicemails[idx] = vm;
+      data.voicemails[idx] = record;
     } else {
-      data.voicemails.unshift(vm);
+      data.voicemails.unshift(record);
     }
     saveDb(data);
-    return vm;
+    return record;
+  },
+
+  getVoicemail(id: string): ScopedVoicemail | undefined {
+    const data = ensureDb();
+    return (data.voicemails || []).find(v => v.id === id);
   },
 
   deleteVoicemail(id: string): boolean {
@@ -375,22 +482,29 @@ export const db = {
   },
 
   // Phone Calls
-  getCalls(): PhoneCall[] {
+  getCalls(): ScopedPhoneCall[] {
     const data = ensureDb();
     return data.calls || [];
   },
 
-  saveCall(call: PhoneCall): PhoneCall {
+  findCall(call: { id?: string; twilioCallSid?: string }): ScopedPhoneCall | undefined {
+    const data = ensureDb();
+    return (data.calls || []).find(c => (!!call.id && c.id === call.id) || (!!call.twilioCallSid && c.twilioCallSid === call.twilioCallSid));
+  },
+
+  saveCall(call: ScopedPhoneCall): ScopedPhoneCall {
     const data = ensureDb();
     if (!data.calls) data.calls = [];
     const idx = data.calls.findIndex(c => c.id === call.id || (call.twilioCallSid && c.twilioCallSid === call.twilioCallSid));
+    const businessId = (idx >= 0 ? data.calls[idx].businessId : undefined) || call.businessId || defaultPhoneBusinessId();
+    const record: ScopedPhoneCall = businessId ? { ...call, businessId } : call;
     if (idx >= 0) {
-      data.calls[idx] = { ...data.calls[idx], ...call };
+      data.calls[idx] = { ...data.calls[idx], ...record };
     } else {
-      data.calls.unshift(call);
+      data.calls.unshift(record);
     }
     saveDb(data);
-    return call;
+    return record;
   },
 
   // Proactive agent messages (the Agent Inbox)

@@ -506,6 +506,11 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
     }
   }
 
+  /** True for actions whose owner decision is final (no re-deciding). */
+  static isDecidedStatus(status: unknown): boolean {
+    return status === 'completed' || status === 'rejected' || status === 'approved';
+  }
+
   /**
    * Handle owner approval decisions (Approve, Edit & Approve, or Reject).
    * On 'edited', `editedAmounts` carries the structured amounts the owner
@@ -524,7 +529,12 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
     editedAmounts?: EditedAmounts
   ): Promise<ActionRecord | null> {
     const action = db.getAction(actionId);
-    if (!action) return null;
+    // Tenant isolation (audit #3): an action id from another business is
+    // treated exactly like a missing one — never decided across tenants.
+    if (!action || action.businessId !== business.id) return null;
+    // State machine (audit #19): a decided action is final. Re-approving
+    // a quote used to spawn another schedule_job each time.
+    if (RcosEngine.isDecidedStatus(action.status)) return null;
 
     if (!action.fullTrace) action.fullTrace = [];
 

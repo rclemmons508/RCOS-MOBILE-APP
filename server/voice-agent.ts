@@ -191,6 +191,17 @@ function businessKnowledgeFromMetadata(roomMetadata: unknown, jobMetadata: unkno
   return '';
 }
 
+/** The business this call belongs to, from the room metadata set by POST /api/voice/token. Sent with the routing log so the dashboard only shows a business its own calls. '' when missing. */
+function businessIdFromMetadata(roomMetadata: unknown, jobMetadata: unknown): string {
+  for (const raw of [roomMetadata, jobMetadata]) {
+    try {
+      const parsed = JSON.parse(typeof raw === 'string' ? raw : '{}') as { businessId?: unknown };
+      if (typeof parsed.businessId === 'string' && parsed.businessId) return parsed.businessId;
+    } catch { /* not JSON — try the next source */ }
+  }
+  return '';
+}
+
 /** Where each routing department lands. Billing and emergency both go to Support: there is no billing persona, and Support's instructions include safety escalation. */
 const DEPARTMENT_TO_PERSONA: Record<TransferDepartment, VoicePersona> = {
   sales: 'sales',
@@ -317,6 +328,7 @@ function logRoutingDecision(input: {
   summary: string;
   urgency: string;
   callerName?: string;
+  businessId?: string;
 }): void {
   const appUrl = process.env.APP_URL;
   if (!appUrl) {
@@ -336,6 +348,7 @@ function logRoutingDecision(input: {
       summary: input.summary,
       urgency: input.urgency,
       callerName: input.callerName || 'Unknown caller',
+      ...(input.businessId ? { businessId: input.businessId } : {}),
       at: new Date().toISOString(),
       source: 'webrtc-receptionist',
     }),
@@ -360,7 +373,7 @@ function logRoutingDecision(input: {
  * dashboard record is unchanged); it then returns an SDK handoff, which swaps
  * the live session to the department agent — the same agent does NOT keep talking.
  */
-function createRouteToRepresentativeTool(availableDepartments: TransferDepartment[], businessKnowledge = '') {
+function createRouteToRepresentativeTool(availableDepartments: TransferDepartment[], businessKnowledge = '', businessId = '') {
   // Shared transfer state for this one call. `requested` flips when the
   // tool hands off; `completed` flips when the department agent's onEnter
   // runs (the switch actually happened). A previous attempt that was
@@ -402,7 +415,7 @@ function createRouteToRepresentativeTool(availableDepartments: TransferDepartmen
       }
       // Log the routing decision in the background — never awaited, so a slow
       // log call cannot stall the transfer.
-      logRoutingDecision({ department, summary, urgency, callerName });
+      logRoutingDecision({ department, summary, urgency, callerName, businessId });
       const persona = DEPARTMENT_TO_PERSONA[department];
       const base = PERSONAS[persona];
       const context =
@@ -474,6 +487,10 @@ export default defineAgent({
       (ctx.room as unknown as { metadata?: unknown }).metadata,
       (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
     );
+    const callBusinessId = businessIdFromMetadata(
+      (ctx.room as unknown as { metadata?: unknown }).metadata,
+      (ctx as unknown as { job?: { metadata?: unknown } }).job?.metadata
+    );
 
     const model = new realtime.RealtimeModel({
       apiKey: process.env.GEMINI_API_KEY,
@@ -490,7 +507,7 @@ export default defineAgent({
       instructions: `${personaInstructions}${transferLine}`,
       // Array form: preserves the tool's object identity, which is what the
       // SDK's handoff session-reuse check compares (see DepartmentAgent).
-      ...(config.useRoutingTool ? { tools: [createRouteToRepresentativeTool(availableDepartments, businessKnowledge)] } : {}),
+      ...(config.useRoutingTool ? { tools: [createRouteToRepresentativeTool(availableDepartments, businessKnowledge, callBusinessId)] } : {}),
     });
 
     const session = new AgentSession({ llm: model });

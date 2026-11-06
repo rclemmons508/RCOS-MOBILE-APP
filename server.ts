@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'url';
-import { db } from './server/db';
+import { db, ScopedPhoneCall, ScopedVoicemail } from './server/db';
 import { RcosEngine } from './server/engine';
 import { ai, PRIMARY_MODEL, FAST_MODEL, PRO_MODEL, executeGeminiWithFallback, generateSpeechAudio } from './server/gemini';
 import { 
@@ -28,9 +28,17 @@ import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { sendVonageSms } from './server/vonage';
-import { initAuth, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
+import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
+import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
+import { z } from 'zod';
+
+// Crash-safety backstops (audit #4): async route rejections go to the JSON
+// error handler instead of killing the process, and any stray rejection /
+// exception is logged rather than exiting Node. Installed before any route.
+installProcessErrorLoggers();
+installAsyncErrorRouting();
 
 dotenv.config();
 // Verify Firebase login tokens on API routes (gate activates once FIREBASE_SERVICE_ACCOUNT is set)
@@ -200,7 +208,9 @@ registerGmailOAuthPublic(app);
 
 // ---- Login gate ----
 // Every /api route below this line requires a valid Firebase login token,
-// which the phone app already attaches (see src/lib/api.ts).
+// which the phone app already attaches (see src/lib/api.ts). With
+// NODE_ENV=production and no usable FIREBASE_SERVICE_ACCOUNT the gate
+// fails CLOSED (503) unless ALLOW_OPEN_API=true (see server/auth.ts).
 // Public exceptions (registered above or skipped here):
 //   /api/health, /api/firebase-config, and the public intake form
 //   POST /api/business/:id/requests (customers must be able to reach you without an account).
@@ -225,8 +235,7 @@ app.use('/api', (req: Request, res: Response, next) => {
   if (req.method === 'POST' && req.path === '/voice/routing-log') return next();
   // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
   if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
-    const secret = process.env.VOICE_AGENT_SECRET;
-    if (secret && req.headers['x-voice-secret'] === secret) return next();
+    if (voiceSecretMatches(req.headers['x-voice-secret'])) return next();
   }
   return requireAuth(req, res, next);
 });
@@ -257,12 +266,38 @@ app.use('/api', (req: Request, res: Response, next) => {
 // matching the recorded owner id, or the token email matching an
 // owner email recorded on the business. A business with no owner
 // identity anywhere is NOT opened up: gate ON fails closed on it.
+// Roster allow-list shared by POST /api/businesses and PUT
+// /api/business/:id (audit #12): every member is coerced to the known
+// shape, so a malformed entry (e.g. no email) can never be stored and
+// later crash the membership matchers for every tenant.
+function sanitizeMembers(raw: unknown[]): BusinessMember[] {
+  return raw
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && !Array.isArray(m))
+    .map((m) => ({
+      userId: String(m.userId ?? ''),
+      email: String(m.email ?? ''),
+      name: String(m.name ?? ''),
+      role: m.role === 'owner' || m.role === 'member' ? m.role : 'member',
+      ...(m.avatar !== undefined && m.avatar !== null ? { avatar: String(m.avatar) } : {}),
+      joinedAt: String(m.joinedAt ?? '')
+    })) as BusinessMember[];
+}
+
+function deriveMemberEmails(members: Array<{ email?: unknown; role?: unknown }>): Record<string, 'owner' | 'member'> {
+  const out: Record<string, 'owner' | 'member'> = {};
+  for (const m of members) {
+    const email = String(m.email || '').toLowerCase().trim();
+    if (email) out[email] = m.role === 'owner' ? 'owner' : 'member';
+  }
+  return out;
+}
+
 function businessMemberFor(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): BusinessMember | undefined {
   if (!caller) return undefined;
   const email = (caller.email || '').toLowerCase().trim();
   return (business.members || []).find((m) => (
-    (email !== '' && m.email.toLowerCase() === email) ||
-    (!!caller.uid && !!m.userId && m.userId === caller.uid)
+    (email !== '' && String(m?.email || '').toLowerCase().trim() === email) ||
+    (!!caller.uid && !!m?.userId && m.userId === caller.uid)
   ));
 }
 
@@ -313,8 +348,7 @@ app.use('/api/business/:id', (req: Request, res: Response, next) => {
   if (businessId === 'analyze-document') return next();
   if (req.method === 'POST' && req.path === '/requests') return next();
   if (req.method === 'POST' && req.path === '/agent-messages') {
-    const secret = process.env.VOICE_AGENT_SECRET;
-    if (secret && req.headers['x-voice-secret'] === secret) return next();
+    if (voiceSecretMatches(req.headers['x-voice-secret'])) return next();
   }
   const business = db.getBusiness(businessId);
   if (!business) return res.status(404).json({ error: 'Business not found' });
@@ -337,6 +371,85 @@ function callerBusinesses(req: Request): BusinessAccount[] {
   const caller = verifiedCaller(req);
   if (!caller) return [];
   return all.filter((b) => businessIsMember(b, caller));
+}
+
+// ---- Business scope for the phone / voice data routes (audit #6, #16) ----
+// /api/phone/calls, /api/phone/voicemails and /api/voice/routing-log are not
+// under /api/business/:id, so they scope themselves here. The client names
+// the business with ?businessId=<id> (or body.businessId on writes).
+//   - businessId given: the business must exist (404) and, gate ON, the
+//     verified caller must be on it (401/403). Only its records are used.
+//   - no businessId, gate ON: every business the caller is on.
+//   - no businessId, gate OFF: everything (today's behavior; with the
+//     gate off the API is open anyway — and in production it is now 503).
+// Legacy records with no businessId are shown only when the server holds
+// exactly one business and it is in scope (no other tenant can own them).
+type PhoneScope = { all: true } | { all: false; businessIds: string[] };
+function resolvePhoneScope(req: Request, res: Response, explicitId?: unknown): PhoneScope | null {
+  const raw = explicitId !== undefined ? explicitId : req.query.businessId;
+  const businessId = typeof raw === 'string' ? raw.trim() : '';
+  if (businessId) {
+    const business = db.getBusiness(businessId);
+    if (!business) {
+      res.status(404).json({ error: 'Business not found' });
+      return null;
+    }
+    if (isGateOn()) {
+      const caller = verifiedCaller(req);
+      if (!caller) {
+        res.status(401).json({ error: 'Please sign in to use this feature.' });
+        return null;
+      }
+      if (!businessIsMember(business, caller)) {
+        res.status(403).json({ error: 'You are not on this team.' });
+        return null;
+      }
+    }
+    return { all: false, businessIds: [businessId] };
+  }
+  if (!isGateOn()) return { all: true };
+  return { all: false, businessIds: callerBusinesses(req).map((b) => b.id) };
+}
+
+function phoneScopeFilter(scope: PhoneScope): (record: { businessId?: unknown }) => boolean {
+  if (scope.all) return () => true;
+  const ids = new Set(scope.businessIds);
+  const all = db.getAllBusinesses();
+  const sole = all.length === 1 ? all[0].id : null;
+  return (record) => {
+    const owner = typeof record?.businessId === 'string' && record.businessId ? record.businessId : '';
+    if (owner) return ids.has(owner);
+    return !!sole && ids.has(sole);
+  };
+}
+
+// The business a phone write (POST call / voicemail) belongs to.
+// Returns the id, undefined (gate OFF, none named: the db layer attributes
+// it to the phone line's business), or null after sending an error.
+function resolvePhoneWriteBusiness(req: Request, res: Response): { businessId: string | undefined; scope: PhoneScope } | null {
+  const named = typeof req.query.businessId === 'string' && req.query.businessId.trim()
+    ? req.query.businessId
+    : typeof req.body?.businessId === 'string' && req.body.businessId.trim()
+      ? req.body.businessId
+      : undefined;
+  if (named !== undefined) {
+    const scope = resolvePhoneScope(req, res, named);
+    if (!scope) return null;
+    return { businessId: (scope as { businessIds: string[] }).businessIds[0], scope };
+  }
+  if (!isGateOn()) return { businessId: undefined, scope: { all: true } };
+  const mine = callerBusinesses(req);
+  if (mine.length === 1) return { businessId: mine[0].id, scope: { all: false, businessIds: [mine[0].id] } };
+  res.status(400).json({ error: 'businessId is required.' });
+  return null;
+}
+
+function voiceSecretMatches(provided: unknown): boolean {
+  const secret = process.env.VOICE_AGENT_SECRET;
+  if (!secret || typeof provided !== 'string') return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 // Resolve the business for a body-named route. Gate ON: a named
@@ -370,12 +483,15 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   // Firebase login gate
   const gateOn = isAuthReady();
   const gateBroken = isAuthMisconfigured();
+  const lockedClosed = isApiLockedClosed();
   checks.push({
     id: 'auth', label: 'Login Gate',
-    status: gateOn ? 'pass' : gateBroken ? 'fail' : 'warn',
+    status: gateOn ? 'pass' : (gateBroken || lockedClosed) ? 'fail' : 'warn',
     detail: gateOn
       ? 'Firebase Admin active — API requires login'
-      : gateBroken
+      : lockedClosed
+        ? 'Login gate not configured — signed-in API locked (503) in production'
+        : gateBroken
         ? 'FIREBASE_SERVICE_ACCOUNT is set but unusable — API still open'
         : 'FIREBASE_SERVICE_ACCOUNT not set — API open'
   });
@@ -802,20 +918,45 @@ app.post('/api/voice/token', voiceTokenLimiter, requireVerifiedAuth, async (req:
 // WebRTC voice: routing decisions logged by the voice-agent worker.
 // The worker proves it's allowed to write here with a shared secret
 // (VOICE_AGENT_SECRET), since it has no Firebase user token.
-const voiceRoutingLog: any[] = [];
+// Each entry carries the businessId the worker read from the room metadata
+// (set by /api/voice/token), and GET returns only the caller's business
+// (?businessId=<id>, see resolvePhoneScope) — it used to return every
+// tenant's callers to any signed-in user (audit #16).
+type VoiceRoutingEntry = {
+  businessId?: string;
+  department: string;
+  summary: string;
+  urgency: string;
+  callerName: string;
+  source: string;
+  at: string;
+};
+const voiceRoutingLog: VoiceRoutingEntry[] = [];
 app.post('/api/voice/routing-log', (req: Request, res: Response) => {
-  const secret = process.env.VOICE_AGENT_SECRET;
-  if (!secret || req.headers['x-voice-secret'] !== secret) {
+  if (!voiceSecretMatches(req.headers['x-voice-secret'])) {
     return res.status(401).json({ error: 'Not allowed.' });
   }
-  const entry = { ...req.body, at: new Date().toISOString() };
+  const b = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+  const text = (v: unknown, max: number, dflt = '') => (typeof v === 'string' ? v.slice(0, max) : dflt);
+  const businessId = text(b.businessId, 100);
+  const entry: VoiceRoutingEntry = {
+    ...(businessId ? { businessId } : {}),
+    department: text(b.department, 60),
+    summary: text(b.summary, 1000),
+    urgency: text(b.urgency, 30),
+    callerName: text(b.callerName, 100, 'Unknown caller'),
+    source: text(b.source, 60),
+    at: new Date().toISOString(),
+  };
   voiceRoutingLog.unshift(entry);
   if (voiceRoutingLog.length > 200) voiceRoutingLog.pop();
-  console.log('[voice] routing:', entry.department, '-', entry.summary);
+  console.log('[voice] routing:', entry.businessId || '(no business)', entry.department);
   res.json({ ok: true });
 });
-app.get('/api/voice/routing-log', (_req: Request, res: Response) => {
-  res.json(voiceRoutingLog);
+app.get('/api/voice/routing-log', (req: Request, res: Response) => {
+  const scope = resolvePhoneScope(req, res);
+  if (!scope) return;
+  res.json(voiceRoutingLog.filter(phoneScopeFilter(scope)));
 });
 
 // Proactive Agent Inbox ------------------------------------------------------
@@ -965,10 +1106,45 @@ app.post('/api/businesses', (req: Request, res: Response) => {
       return res.status(403).json({ error: 'You can only create a business for yourself.' });
     }
   }
+  // Business id (audit #2): never let a client-chosen id replace someone
+  // else's business. No id → minted server-side. A supplied id (the app
+  // generates one so its Firestore copy and the server copy share it) must
+  // be well-formed, and if it already exists the POST is refused with 409
+  // UNLESS the caller is that business's owner (re-opened setup re-saves
+  // the same record). Gate ON: owner = verified token. Gate OFF: owner =
+  // the same X-User-Email identity the other gate-off owner checks use,
+  // and an existing business with no owner identity at all is never
+  // overwritten through this route.
+  let businessId: string;
+  let existingBusiness: BusinessAccount | undefined;
+  if (data?.id !== undefined && data?.id !== null && data?.id !== '') {
+    if (typeof data.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(data.id)) {
+      return res.status(400).json({ error: 'Invalid business id.' });
+    }
+    businessId = data.id;
+    existingBusiness = db.getBusiness(businessId);
+    if (existingBusiness) {
+      let callerOwnsIt: boolean;
+      if (isGateOn()) {
+        callerOwnsIt = businessIsOwner(existingBusiness, verifiedCaller(req));
+      } else {
+        const email = teamRequesterEmail(req);
+        callerOwnsIt = email !== '' && (
+          teamIsOwner(existingBusiness, email) || businessOwnerEmails(existingBusiness).includes(email)
+        );
+      }
+      if (!callerOwnsIt) {
+        return res.status(409).json({ error: 'A business with this id already exists.' });
+      }
+    }
+  } else {
+    businessId = `biz_${crypto.randomUUID()}`;
+  }
+  const sanitizedMembers = Array.isArray(data.members) ? sanitizeMembers(data.members) : undefined;
   const newBusiness: BusinessAccount = {
-    id: data.id || `biz_${Date.now()}`,
-    ownerId: typeof data.ownerId === 'string' ? data.ownerId : undefined,
-    members: Array.isArray(data.members) ? data.members : undefined,
+    id: businessId,
+    ownerId: typeof data.ownerId === 'string' ? data.ownerId : existingBusiness?.ownerId,
+    members: sanitizedMembers ?? existingBusiness?.members,
     contactName: typeof data.contactName === 'string' ? data.contactName : undefined,
     contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : undefined,
     contactEmail: typeof data.contactEmail === 'string' ? data.contactEmail : undefined,
@@ -1015,10 +1191,11 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     documentContactInfo: data.documentContactInfo && typeof data.documentContactInfo === 'object' && ['phone', 'email', 'website', 'address'].some((f) => typeof data.documentContactInfo[f] === 'string' && data.documentContactInfo[f].trim())
       ? Object.fromEntries(['phone', 'email', 'website', 'address'].filter((f) => typeof data.documentContactInfo[f] === 'string' && data.documentContactInfo[f].trim()).map((f) => [f, data.documentContactInfo[f].trim()]))
       : undefined,
-    starterDrafts: [],
-    createdAt: new Date().toISOString(),
+    starterDrafts: existingBusiness?.starterDrafts || [],
+    createdAt: existingBusiness?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  if (newBusiness.members) newBusiness.memberEmails = deriveMemberEmails(newBusiness.members);
 
   // Departments offered for transfers are worked out from the industry +
   // services at onboarding (and on every save) — a business with no
@@ -1026,6 +1203,11 @@ app.post('/api/businesses', (req: Request, res: Response) => {
   newBusiness.availableDepartments = availableDepartmentsFor(newBusiness);
 
   const saved = db.saveBusiness(newBusiness);
+  if (existingBusiness) {
+    // Owner re-saving their own business (re-opened setup): not a new
+    // business, so do not hand it the pending demo-lead queue.
+    return res.status(200).json(saved);
+  }
 
   // Flush any demo leads that arrived while no business existed. They were
   // queued instead of lost; they now become Customer Requests on this business.
@@ -1109,26 +1291,12 @@ app.put('/api/business/:id', (req: Request, res: Response) => {
     if (Object.keys(picked).length > 0) updates.documentContactInfo = picked;
   }
   if (Array.isArray(body.members)) {
-    updates.members = body.members
-      .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && !Array.isArray(m))
-      .map((m) => ({
-        userId: String(m.userId ?? ''),
-        email: String(m.email ?? ''),
-        name: String(m.name ?? ''),
-        role: m.role === 'owner' || m.role === 'member' ? m.role : 'member',
-        ...(m.avatar !== undefined && m.avatar !== null ? { avatar: String(m.avatar) } : {}),
-        joinedAt: String(m.joinedAt ?? '')
-      }));
+    updates.members = sanitizeMembers(body.members);
     // Stage 2 audit (C2): the Firestore rules check member access against a
     // denormalized `memberEmails` map (rules cannot search the `members`
     // list). Derive it from the roster whenever the roster is updated so
     // the server copy carries it too; an explicitly provided map wins.
-    const derivedMemberEmails: Record<string, 'owner' | 'member'> = {};
-    for (const m of updates.members as Array<{ email: string; role: string }>) {
-      const email = String(m.email || '').toLowerCase().trim();
-      if (email) derivedMemberEmails[email] = m.role === 'owner' ? 'owner' : 'member';
-    }
-    updates.memberEmails = derivedMemberEmails;
+    updates.memberEmails = deriveMemberEmails(updates.members);
   }
   if (body.memberEmails && typeof body.memberEmails === 'object' && !Array.isArray(body.memberEmails)) {
     const rec: Record<string, 'owner' | 'member'> = {};
@@ -1197,7 +1365,7 @@ function teamRequesterEmail(req: Request): string {
 function teamMemberFor(business: BusinessAccount, email: string): BusinessMember | undefined {
   const clean = (email || '').toLowerCase();
   if (!clean) return undefined;
-  return (business.members || []).find(m => m.email.toLowerCase() === clean);
+  return (business.members || []).find(m => String(m?.email || '').toLowerCase().trim() === clean);
 }
 
 function teamIsOwner(business: BusinessAccount, email: string): boolean {
@@ -1881,8 +2049,12 @@ function generateAgentChatFallback(agentId: string, prompt: string): string {
 
 // 1. Multi-Agent chat endpoint
 app.post('/api/agent/chat', aiRateLimiter, async (req: Request, res: Response) => {
-  const { agentId = 'agent-orchestrator', prompt, history = [] } = req.body;
-  if (!prompt) {
+  const agentId = typeof req.body?.agentId === 'string' ? req.body.agentId : 'agent-orchestrator';
+  const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt : '';
+  const history: any[] = Array.isArray(req.body?.history)
+    ? req.body.history.filter((h: any) => h && typeof h === 'object' && typeof h.content === 'string')
+    : [];
+  if (!prompt.trim()) {
     return res.status(400).json({ error: 'Prompt is required' });
   }
 
@@ -1926,8 +2098,9 @@ app.post('/api/agent/chat', aiRateLimiter, async (req: Request, res: Response) =
 
 // 2. Real Voice Receptionist TTS endpoint (gemini-3.8-flash-lite-tts)
 app.post('/api/phone/tts', ttsLimiter, async (req: Request, res: Response) => {
-  const { text = '', voiceName = 'Kore' } = req.body;
-  if (!text || !text.trim()) {
+  const text = typeof req.body?.text === 'string' ? req.body.text : '';
+  const voiceName = typeof req.body?.voiceName === 'string' && req.body.voiceName.trim() ? req.body.voiceName.trim().slice(0, 40) : 'Kore';
+  if (!text.trim()) {
     return res.status(400).json({ error: 'Text is required for TTS synthesis' });
   }
 
@@ -1947,16 +2120,18 @@ app.post('/api/phone/tts', ttsLimiter, async (req: Request, res: Response) => {
 
 // 2b. Intelligent Multi-Turn Voice Receptionist Engine
 app.post('/api/phone/receptionist-chat', aiRateLimiter, async (req: Request, res: Response) => {
-  const { 
-    userSpeech = '', 
-    callerName = 'Inbound Caller', 
-    callerNumber = '(555) 019-4820',
-    callerTopic = 'Service Inquiry',
-    conversationHistory = [],
-    answeredBy = 'ai_receptionist', // 'ai_receptionist' | 'human_operator'
-    businessId,
-    withAudio = true
-  } = req.body;
+  // Coerce every field to its expected type (audit #4): a number or object
+  // here used to throw inside the fallback generator, i.e. inside catch.
+  const rb = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, any>;
+  const str = (v: unknown, dflt: string) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : dflt);
+  const userSpeech = str(rb.userSpeech, '');
+  const callerName = str(rb.callerName, 'Inbound Caller') || 'Inbound Caller';
+  const callerNumber = str(rb.callerNumber, '(555) 019-4820');
+  const callerTopic = str(rb.callerTopic, 'Service Inquiry') || 'Service Inquiry';
+  const conversationHistory: any[] = Array.isArray(rb.conversationHistory) ? rb.conversationHistory : [];
+  const answeredBy = rb.answeredBy === 'human_operator' ? 'human_operator' : 'ai_receptionist';
+  const businessId = typeof rb.businessId === 'string' ? rb.businessId : undefined;
+  const withAudio = rb.withAudio === undefined ? true : !!rb.withAudio;
 
   // Gate ON: resolve to the caller's own business, never to the first
   // business on the server. A caller with no business gets a 403
@@ -2175,8 +2350,9 @@ Respond in JSON with exact format:
     // Side-effect: If actionTriggered is take_message, save to voicemails DB
     if (parsed.actionTriggered && parsed.actionTriggered.type === 'take_message') {
       const m = parsed.actionTriggered;
-      const newVoicemail: VoicemailRecord = {
-        id: `vm_${Date.now()}`,
+      const newVoicemail: ScopedVoicemail = {
+        id: `vm_${crypto.randomUUID()}`,
+        businessId: defaultBiz.id,
         callerName: m.callerName || callerName,
         callerNumber: m.callerNumber || callerNumber,
         company: callerName.includes('(') ? callerName.replace(/.*\((.*?)\).*/, '$1') : 'RC Client',
@@ -2215,10 +2391,15 @@ Respond in JSON with exact format:
 });
 
 // 2b-2. Calls Log Store (Web & Real PSTN Carrier Calls)
+// Business-scoped (audit #6): pass ?businessId=<id> (see resolvePhoneScope).
+// Writes are allow-listed and may only create/update records of the named
+// business — a call id or Twilio SID belonging to another business is a 404.
+const PHONE_CALL_STRING_FIELDS = ['callerName', 'callerNumber', 'type', 'status', 'timestamp', 'duration', 'summary', 'sentiment', 'actionRequired', 'answeredBy', 'transferredTo', 'department', 'voicemailAudioBase64', 'twilioCallSid', 'recordingUrl', 'forwardedToNumber'] as const;
 app.get('/api/phone/calls', (req: Request, res: Response) => {
   try {
-    const list = db.getCalls();
-    res.json(list);
+    const scope = resolvePhoneScope(req, res);
+    if (!scope) return;
+    res.json(db.getCalls().filter(phoneScopeFilter(scope)));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch calls', details: err?.message });
   }
@@ -2226,18 +2407,44 @@ app.get('/api/phone/calls', (req: Request, res: Response) => {
 
 app.post('/api/phone/calls', (req: Request, res: Response) => {
   try {
-    const saved = db.saveCall(req.body);
+    const target = resolvePhoneWriteBusiness(req, res);
+    if (!target) return;
+    const body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) as Record<string, unknown>;
+    const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim().slice(0, 100) : undefined;
+    const twilioCallSid = typeof body.twilioCallSid === 'string' && body.twilioCallSid ? body.twilioCallSid : undefined;
+    const existing = (id || twilioCallSid) ? db.findCall({ id, twilioCallSid }) : undefined;
+    if (existing && !phoneScopeFilter(target.scope)(existing)) {
+      return res.status(404).json({ error: 'Call not found' });
+    }
+    const call: Record<string, unknown> = { id: existing?.id || id || `call_${crypto.randomUUID()}` };
+    for (const field of PHONE_CALL_STRING_FIELDS) {
+      if (body[field] !== undefined && body[field] !== null) call[field] = String(body[field]);
+    }
+    if (Array.isArray(body.transcript)) call.transcript = body.transcript.filter((t) => t && typeof t === 'object').slice(0, 500);
+    if (Array.isArray(body.actionsTriggered)) call.actionsTriggered = body.actionsTriggered.filter((t) => t && typeof t === 'object').slice(0, 100);
+    if (typeof body.isRealPstnCall === 'boolean') call.isRealPstnCall = body.isRealPstnCall;
+    if (!existing) {
+      call.callerName = call.callerName ?? 'Inbound Caller';
+      call.callerNumber = call.callerNumber ?? '';
+      call.type = call.type ?? 'inbound';
+      call.status = call.status ?? 'completed';
+      call.timestamp = call.timestamp ?? new Date().toISOString();
+      call.duration = call.duration ?? '0m 0s';
+    }
+    if (target.businessId) call.businessId = target.businessId;
+    const saved = db.saveCall(call as unknown as ScopedPhoneCall);
     res.status(201).json(saved);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to save call', details: err?.message });
   }
 });
 
-// 2c. Voicemails & Transcribed Messages Store
+// 2c. Voicemails & Transcribed Messages Store (business-scoped, same rules)
 app.get('/api/phone/voicemails', (req: Request, res: Response) => {
   try {
-    const list = db.getVoicemails();
-    res.json(list);
+    const scope = resolvePhoneScope(req, res);
+    if (!scope) return;
+    res.json(db.getVoicemails().filter(phoneScopeFilter(scope)));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch voicemails', details: err?.message });
   }
@@ -2245,20 +2452,30 @@ app.get('/api/phone/voicemails', (req: Request, res: Response) => {
 
 app.post('/api/phone/voicemails', (req: Request, res: Response) => {
   try {
-    const body = req.body;
-    const vm: VoicemailRecord = {
-      id: body.id || `vm_${Date.now()}`,
-      callerName: body.callerName || 'Inbound Caller',
-      callerNumber: body.callerNumber || '(555) 019-4820',
-      company: body.company || 'Commercial Partner',
-      timestamp: body.timestamp || new Date().toISOString(),
-      duration: body.duration || '0m 45s',
-      transcription: body.transcription || 'No transcription provided.',
-      summary: body.summary || 'Voicemail transcribed by RCOS Voice Receptionist.',
-      urgency: body.urgency || 'medium',
-      department: body.department || 'Operations',
-      audioBase64: body.audioBase64,
-      reviewed: !!body.reviewed
+    const target = resolvePhoneWriteBusiness(req, res);
+    if (!target) return;
+    const body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) as Record<string, any>;
+    const str = (v: unknown, dflt: string) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : dflt);
+    const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim().slice(0, 100) : undefined;
+    const existing = id ? db.getVoicemail(id) : undefined;
+    if (existing && !phoneScopeFilter(target.scope)(existing)) {
+      return res.status(404).json({ error: 'Voicemail not found' });
+    }
+    const urgency = ['low', 'medium', 'high', 'urgent'].includes(body.urgency) ? body.urgency : 'medium';
+    const vm: ScopedVoicemail = {
+      id: id || `vm_${crypto.randomUUID()}`,
+      callerName: str(body.callerName, '') || 'Inbound Caller',
+      callerNumber: str(body.callerNumber, '') || '(555) 019-4820',
+      company: str(body.company, '') || 'Commercial Partner',
+      timestamp: str(body.timestamp, '') || new Date().toISOString(),
+      duration: str(body.duration, '') || '0m 45s',
+      transcription: str(body.transcription, '') || 'No transcription provided.',
+      summary: str(body.summary, '') || 'Voicemail transcribed by RCOS Voice Receptionist.',
+      urgency,
+      department: str(body.department, '') || 'Operations',
+      audioBase64: typeof body.audioBase64 === 'string' ? body.audioBase64 : undefined,
+      reviewed: !!body.reviewed,
+      ...(target.businessId ? { businessId: target.businessId } : {}),
     };
     const saved = db.saveVoicemail(vm);
     res.status(201).json(saved);
@@ -2269,6 +2486,12 @@ app.post('/api/phone/voicemails', (req: Request, res: Response) => {
 
 app.delete('/api/phone/voicemails/:id', (req: Request, res: Response) => {
   try {
+    const scope = resolvePhoneScope(req, res);
+    if (!scope) return;
+    const existing = db.getVoicemail(req.params.id);
+    if (!existing || !phoneScopeFilter(scope)(existing)) {
+      return res.status(404).json({ error: 'Voicemail not found' });
+    }
     const deleted = db.deleteVoicemail(req.params.id);
     res.json({ success: deleted });
   } catch (err: any) {
@@ -2487,7 +2710,9 @@ app.post('/api/phone/request-invoice', quoteInvoiceLimiter, requireInvoiceAmount
 
 // 2f. Backward compatibility simulate call endpoint
 app.post('/api/phone/simulate-call', aiRateLimiter, async (req: Request, res: Response) => {
-  const { userSpeech = '', callerName = 'Caller', callerTopic = 'General Inquiry' } = req.body;
+  const userSpeech = typeof req.body?.userSpeech === 'string' ? req.body.userSpeech : '';
+  const callerName = typeof req.body?.callerName === 'string' && req.body.callerName ? req.body.callerName : 'Caller';
+  const callerTopic = typeof req.body?.callerTopic === 'string' && req.body.callerTopic ? req.body.callerTopic : 'General Inquiry';
 
   const fallbackData = () => {
     const isUrgent =
@@ -2538,7 +2763,12 @@ Respond concisely as the RCOS Voice AI Assistant (max 2-3 sentences). Then outpu
 
 // 3. Analyze uploaded RCOS system files
 app.post('/api/rcos/analyze-files', aiRateLimiter, async (req: Request, res: Response) => {
-  const { files = [] } = req.body;
+  const files: Array<{ name: string; size?: unknown }> = Array.isArray(req.body?.files)
+    ? req.body.files
+        .filter((f: any) => f && typeof f === 'object')
+        .map((f: any) => ({ name: String(f.name ?? 'unnamed').slice(0, 200), size: typeof f.size === 'number' || typeof f.size === 'string' ? f.size : undefined }))
+        .slice(0, 200)
+    : [];
   const count = files.length;
   const fileNames = files.map((f: any) => f.name).slice(0, 5).join(', ');
 
@@ -2706,31 +2936,60 @@ app.get('/api/business/:id/requests', (req: Request, res: Response) => {
   res.json(requests);
 });
 
+// Public intake body (audit #4/#20). Every text field is coerced to a
+// string (a numeric phone like 5551234 used to crash the process via
+// `.slice` on a number) and capped; enums fall back to safe defaults
+// instead of storing arbitrary values/types.
+const intakeText = (max: number) => z.preprocess(
+  (v) => (typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : undefined),
+  z.string().optional()
+).transform((v) => (v ?? '').trim().slice(0, max));
+const INTAKE_URGENCIES = ['low', 'normal', 'routine', 'soon', 'urgent', 'emergency'] as const;
+const INTAKE_CONTACTS = ['phone', 'sms', 'text', 'email', 'call', 'any'] as const;
+const PublicIntakeSchema = z.object({
+  customerName: intakeText(100),
+  customerPhone: intakeText(30),
+  customerEmail: intakeText(100),
+  preferredContact: z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(INTAKE_CONTACTS)).catch('phone'),
+  serviceLocation: intakeText(200),
+  serviceType: intakeText(100),
+  description: intakeText(2000),
+  urgency: z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(INTAKE_URGENCIES)).catch('routine'),
+  preferredDateTime: intakeText(100),
+  flexibility: intakeText(100),
+  specialInstructions: intakeText(1000),
+});
+
 app.post('/api/business/:id/requests', publicIntakeRateLimiter, async (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) {
     return res.status(404).json({ error: 'Business not found' });
   }
 
-  const b = req.body;
-  if (!b.customerName || typeof b.customerName !== 'string' || b.customerName.trim().length === 0) {
+  const parsedBody = PublicIntakeSchema.safeParse(req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {});
+  if (!parsedBody.success) {
+    return res.status(400).json({ error: 'Invalid request details' });
+  }
+  const b = parsedBody.data;
+  if (!b.customerName) {
     return res.status(400).json({ error: 'Customer name is required' });
   }
+  const firstService = Array.isArray(business.services) && typeof business.services[0] === 'string' ? business.services[0] : '';
 
   const newRequest: CustomerRequest = {
-    id: `req_${Date.now()}`,
+    id: `req_${crypto.randomUUID()}`,
     businessId: business.id,
-    customerName: b.customerName.trim().slice(0, 100),
-    customerPhone: (b.customerPhone || '').slice(0, 30),
-    customerEmail: (b.customerEmail || '').slice(0, 100),
-    preferredContact: b.preferredContact || 'phone',
-    serviceLocation: (b.serviceLocation || 'Client address').slice(0, 200),
-    serviceType: (b.serviceType || business.services[0] || 'General Service').slice(0, 100),
-    description: (b.description || 'Request submitted through portal').slice(0, 2000),
-    urgency: b.urgency || 'routine',
-    preferredDateTime: (b.preferredDateTime || 'Flexible / Next Available').slice(0, 100),
-    flexibility: (b.flexibility || 'Standard business hours').slice(0, 100),
-    specialInstructions: (b.specialInstructions || '').slice(0, 1000),
+    customerName: b.customerName,
+    customerPhone: b.customerPhone,
+    customerEmail: b.customerEmail,
+    preferredContact: b.preferredContact,
+    serviceLocation: b.serviceLocation || 'Client address',
+    serviceType: (b.serviceType || firstService || 'General Service').slice(0, 100),
+    description: b.description || 'Request submitted through portal',
+    urgency: b.urgency,
+    preferredDateTime: b.preferredDateTime || 'Flexible / Next Available',
+    flexibility: b.flexibility || 'Standard business hours',
+    specialInstructions: b.specialInstructions,
     stage: 'Intake',
     status: 'in_progress',
     createdAt: new Date().toISOString(),
@@ -2853,14 +3112,30 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
     return res.status(400).json({ error: 'Invalid decision type' });
   }
 
-  const updatedAction = await RcosEngine.handleApprovalDecision(
-    business,
-    req.params.actionId,
-    decision,
-    editedContent,
-    reviewerNote,
-    editedAmounts
-  );
+  // Tenant isolation (audit #3): the action must belong to the business in
+  // the URL (the membership middleware only vouches for that business).
+  const existingAction = db.getAction(req.params.actionId);
+  if (!existingAction || existingAction.businessId !== business.id) {
+    return res.status(404).json({ error: 'Action not found' });
+  }
+  if (RcosEngine.isDecidedStatus(existingAction.status)) {
+    return res.status(409).json({ error: `This item was already ${existingAction.status === 'rejected' ? 'rejected' : 'approved'}.`, action: existingAction });
+  }
+
+  let updatedAction: ActionRecord | null;
+  try {
+    updatedAction = await RcosEngine.handleApprovalDecision(
+      business,
+      req.params.actionId,
+      decision,
+      typeof editedContent === 'string' || (editedContent && typeof editedContent === 'object') ? editedContent : undefined,
+      typeof reviewerNote === 'string' ? reviewerNote.slice(0, 2000) : undefined,
+      editedAmounts && typeof editedAmounts === 'object' ? editedAmounts : undefined
+    );
+  } catch (err) {
+    console.error('[Approvals] Decision failed:', err);
+    return res.status(500).json({ error: 'Could not record this decision. Please try again.' });
+  }
 
   if (!updatedAction) {
     return res.status(404).json({ error: 'Action not found' });
@@ -3133,6 +3408,21 @@ app.all('/api/*', (req: Request, res: Response) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
+// Final error handler (audit #4): any thrown/rejected handler error (async
+// rejections are routed here by server/async-errors.ts) becomes a JSON 500
+// instead of an HTML stack page or a dead process. Body-parser errors keep
+// their 4xx status (e.g. malformed JSON → 400, too large → 413).
+function jsonErrorHandler(err: any, req: Request, res: Response, next: express.NextFunction) {
+  const status = Number(err?.status || err?.statusCode);
+  const clientError = Number.isInteger(status) && status >= 400 && status < 500;
+  if (!clientError) console.error(`[RCOS] Unhandled error on ${req.method} ${req.originalUrl}:`, err);
+  if (res.headersSent) return next(err);
+  if (clientError) {
+    return res.status(status).json({ error: err?.type === 'entity.parse.failed' ? 'Invalid JSON body' : (err?.expose && err?.message) || 'Bad request' });
+  }
+  return res.status(500).json({ error: 'Something went wrong on the server. Please try again.' });
+}
+
 // ==================== VITE SPA INTEGRATION ====================
 async function startServer() {
   const httpServer = http.createServer(app);
@@ -3153,6 +3443,17 @@ async function startServer() {
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
     });
   }
+
+  // Registered last so it sees errors from every route and middleware.
+  app.use(jsonErrorHandler);
+
+  // A listen failure (e.g. port in use) must still exit so the host
+  // restarts the service — the uncaughtException logger would otherwise
+  // keep a non-listening process alive.
+  httpServer.on('error', (err) => {
+    console.error('[RCOS] HTTP server error — exiting:', err);
+    process.exit(1);
+  });
 
   // Gracefully handle any WebSocket upgrade requests
   httpServer.on('upgrade', (_req, socket) => {
