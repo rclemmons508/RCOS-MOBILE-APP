@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { 
   TabType, 
   PhoneCall, 
@@ -31,33 +31,21 @@ import { MoreMenu } from './components/nav/MoreMenu';
 import { RequestsView } from './components/nav/RequestsView';
 import { FloatingAIAssistant } from './components/FloatingAIAssistant';
 import { DashboardTab } from './components/tabs/DashboardTab';
-import { PhoneSystemTab } from './components/tabs/PhoneSystemTab';
-import { JobsTab } from './components/tabs/JobsTab';
-import { ClientsTab } from './components/tabs/ClientsTab';
-import { SettingsTab, ProfileUpdate } from './components/tabs/SettingsTab';
-import { TeamChatView } from './components/tabs/TeamChatView';
+import type { ProfileUpdate } from './components/tabs/SettingsTab';
 import { teamService } from './services/teamService';
 import { countTeamUnread, getTeamLastSeenId } from './services/teamUnread';
 import { useTeamLiveEvents } from './hooks/useTeamLiveEvents';
 import { industryLabel } from './utils/industry';
 import { asSafeSuggestion } from './utils/safeRender';
-import { GmailTab } from './components/tabs/GmailTab';
-import { GeminiChatView } from './components/GeminiChatView';
-import { AiTeamView } from './components/AiTeamView';
-import { ApprovalQueueView } from './components/ApprovalQueueView';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
-import { NotificationPreferencesModal } from './components/notifications/NotificationPreferencesModal';
 import { AgentInboxModal } from './components/AgentInboxModal';
 import { agentInboxService } from './services/agentInboxService';
 import { AuthModal } from './components/auth/AuthModal';
 import { useBiometrics } from './context/BiometricContext';
 import { biometricService } from './services/biometricService';
 import { LoginView } from './components/auth/LoginView';
-import { OnboardingModal } from './components/OnboardingModal';
 import { showChecklistAgain } from './utils/getStartedChecklist';
-import { ServiceManagerModal } from './components/ServiceManagerModal';
-import { ProactiveIndustrySuggestionModal } from './components/ProactiveIndustrySuggestionModal';
 import { authService } from './services/authService';
 import { APP_BUILD_ID } from './utils/buildInfo';
 import {
@@ -95,6 +83,31 @@ import {
   loadMainAiAlertState,
   saveMainAiAlertState,
 } from './utils/mainAiAlerts';
+
+// Code-split heavy tabs and modals (audit #24): each loads on first use
+// instead of shipping in the startup bundle (livekit-client rides with
+// the Phone tab / AI Team view, Gmail + DOMPurify with the Gmail tab).
+const PhoneSystemTab = lazy(() => import('./components/tabs/PhoneSystemTab').then((m) => ({ default: m.PhoneSystemTab })));
+const JobsTab = lazy(() => import('./components/tabs/JobsTab').then((m) => ({ default: m.JobsTab })));
+const ClientsTab = lazy(() => import('./components/tabs/ClientsTab').then((m) => ({ default: m.ClientsTab })));
+const TeamChatView = lazy(() => import('./components/tabs/TeamChatView').then((m) => ({ default: m.TeamChatView })));
+const GmailTab = lazy(() => import('./components/tabs/GmailTab').then((m) => ({ default: m.GmailTab })));
+const GeminiChatView = lazy(() => import('./components/GeminiChatView').then((m) => ({ default: m.GeminiChatView })));
+const AiTeamView = lazy(() => import('./components/AiTeamView').then((m) => ({ default: m.AiTeamView })));
+const ApprovalQueueView = lazy(() => import('./components/ApprovalQueueView').then((m) => ({ default: m.ApprovalQueueView })));
+const NotificationPreferencesModal = lazy(() => import('./components/notifications/NotificationPreferencesModal').then((m) => ({ default: m.NotificationPreferencesModal })));
+const OnboardingModal = lazy(() => import('./components/OnboardingModal').then((m) => ({ default: m.OnboardingModal })));
+const ServiceManagerModal = lazy(() => import('./components/ServiceManagerModal').then((m) => ({ default: m.ServiceManagerModal })));
+const ProactiveIndustrySuggestionModal = lazy(() => import('./components/ProactiveIndustrySuggestionModal').then((m) => ({ default: m.ProactiveIndustrySuggestionModal })));
+const SettingsTab = lazy(() => import('./components/tabs/SettingsTab').then((m) => ({ default: m.SettingsTab })));
+
+
+/** Shown while a code-split tab or modal downloads (usually a few ms). */
+const TabLoadingFallback: React.FC = () => (
+  <div role="status" aria-live="polite" className="flex items-center justify-center py-16 text-xs text-zinc-500 font-mono">
+    Loading…
+  </div>
+);
 
 const BLANK_BUSINESS: BusinessAccount = {
   id: '',
@@ -2037,6 +2050,7 @@ export default function App() {
 
         {/* Tab Views Container with Safe Scrollable Bounds */}
         <main className="flex-1 w-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pl-[max(0.25rem,env(safe-area-inset-left))] pr-[max(0.25rem,env(safe-area-inset-right))]">
+          <Suspense fallback={<TabLoadingFallback />}>
           {(activeTab === 'jobs' || activeTab === 'approvals' || activeTab === 'clients') && (
             <div className="px-3.5 sm:px-4 pt-2">
               <JobsHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} />
@@ -2354,6 +2368,7 @@ export default function App() {
           {activeTab === 'more' && (
             <MoreMenu onOpenSettings={openSettings} />
           )}
+          </Suspense>
         </main>
 
         {/* Floating Multi-Agent AI Assistant Button */}
@@ -2385,14 +2400,18 @@ export default function App() {
           onTriggerTestNotification={handleTriggerTestPush}
         />
 
-        {/* Notification Preferences Modal */}
-        <NotificationPreferencesModal
-          isOpen={isNotifPrefsOpen}
-          onClose={() => setIsNotifPrefsOpen(false)}
-          preferences={notifPreferences}
-          onSavePreferences={(updated) => setNotifPreferences(updated)}
-          onTriggerTestPush={handleTriggerTestPush}
-        />
+        {/* Notification Preferences Modal (loaded on first open) */}
+        {isNotifPrefsOpen && (
+          <Suspense fallback={null}>
+            <NotificationPreferencesModal
+              isOpen={isNotifPrefsOpen}
+              onClose={() => setIsNotifPrefsOpen(false)}
+              preferences={notifPreferences}
+              onSavePreferences={(updated) => setNotifPreferences(updated)}
+              onTriggerTestPush={handleTriggerTestPush}
+            />
+          </Suspense>
+        )}
 
         {/* Proactive Agent Inbox */}
         <AgentInboxModal
@@ -2416,36 +2435,41 @@ export default function App() {
           onLogout={handleLogout}
         />
 
-        {/* Business Services Catalog Manager Modal */}
-        <ServiceManagerModal
-          isOpen={isServiceManagerOpen}
-          onClose={() => setIsServiceManagerOpen(false)}
-          business={activeBusiness}
-          onUpdateServices={(updatedServices) => {
-            const updatedBiz = {
-              ...activeBusiness,
-              services: updatedServices,
-              updatedAt: new Date().toISOString()
-            };
-            setBusinessAccount(updatedBiz);
-            setCachedBusiness(currentUser, updatedBiz);
-            if (updatedBiz.id) {
-              void saveBusinessFields(updatedBiz.id, { services: updatedServices });
-            }
-            sendPushNotification({
-              type: 'system_alert',
-              title: 'Services Catalog Updated',
-              message: `Now offering ${updatedServices.length} operational capabilities. AI Monitor evaluating profile fit...`,
-              priority: 'low',
-              module: 'Service Catalog'
-            });
-            evaluateIndustryOptimization(updatedBiz);
-          }}
-          onRequestAISuggestionCheck={() => evaluateIndustryOptimization(undefined, true)}
-        />
+        {/* Business Services Catalog Manager Modal (loaded on first open) */}
+        {isServiceManagerOpen && (
+          <Suspense fallback={null}>
+            <ServiceManagerModal
+              isOpen={isServiceManagerOpen}
+              onClose={() => setIsServiceManagerOpen(false)}
+              business={activeBusiness}
+              onUpdateServices={(updatedServices) => {
+                const updatedBiz = {
+                  ...activeBusiness,
+                  services: updatedServices,
+                  updatedAt: new Date().toISOString()
+                };
+                setBusinessAccount(updatedBiz);
+                setCachedBusiness(currentUser, updatedBiz);
+                if (updatedBiz.id) {
+                  void saveBusinessFields(updatedBiz.id, { services: updatedServices });
+                }
+                sendPushNotification({
+                  type: 'system_alert',
+                  title: 'Services Catalog Updated',
+                  message: `Now offering ${updatedServices.length} operational capabilities. AI Monitor evaluating profile fit...`,
+                  priority: 'low',
+                  module: 'Service Catalog'
+                });
+                evaluateIndustryOptimization(updatedBiz);
+              }}
+              onRequestAISuggestionCheck={() => evaluateIndustryOptimization(undefined, true)}
+            />
+          </Suspense>
+        )}
 
         {/* Proactive AI Industry Profile Optimization Modal (User must explicitly approve) */}
         {proactiveSuggestion && (
+          <Suspense fallback={null}>
           <ProactiveIndustrySuggestionModal
             isOpen={isSuggestionModalOpen}
             onClose={() => setIsSuggestionModalOpen(false)}
@@ -2454,10 +2478,12 @@ export default function App() {
             onApplyOptimization={handleApplyOptimization}
             onDismissSuggestion={handleDismissSuggestion}
           />
+          </Suspense>
         )}
 
         {/* Industry Setup & Onboarding System */}
         {isOnboardingOpen && (
+          <Suspense fallback={<TabLoadingFallback />}>
           <OnboardingModal
             initialBusiness={businessAccount}
             onCancel={() => setIsOnboardingOpen(false)}
@@ -2517,6 +2543,7 @@ export default function App() {
               });
             }}
           />
+          </Suspense>
         )}
 
       </div>
