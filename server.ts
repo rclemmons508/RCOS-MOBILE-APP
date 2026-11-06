@@ -159,7 +159,7 @@ function createRateLimiter(name: string, maxRequests: number, windowMs: number) 
 // GET /api/diagnostics/scan is exempt from the default limiter (M3 —
 // left exactly as-is as the verification probe while the gate is off).
 const aiRateLimiter = createRateLimiter('ai', 60, 60000); // 60 req / min
-const publicIntakeRateLimiter = createRateLimiter('public-intake', 30, 60000); // 30 req / min
+const publicIntakeRateLimiter = createRateLimiter('public-intake', 10, 60000); // 10 req / min per IP (audit #20, was 30)
 const deleteAccountLimiter = createRateLimiter('delete-account', 3, 10 * 60 * 1000); // 3 delete tries / 10 min
 const smsSendLimiter = createRateLimiter('sms-send', 30, 60000); // 30 follow-up sends / min
 const gmailSendLimiter = createRateLimiter('gmail-send', 30, 60000); // 30 Gmail sends/drafts / min
@@ -3102,6 +3102,16 @@ app.post('/api/business/:id/requests', publicIntakeRateLimiter, async (req: Requ
   };
 
   const saved = db.saveRequest(newRequest);
+
+  // Paid-AI budget (audit #20): each anonymous submission fans out into
+  // classify + execute Gemini calls, so auto-routing runs for at most
+  // INTAKE_AI_DAILY_CAP submissions per business per UTC day (default 100).
+  // Past the cap the request is still saved and shown (stage Intake) for
+  // the owner to handle by hand — nothing is lost.
+  if (!takeDailyQuota('intake-ai', business.id, envInt('INTAKE_AI_DAILY_CAP', 100))) {
+    console.warn('[intake] Daily AI auto-routing cap reached for a business; request saved without AI routing.');
+    return res.status(201).json(saved);
+  }
 
   // Automatically trigger the RCOS engine to classify, route, and begin qualification/action
   setTimeout(async () => {
