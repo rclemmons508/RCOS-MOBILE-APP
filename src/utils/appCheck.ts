@@ -20,6 +20,7 @@
  * - Every verdict and fix uses plain, jargon-free words.
  */
 import { apiFetch } from '../lib/api';
+import { withBusinessId } from '../lib/businessScope';
 import { employeeCustomizationService } from '../services/employeeCustomizationService';
 import { teamHeaders } from '../services/teamService';
 import type { AutomationTask, BusinessAccount, User } from '../types';
@@ -110,7 +111,7 @@ export async function runAppCheck(input: AppCheckInput): Promise<AppCheckResult[
   }
 
   // ---- Server probes (all GET, all read-only) ----
-  const [routingLog] = await Promise.all([probeGet('/api/voice/routing-log')]);
+  const [routingLog] = await Promise.all([probeGet(withBusinessId('/api/voice/routing-log', businessId))]);
 
   // Best-effort phone config. If it fails, the voice verdict still rests
   // on the routing log alone; the detail just leaves the provider out.

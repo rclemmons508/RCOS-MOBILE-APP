@@ -88,6 +88,8 @@ import {
 } from './utils/followups';
 import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automation';
 import { haptic } from './utils/haptics';
+import { withBusinessId, filterToBusiness, uniqueId } from './lib/businessScope';
+import { loadRoutingSeen, saveRoutingSeen, ROUTING_SEEN_CAP } from './lib/routingSeen';
 import {
   detectMainAiAlerts,
   loadMainAiAlertState,
@@ -201,7 +203,11 @@ export default function App() {
   const [actions, setActions] = useState<ActionRecord[]>([]);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [customerRequests, setCustomerRequests] = useState<CustomerRequest[]>([]);
-  const seenRoutingRef = useRef<string[]>([]);
+  // Emergency-routing keys already handled, for the business named in bizId
+  // (loaded from / saved to localStorage per business; see lib/routingSeen).
+  const seenRoutingRef = useRef<{ bizId: string; primed: boolean; keys: string[] }>({ bizId: '', primed: false, keys: [] });
+  // Escalated routing entries whose Agent Inbox copy has not been created yet.
+  const pendingRoutingInboxRef = useRef<Map<string, { bizId: string; entry: any }>>(new Map());
   const [metrics, setMetrics] = useState<SystemMetric>({
     agentsActive: 4,
     latencyMs: 14,
@@ -572,62 +578,103 @@ export default function App() {
   }, [businessAccount?.id]);
 
   // Emergency voice routing -> escalation approval (the "emergency escalation" automation rule)
+  // Scoped to THIS business: the server filters by ?businessId=, and any
+  // entry naming another business is dropped here too before anything fires.
+  // Handled keys persist per business; the first poll only seeds the baseline.
   const pollVoiceRouting = useCallback(async () => {
     const bizId = businessAccount?.id;
     if (!bizId) return;
     let entries: any[] = [];
     try {
-      entries = await apiFetch<any[]>('/api/voice/routing-log');
+      entries = await apiFetch<any[]>(withBusinessId('/api/voice/routing-log', bizId));
     } catch {
       return;
     }
     if (!Array.isArray(entries)) return;
+    entries = filterToBusiness(entries, bizId);
+    if (seenRoutingRef.current.bizId !== bizId) {
+      seenRoutingRef.current = { bizId, ...loadRoutingSeen(bizId) };
+    }
+    const seen = seenRoutingRef.current;
+    const seenSet = new Set(seen.keys);
     const ruleOn = isTaskFiring(automationTasks.find((t) => t.id === 'rule-emergency'), automationMasterOn);
-    for (const entry of entries) {
-      const key = `${entry.at || ''}|${entry.summary || ''}`;
-      if (seenRoutingRef.current.includes(key)) continue;
-      seenRoutingRef.current.push(key);
-      const urgency = String(entry.urgency || 'routine');
-      if ((urgency === 'emergency' || urgency === 'urgent') && ruleOn) {
-        const action: ActionRecord = {
-          id: `local-emg-${Date.now()}`,
-          businessId: bizId,
-          title: `Emergency call routed to ${entry.department || 'support'}`,
-          description: entry.summary || 'An urgent caller needs the owner now.',
-          employeeId: 'ai_receptionist',
-          actionType: 'safety_review',
-          status: 'awaiting_approval',
-          riskCategory: 'system_settings',
-          stepSummary: `AI receptionist flagged this call as ${urgency}. Call back immediately.`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        setActions((prev) => [action, ...prev]);
-        logAutomationFired('rule-emergency', 'Emergency escalation', action.title, bizId);
-        bumpAutomationRun('rule-emergency');
-        sendPushNotification({
-          type: 'emergency_dispatch',
-          title: 'Emergency call escalation',
-          message: action.title,
-          priority: 'high',
-          module: 'Phone System',
-          actionTaken: 'Queued for review',
-        });
+    const isEmergency = (entry: any) => {
+      const urgency = String(entry?.urgency || 'routine');
+      return urgency === 'emergency' || urgency === 'urgent';
+    };
+    let seenChanged = false;
+
+    if (!seen.primed) {
+      // First run for this business on this device: seed every existing
+      // entry as handled and fire nothing, so a launch never re-escalates
+      // calls that were already in the log.
+      for (const entry of entries) {
+        const key = `${entry.at || ''}|${entry.summary || ''}`;
+        if (!seenSet.has(key)) {
+          seenSet.add(key);
+          seen.keys.push(key);
+        }
+      }
+      seen.primed = true;
+      seenChanged = true;
+    } else {
+      for (const entry of entries) {
+        const key = `${entry.at || ''}|${entry.summary || ''}`;
+        if (seenSet.has(key)) continue;
+        seenSet.add(key);
+        seen.keys.push(key);
+        seenChanged = true;
+        if (isEmergency(entry) && ruleOn) {
+          const urgency = String(entry.urgency || 'routine');
+          const action: ActionRecord = {
+            id: uniqueId('local-emg-'),
+            businessId: bizId,
+            title: `Emergency call routed to ${entry.department || 'support'}`,
+            description: entry.summary || 'An urgent caller needs the owner now.',
+            employeeId: 'ai_receptionist',
+            actionType: 'safety_review',
+            status: 'awaiting_approval',
+            riskCategory: 'system_settings',
+            stepSummary: `AI receptionist flagged this call as ${urgency}. Call back immediately.`,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setActions((prev) => [action, ...prev]);
+          logAutomationFired('rule-emergency', 'Emergency escalation', action.title, bizId);
+          bumpAutomationRun('rule-emergency');
+          sendPushNotification({
+            type: 'emergency_dispatch',
+            title: 'Emergency call escalation',
+            message: action.title,
+            priority: 'high',
+            module: 'Phone System',
+            actionTaken: 'Queued for review',
+          });
+          // Queue the Agent Inbox copy (retried below until it lands).
+          pendingRoutingInboxRef.current.set(`routing:${key}`, { bizId, entry });
+        }
       }
     }
-    if (seenRoutingRef.current.length > 200) {
-      seenRoutingRef.current = seenRoutingRef.current.slice(-200);
+    if (seen.keys.length > ROUTING_SEEN_CAP) {
+      seen.keys = seen.keys.slice(-ROUTING_SEEN_CAP);
     }
+    if (seenChanged) saveRoutingSeen(bizId, { primed: seen.primed, keys: seen.keys });
 
     // Also log the emergency in the Agent Inbox so the owner sees the full
     // history there. The escalation push above already covers the alert, so
-    // no second push is sent for the inbox copy.
-    if (!ruleOn) return;
-    for (const entry of entries) {
-      const urgency = String(entry.urgency || 'routine');
-      if (urgency !== 'emergency' && urgency !== 'urgent') continue;
-      const inboxKey = `routing:${entry.at || ''}|${entry.summary || ''}`;
-      if (agentMessagesRef.current.some((m) => m.dedupeKey === inboxKey)) continue;
+    // no second push is sent for the inbox copy. Only entries escalated in
+    // this session are queued (never the seeded baseline); a failed create
+    // stays queued and retries on the next poll.
+    for (const [inboxKey, item] of Array.from(pendingRoutingInboxRef.current.entries())) {
+      if (item.bizId !== bizId) {
+        pendingRoutingInboxRef.current.delete(inboxKey);
+        continue;
+      }
+      if (agentMessagesRef.current.some((m) => m.dedupeKey === inboxKey)) {
+        pendingRoutingInboxRef.current.delete(inboxKey);
+        continue;
+      }
+      const entry = item.entry;
       try {
         const created = await agentInboxService.create(bizId, {
           agent: 'receptionist',
@@ -638,6 +685,7 @@ export default function App() {
           actionTab: 'approvals',
           dedupeKey: inboxKey,
         });
+        pendingRoutingInboxRef.current.delete(inboxKey);
         seenInboxIdsRef.current.add(created.id);
         setAgentMessages((prev) => [created, ...prev]);
       } catch {
@@ -952,7 +1000,9 @@ export default function App() {
     // Simulator/test calls never reach the server, so they never fire this.
     let serverCalls: any[] | null = null;
     try {
-      serverCalls = await apiFetch<any[]>('/api/phone/calls');
+      serverCalls = await apiFetch<any[]>(withBusinessId('/api/phone/calls', bizId));
+      // Defensive tenant filter: never text another company's missed callers.
+      if (Array.isArray(serverCalls)) serverCalls = filterToBusiness(serverCalls, bizId);
     } catch {
       serverCalls = null;
     }
@@ -1134,7 +1184,7 @@ export default function App() {
   const sendPushNotification = (newNotif: Omit<RCOSNotification, 'id' | 'timestamp' | 'read'>) => {
     const fullNotif: RCOSNotification = {
       ...newNotif,
-      id: 'notif-' + Date.now(),
+      id: uniqueId('notif-'),
       timestamp: 'Just now',
       read: false,
     };
