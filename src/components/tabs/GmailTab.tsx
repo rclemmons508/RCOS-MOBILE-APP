@@ -44,6 +44,7 @@ import { GmailComposeModal } from '../gmail/GmailComposeModal';
 import { GmailMessageDetailModal } from '../gmail/GmailMessageDetailModal';
 import { GmailConfirmModal, GmailActionType } from '../gmail/GmailConfirmModal';
 import { User, Job } from '../../types';
+import { safeHref } from '../../lib/safeOpen';
 
 interface GmailTabProps {
   currentUser?: User | null;
@@ -558,7 +559,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                     <div className="flex flex-wrap items-center gap-2 pt-0.5">
                       {authError.helpUrl && (
                         <a
-                          href={authError.helpUrl}
+                          href={safeHref(authError.helpUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-cyan-400 border border-zinc-700 font-medium text-[11px] flex items-center gap-1 transition"

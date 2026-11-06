@@ -5,6 +5,7 @@ import { Browser } from '@capacitor/browser';
 import { apiFetch } from './api';
 import { getApiBaseUrl } from '../config/api';
 import { teamHeaders } from '../services/teamService';
+import { safeOpenUrl } from './safeOpen';
 
 export interface GmailMessageSummary {
   id: string;
@@ -205,7 +206,9 @@ export async function authenticateGmail(
       // Give up after 5 minutes (e.g. the user closed the browser tab).
       setTimeout(() => finish(false, new Error('Gmail login timed out. Please try again.')), 5 * 60 * 1000);
 
-      Browser.open({ url: startUrl }).catch((e) => finish(false, e));
+      safeOpenUrl(startUrl)
+        .then((opened) => { if (!opened) finish(false, new Error('Could not open the Google sign-in page.')); })
+        .catch((e) => finish(false, e));
     });
   }
 

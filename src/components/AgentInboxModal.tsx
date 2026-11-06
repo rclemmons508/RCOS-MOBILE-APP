@@ -12,6 +12,7 @@ import {
 import { AgentInboxMessage, TabType } from '../types';
 import { AGENT_META } from '../services/agentInboxService';
 import { buildSmsUrl, isFollowupMessage, parseSmsUrl } from '../utils/followups';
+import { safeOpenUrl } from '../lib/safeOpen';
 
 interface AgentInboxModalProps {
   isOpen: boolean;
@@ -60,12 +61,13 @@ const MessageCard: React.FC<{
   const [editText, setEditText] = useState(sms?.text || '');
   const openSmsApp = (draft: string) => {
     if (!sms) return;
-    window.location.href = buildSmsUrl(sms.phone, draft);
+    void safeOpenUrl(buildSmsUrl(sms.phone, draft), { allowContact: true });
   };
 
   const goAction = () => {
     if (msg.actionTab) onNavigateTab(msg.actionTab);
-    else if (msg.actionUrl) window.open(msg.actionUrl, '_blank', 'noopener');
+    // Server-stored string: only http(s), same-app routes and sms:/tel:/mailto: open.
+    else if (msg.actionUrl) void safeOpenUrl(msg.actionUrl, { allowContact: true });
     onRespond(msg, 'answered');
   };
 
