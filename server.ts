@@ -3488,7 +3488,8 @@ Rules:
 // Job Packs
 app.get('/api/business/:id/job-packs', (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
-  const packs = db.getJobPacks(business?.industry);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const packs = db.getJobPacks(business.industry, business.id);
   res.json(packs);
 });
 
@@ -3556,7 +3557,8 @@ Return ONLY valid JSON matching this schema:
       fallbackFn: fallbackPack
     });
     const parsed = JSON.parse(aiRes.text || fallbackPack());
-    const newPack: JobPack = {
+    const newPack: JobPack & { businessId: string } = {
+      businessId: business.id,
       id: `jp_${crypto.randomUUID()}`,
       serviceType: parsed.serviceType || serviceType,
       industry: business.industry,

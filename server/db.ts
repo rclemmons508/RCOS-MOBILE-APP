@@ -413,12 +413,19 @@ export const db = {
   },
 
   // Job Packs
-  getJobPacks(industry?: string): JobPack[] {
+  // Seed packs (no businessId) are shared starter templates; generated
+  // packs carry the businessId that created them and are returned only to
+  // that business (audit #17). With no businessId given, only seed packs.
+  getJobPacks(industry?: string, businessId?: string): JobPack[] {
     const data = ensureDb();
+    const visible = data.jobPacks.filter(j => {
+      const owner = (j as JobPack & { businessId?: string }).businessId;
+      return !owner || (!!businessId && owner === businessId);
+    });
     if (industry) {
-      return data.jobPacks.filter(j => j.industry === industry || j.industry === 'general_small_business');
+      return visible.filter(j => j.industry === industry || j.industry === 'general_small_business');
     }
-    return data.jobPacks;
+    return visible;
   },
 
   saveJobPack(jobPack: JobPack): JobPack {
@@ -428,6 +435,15 @@ export const db = {
       data.jobPacks[idx] = jobPack;
     } else {
       data.jobPacks.push(jobPack);
+      // Bounded (audit #17): keep at most 200 generated packs per business.
+      const owner = (jobPack as JobPack & { businessId?: string }).businessId;
+      if (owner) {
+        const mine = data.jobPacks.filter(j => (j as JobPack & { businessId?: string }).businessId === owner);
+        if (mine.length > 200) {
+          const drop = new Set(mine.slice(0, mine.length - 200).map(j => j.id));
+          data.jobPacks = data.jobPacks.filter(j => !drop.has(j.id));
+        }
+      }
     }
     saveDb(data);
     return jobPack;
