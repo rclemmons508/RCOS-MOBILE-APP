@@ -275,14 +275,14 @@ telephonyRouter.post('/voice/incoming', requireTwilioSignature, (req: Request, r
   const config = db.getTelephonyConfig();
 
   const callerPhone = req.body.From || 'Unknown Caller';
-  const callSid = req.body.CallSid || `real_call_${Date.now()}`;
+  const callSid = req.body.CallSid || `real_call_${randomUUID()}`;
   const callerCity = req.body.CallerCity ? `${req.body.CallerCity}, ${req.body.CallerState}` : '';
 
   console.log(`[PSTN Telecom] Real inbound call received from ${callerPhone} (CallSid: ${callSid})`);
 
   // Record real PSTN call in database
   const realCall: PhoneCall = {
-    id: `call_${Date.now()}`,
+    id: `call_${randomUUID()}`,
     twilioCallSid: callSid,
     callerName: callerCity ? `${callerPhone} (${callerCity})` : callerPhone,
     callerNumber: callerPhone,
@@ -405,7 +405,7 @@ telephonyRouter.post('/voice/handle-speech', requireTwilioSignature, async (req:
   // Update existing call transcript
   const calls = db.getCalls();
   const activeCall = calls.find(c => c.twilioCallSid === callSid) || {
-    id: `call_${Date.now()}`,
+    id: `call_${randomUUID()}`,
     twilioCallSid: callSid,
     callerName: callerNumber,
     callerNumber: callerNumber,
@@ -786,7 +786,7 @@ telephonyRouter.post('/voice/voicemail', requireTwilioSignature, (req: Request, 
   console.log(`[PSTN Voicemail] New recording received: ${recordingUrl} (Duration: ${recordingDuration}s)`);
 
   const newVoicemail: VoicemailRecord = {
-    id: `vm_${Date.now()}`,
+    id: `vm_${randomUUID()}`,
     callerName: callerNumber,
     callerNumber: callerNumber,
     company: 'Incoming Commercial Line',
@@ -992,7 +992,7 @@ telephonyRouter.post('/voice/outbound-call', requireVerifiedAuth, requireLineRol
 
       // Record notice in call history so the operator has visibility
       const noticeCall: PhoneCall = {
-        id: `call_notice_${Date.now()}`,
+        id: `call_notice_${randomUUID()}`,
         callerName: `${formattedTo} (Twilio Trial Unverified)`,
         callerNumber: formattedTo,
         type: 'outbound',

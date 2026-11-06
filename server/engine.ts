@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { 
   BusinessAccount, 
   ActionRecord, 
@@ -650,7 +651,7 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
             const followUpInstruction = `Schedule the approved quote for ${action.result?.quoteDetails?.clientName || 'the client'}: ${action.title}`;
             const classification = await RcosEngine.classifyAndRoute(business, followUpInstruction);
             const scheduledAction: ActionRecord = {
-              id: `act_${Date.now()}_ops`,
+              id: `act_${randomUUID()}_ops`,
               businessId: business.id,
               requestId: action.requestId,
               employeeId: 'operations',

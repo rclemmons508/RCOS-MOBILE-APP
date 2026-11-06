@@ -805,7 +805,7 @@ function demoSubmissionToRequest(businessId: string, f: {
   if (f.industry) lines.push('Industry: ' + f.industry);
   if (f.message) lines.push('What they want to automate: ' + f.message);
   return {
-    id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `req_${crypto.randomUUID()}`,
     businessId,
     customerName: f.name,
     customerPhone: f.phone,
@@ -1080,7 +1080,7 @@ app.post('/api/business/:id/agent-messages', (req: Request, res: Response) => {
   if (!AGENT_MESSAGE_KINDS.includes(kind)) return res.status(400).json({ error: 'Invalid kind' });
   if (!title || !body) return res.status(400).json({ error: 'Title and body are required' });
   const msg = db.saveAgentMessage({
-    id: `amsg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `amsg_${crypto.randomUUID()}`,
     businessId: req.params.id,
     agent,
     kind,
@@ -1589,7 +1589,7 @@ app.post('/api/team/join', teamInviteLimiter, (req: Request, res: Response) => {
   }
   db.saveTeamInvite({ ...invite, used: true, usedByEmail: email });
   const updated = db.addBusinessMember(business.id, {
-    userId: `usr_${Date.now()}`,
+    userId: `usr_${crypto.randomUUID()}`,
     email,
     name: fullName,
     role: invite.role,
@@ -1702,7 +1702,7 @@ app.post('/api/business/:id/team-messages', teamMessageLimiter, requireVerifiedA
   const senderName = (me?.name || '').trim() || (caller.email || '').trim() || 'Team member';
   const senderAvatar = me?.avatar;
   const msg: TeamMessage = {
-    id: `tm_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+    id: `tm_${crypto.randomUUID()}`,
     businessId: business.id,
     senderId: me?.userId || caller.uid || `usr_${caller.email || 'unknown'}`,
     senderEmail: me?.email || caller.email || '',
@@ -1951,7 +1951,7 @@ Return ONLY valid JSON:
     });
     const parsed = JSON.parse(aiRes.text || fallbackTemplates());
     const drafts: StarterDraft[] = (parsed.drafts || []).map((d: any) => ({
-      id: d.id || `draft_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      id: d.id || `draft_${crypto.randomUUID()}`,
       title: d.title,
       type: d.type,
       content: d.content,
@@ -2362,7 +2362,7 @@ Respond in JSON with exact format:
       const q = parsed.actionTriggered;
       const amt = Number(q.estimatedAmount) || 1200;
       const newAction: ActionRecord = {
-        id: `act_${Date.now()}`,
+        id: `act_${crypto.randomUUID()}`,
         businessId: defaultBiz.id,
         employeeId: 'executive_assistant',
         actionType: 'generate_quote',
@@ -2559,7 +2559,7 @@ app.post('/api/phone/send-email', (req: Request, res: Response) => {
 
   // Record simulated outbound email
   const emailRecord = {
-    id: `email_${Date.now()}`,
+    id: `email_${crypto.randomUUID()}`,
     recipient,
     subject,
     body,
@@ -2611,7 +2611,7 @@ app.post('/api/phone/request-quote', quoteInvoiceLimiter, requireQuoteAmount, re
 
   const amt = Number(estimatedAmount);
   const newAction: ActionRecord = {
-    id: `act_${Date.now()}`,
+    id: `act_${crypto.randomUUID()}`,
     businessId: defaultBiz.id,
     employeeId: 'executive_assistant',
     actionType: 'generate_quote',
@@ -2722,7 +2722,7 @@ app.post('/api/phone/request-invoice', quoteInvoiceLimiter, requireInvoiceAmount
   }
 
   const newAction: ActionRecord = {
-    id: `act_${Date.now()}`,
+    id: `act_${crypto.randomUUID()}`,
     businessId: defaultBiz.id,
     employeeId: 'finance',
     actionType: 'send_invoice',
@@ -3056,7 +3056,7 @@ app.post('/api/business/:id/requests', publicIntakeRateLimiter, async (req: Requ
       const classification = await RcosEngine.classifyAndRoute(business, instruction, saved);
 
       const action: ActionRecord = {
-        id: `act_${Date.now()}`,
+        id: `act_${crypto.randomUUID()}`,
         businessId: business.id,
         requestId: saved.id,
         employeeId: classification.employeeId,
@@ -3122,7 +3122,7 @@ app.post('/api/business/:id/command', aiRateLimiter, async (req: Request, res: R
 
     // 2. Persist initial action record in queued/running state
     const action: ActionRecord = {
-      id: `act_${Date.now()}`,
+      id: `act_${crypto.randomUUID()}`,
       businessId: business.id,
       employeeId: classification.employeeId,
       actionType: classification.actionType,
@@ -3254,7 +3254,7 @@ app.post('/api/business/:id/chat', aiRateLimiter, async (req: Request, res: Resp
 
   // Save user message
   const userMsg: ChatMessage = {
-    id: `msg_${Date.now()}_user`,
+    id: `msg_${crypto.randomUUID()}_user`,
     businessId: business.id,
     employeeId: targetEmpId,
     role: 'user',
@@ -3312,7 +3312,7 @@ Rules:
     const replyText = aiRes.text || fallbackEmpReply();
 
     const modelMsg: ChatMessage = {
-      id: `msg_${Date.now()}_model`,
+      id: `msg_${crypto.randomUUID()}_model`,
       businessId: business.id,
       employeeId: targetEmpId,
       role: 'model',
@@ -3325,7 +3325,7 @@ Rules:
   } catch (err: any) {
     console.error('Chat error:', err);
     const modelMsg: ChatMessage = {
-      id: `msg_${Date.now()}_model`,
+      id: `msg_${crypto.randomUUID()}_model`,
       businessId: business.id,
       employeeId: targetEmpId,
       role: 'model',
@@ -3409,7 +3409,7 @@ Return ONLY valid JSON matching this schema:
     });
     const parsed = JSON.parse(aiRes.text || fallbackPack());
     const newPack: JobPack = {
-      id: `jp_${Date.now()}`,
+      id: `jp_${crypto.randomUUID()}`,
       serviceType: parsed.serviceType || serviceType,
       industry: business.industry,
       checklist: parsed.checklist || [],
