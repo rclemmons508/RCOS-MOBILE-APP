@@ -28,7 +28,8 @@ import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
 import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails, explicitOperatorBusinessId, operatorBusinessId } from './server/tenancy';
-import { sendVonageSms } from './server/vonage';
+import { sendVonageSms, isVonageConfigured } from './server/vonage';
+import { checkDestination, envInt, normalizeE164, takeDailyQuota } from './server/phone-policy';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
@@ -1125,16 +1126,65 @@ app.post('/api/business/:id/agent-messages/:msgId/respond', (req: Request, res: 
 // { sent: false, configured: false } and the app falls back to its manual
 // Send-now draft — no behavior change when Vonage is not configured.
 // Twilio is untouched: this route is independent of the Twilio router.
+//
+// Abuse limits (audit #18):
+//   - the business must exist (no more self-heal stub creation here);
+//   - `to` must be valid E.164 in an allowed country
+//     (OUTBOUND_ALLOWED_COUNTRY_CODES, default US/Canada);
+//   - the OWNER may text any allowed number; a non-owner MEMBER may text
+//     only a number already on this business's server records (customer
+//     requests, calls, voicemails, quote/invoice actions);
+//   - text is capped at 1000 characters;
+//   - per business per UTC day: SMS_DAILY_CAP texts (default 100) and at
+//     most SMS_PER_RECIPIENT_DAILY_CAP to one number (default 5).
+// Gate OFF (local dev only — production is 503) keeps today's behavior
+// for the owner/member split, since there is no verified identity.
+function businessKnownPhones(businessId: string): Set<string> {
+  const out = new Set<string>();
+  const add = (v: unknown) => { const e = normalizeE164(v); if (e) out.add(e); };
+  for (const r of db.getRequests(businessId)) add(r.customerPhone);
+  for (const c of db.getCalls()) if (c.businessId === businessId) add(c.callerNumber);
+  for (const v of db.getVoicemails()) if (v.businessId === businessId) add((v as any).callerNumber);
+  for (const a of db.getActions(businessId)) {
+    add((a.result as any)?.quoteDetails?.clientPhone);
+    add((a.result as any)?.invoiceDetails?.clientPhone);
+  }
+  return out;
+}
+
 app.post('/api/business/:id/sms/send', smsSendLimiter, async (req: Request, res: Response) => {
-  getOrCreateBusiness(req.params.id); // self-heal: re-create if a redeploy wiped the store
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
   const { to, text, dedupeKey } = req.body || {};
-  if (typeof to !== 'string' || typeof text !== 'string') {
+  if (typeof to !== 'string' || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'to and text are required' });
   }
+  if (text.length > 1000) {
+    return res.status(400).json({ error: 'Text is too long (1000 characters max).' });
+  }
+  // Not configured: nothing is sent, so no recipient/quota checks are
+  // needed — the app falls back to its manual draft as before.
+  if (!isVonageConfigured()) {
+    return res.json(await sendVonageSms({ businessId: business.id, dedupeKey: typeof dedupeKey === 'string' ? dedupeKey : undefined, to, text }));
+  }
+  const dest = checkDestination(to);
+  if (!dest.ok) return res.status(400).json({ configured: true, sent: false, error: dest.error });
+  const isOwner = !isGateOn() || businessIsOwner(business, verifiedCaller(req));
+  if (!isOwner && !businessKnownPhones(business.id).has(dest.e164)) {
+    return res.status(403).json({ configured: true, sent: false, error: 'Team members can only text this business\'s own customers. Ask the owner to send this one.' });
+  }
+  const perRecipientCap = envInt('SMS_PER_RECIPIENT_DAILY_CAP', 5);
+  const dailyCap = envInt('SMS_DAILY_CAP', 100);
+  if (!takeDailyQuota(`sms-to:${dest.e164}`, business.id, perRecipientCap)) {
+    return res.status(429).json({ configured: true, sent: false, error: `Daily limit reached for texts to ${dest.e164} (${perRecipientCap} per day).` });
+  }
+  if (!takeDailyQuota('sms', business.id, dailyCap)) {
+    return res.status(429).json({ configured: true, sent: false, error: `Daily text limit reached for this business (${dailyCap} per day).` });
+  }
   const result = await sendVonageSms({
-    businessId: req.params.id,
+    businessId: business.id,
     dedupeKey: typeof dedupeKey === 'string' ? dedupeKey : undefined,
-    to,
+    to: dest.e164,
     text,
   });
   res.json(result);
