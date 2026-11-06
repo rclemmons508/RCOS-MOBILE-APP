@@ -11,14 +11,20 @@ on:
       - master
   workflow_dispatch:
 
+# A newer push to the same branch/PR cancels the build that is still running.
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
-    env:
-      # secrets.* cannot be used in step `if:` conditions (GitHub rejects the
-      # whole file). Mirror it to env here, then gate steps on env instead.
-      HAS_RELEASE_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    # No job-level secrets: signing secrets are passed only to the steps that
+    # need them, so `npm ci` lifecycle scripts and other steps never see them.
 
     steps:
       - name: Checkout Repository
@@ -28,9 +34,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          
+          cache: npm
+
       - name: Install Web Dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Verify Versions
         run: |
@@ -77,8 +84,9 @@ jobs:
           mkdir -p android
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
+      # Caches the Gradle wrapper, dependencies and build cache between runs.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Sync Capacitor Android Assets
         run: npx cap sync android
@@ -87,6 +95,8 @@ jobs:
         run: chmod +x gradlew
         working-directory: android
 
+      # versionCode comes from GITHUB_RUN_NUMBER (read in app/build.gradle),
+      # so every CI build is installable over the previous one.
       - name: Build Android Debug APK
         run: ./gradlew assembleDebug --stacktrace --no-daemon
         working-directory: android
@@ -96,39 +106,71 @@ jobs:
         with:
           name: RCOS-Mobile-App-Debug-APK
           path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           retention-days: 14
 
-      - name: Decode release keystore
-        if: ${{ env.HAS_RELEASE_KEYSTORE != '' }}
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/release.p12
+      # Signed release builds run only on pushes to main/master and manual runs,
+      # and only when the keystore secret exists. PRs (including forks, which
+      # never receive secrets) stop after the debug APK and stay green.
+      - name: Decide whether to build a signed release
+        id: signing
+        env:
+          IS_RELEASE_EVENT: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) }}
+          HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: |
+          if [ "$IS_RELEASE_EVENT" = "true" ] && [ "$HAS_KEYSTORE" = "true" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Signed release build: enabled"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            if [ "$IS_RELEASE_EVENT" = "true" ]; then
+              echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; skipping the signed release build."
+            else
+              echo "Signed release build: skipped for ${{ github.event_name }}"
+            fi
+          fi
 
       - name: Verify signing secrets present
+        if: steps.signing.outputs.release == 'true'
         run: |
           missing=0
-          for name in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+          for name in KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
             val="${!name}"
             if [ -z "$val" ]; then echo "::error::Secret $name is missing or empty"; missing=1; else echo "OK: $name is set"; fi
           done
           exit $missing
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Build Android Release APK (signed)
-        if: ${{ env.HAS_RELEASE_KEYSTORE != '' }}
-        run: ./gradlew assembleRelease --stacktrace --no-daemon
+      - name: Decode release keystore
+        if: steps.signing.outputs.release == 'true'
+        run: printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/release.p12
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: Build signed release APK and AAB
+        if: steps.signing.outputs.release == 'true'
+        run: ./gradlew assembleRelease bundleRelease --stacktrace --no-daemon
         working-directory: android
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Upload Release APK Artifact
-        if: ${{ env.HAS_RELEASE_KEYSTORE != '' }}
+      - name: Remove decoded keystore
+        if: always()
+        run: rm -f android/release.p12
+
+      - name: Upload Release APK + AAB Artifacts
+        if: steps.signing.outputs.release == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: RCOS-Mobile-App-Release-APK
-          path: android/app/build/outputs/apk/release/*.apk
+          name: RCOS-Mobile-App-Release
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
           retention-days: 30
