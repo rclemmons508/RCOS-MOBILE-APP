@@ -37,8 +37,24 @@ function activeSessionEmail(): string {
 export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = {}): Promise<T> {
   const url = buildApiUrl(endpoint);
   const timeoutMs = options.timeoutMs || 15000;
+  const { timeoutMs: _timeoutMs, signal: callerSignal, ...fetchOptions } = options;
+  // One controller aborts the request on EITHER the timeout or the
+  // caller's own signal (unmount, superseded search), so callers can cancel.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const onCallerAbort = () => controller.abort();
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort();
+    else callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+  }
+  const cleanup = () => {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener('abort', onCallerAbort);
+  };
 
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
@@ -64,13 +80,16 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = 
   }
 
   try {
+    if (controller.signal.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
     const res = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       headers,
       signal: controller.signal
     });
 
-    clearTimeout(timer);
+    cleanup();
 
     if (!res.ok) {
       let errorBody: any = null;
@@ -84,13 +103,17 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = 
     }
 
     if (res.status === 204) {
-      return {} as T;
+      return undefined as T;
     }
 
     return await res.json();
   } catch (err: any) {
-    clearTimeout(timer);
-    if (err.name === 'AbortError') {
+    cleanup();
+    if (err?.name === 'AbortError') {
+      if (!timedOut && callerSignal?.aborted) {
+        // Cancelled by the caller: not a network problem, nothing to show.
+        throw new ApiError('Request cancelled.', 0, 'Aborted');
+      }
       throw new ApiError('Request timed out. Please check your network connection.', 408, 'Timeout');
     }
     if (err instanceof ApiError) {
