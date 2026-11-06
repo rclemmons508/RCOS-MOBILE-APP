@@ -46,7 +46,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
   const [title, setTitle] = useState(job.title);
   const [clientName, setClientName] = useState(job.clientName);
-  const [clientPhone, setClientPhone] = useState(job.clientPhone || '+1 (555) 000-1234');
+  const [clientPhone, setClientPhone] = useState(job.clientPhone || '');
   const [address, setAddress] = useState(job.address);
   const [status, setStatus] = useState<Job['status']>(job.status);
   const [priority, setPriority] = useState<Job['priority']>(job.priority);

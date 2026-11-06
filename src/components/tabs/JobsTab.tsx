@@ -52,7 +52,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   // New Job Form State
   const [title, setTitle] = useState('');
   const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('+1 (555) 234-8901');
+  const [clientPhone, setClientPhone] = useState('');
   const [address, setAddress] = useState('');
   const [category, setCategory] = useState<Job['category']>('HVAC');
   const [priority, setPriority] = useState<Job['priority']>('high');
@@ -89,15 +89,14 @@ export const JobsTab: React.FC<JobsTabProps> = ({
       id: `RC-${Math.floor(1000 + Math.random() * 9000)}`,
       title,
       clientName,
-      clientPhone: clientPhone || '+1 (555) 234-8901',
-      address: address || 'RC Solutions Commercial Hub, Austin TX',
+      clientPhone: clientPhone.trim(),
+      address: address.trim(),
       status: priority === 'critical' ? 'urgent' : 'dispatched',
       priority,
-      assignedTechnician: 'Marcus Vance (Senior Specialist)',
+      assignedTechnician: 'Unassigned',
       estimatedValue: Number(estimatedValue) || 1850,
       scheduledTime: 'Today at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       description: description || 'Inbound service request captured and processed via RCOS Job Engine.',
-      aiNotes: 'RCOS AI automatically optimized route and dispatched nearest specialist.',
       category
     };
 
@@ -116,7 +115,11 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const handleSmsClient = (e: React.MouseEvent, job: Job) => {
     e.stopPropagation();
     haptic.light();
-    setSmsFeedback(`Dispatched automated SMS ETA alert to ${job.clientName} (${job.clientPhone || '+1 (555) 000-1234'}).`);
+    if (!job.clientPhone) {
+      setSmsFeedback(`No phone number on file for ${job.clientName}. Add one to the job first.`);
+    } else {
+      setSmsFeedback(`Dispatched automated SMS ETA alert to ${job.clientName} (${job.clientPhone}).`);
+    }
     setTimeout(() => setSmsFeedback(null), 3000);
   };
 

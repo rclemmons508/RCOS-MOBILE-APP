@@ -1706,57 +1706,71 @@ export default function App() {
   };
 
   const handleSimulateInboundCall = () => {
-    // Demo data injection disabled in production builds.
-    if (import.meta.env.PROD) { console.warn('[demo] disabled'); return; }
-    const newCall: PhoneCall = {
-      id: 'call-' + Date.now(),
-      callerName: 'Alex Vance (Apex Corporate)',
-      callerNumber: '+1 (555) 492-0012',
-      type: 'inbound',
-      status: 'completed',
-      timestamp: 'Just now',
-      duration: '1m 20s',
-      summary: 'Inbound emergency call. RCOS Voice AI generated priority job ticket & SMS dispatch.',
-      sentiment: 'urgent',
-      actionRequired: 'Auto-Dispatched Field Technician',
-    };
-    setCalls((prev) => [newCall, ...prev]);
-    setMetrics((prev) => ({
-      ...prev,
-      callsHandled: prev.callsHandled + 1,
-    }));
-    sendPushNotification({
-      type: 'call_event',
-      title: 'Inbound AI Call Processed',
-      message: 'Apex Corporate call answered by Voice AI Agent. Priority ticket logged.',
-      priority: 'high',
-      module: 'Phone System',
-      actionTaken: 'Transcript Saved',
-    });
-    setActiveTab('phone');
+    // Demo data injection: development builds only. Wrapped in a
+    // compile-time DEV check so the demo strings are dropped from
+    // production bundles entirely.
+    if (!import.meta.env.DEV) {
+      console.warn('[demo] disabled');
+      return;
+    }
+    {
+      const newCall: PhoneCall = {
+        id: 'call-' + Date.now(),
+        callerName: 'Alex Vance (Apex Corporate)',
+        callerNumber: '+1 (555) 492-0012',
+        type: 'inbound',
+        status: 'completed',
+        timestamp: 'Just now',
+        duration: '1m 20s',
+        summary: 'Inbound emergency call. RCOS Voice AI generated priority job ticket & SMS dispatch.',
+        sentiment: 'urgent',
+        actionRequired: 'Auto-Dispatched Field Technician',
+      };
+      setCalls((prev) => [newCall, ...prev]);
+      setMetrics((prev) => ({
+        ...prev,
+        callsHandled: prev.callsHandled + 1,
+      }));
+      sendPushNotification({
+        type: 'call_event',
+        title: 'Inbound AI Call Processed',
+        message: 'Apex Corporate call answered by Voice AI Agent. Priority ticket logged.',
+        priority: 'high',
+        module: 'Phone System',
+        actionTaken: 'Transcript Saved',
+      });
+      setActiveTab('phone');
+    }
   };
 
   const handleEmergencyJobTrigger = async () => {
-    // Demo data injection disabled in production builds.
-    if (import.meta.env.PROD) { console.warn('[demo] disabled'); return; }
-    await haptic.warning();
-    const emergencyJob: Job = {
-      id: 'RC-' + Math.floor(9000 + Math.random() * 900),
-      title: 'Emergency Service & Urgent System Diagnostic',
-      clientName: 'Priority Client Call',
-      clientPhone: '+1 (555) 392-8811',
-      address: '450 Tech Parkway, Suite 100',
-      status: 'urgent',
-      priority: 'critical',
-      assignedTechnician: 'Marcus Vance (Lead Specialist)',
-      estimatedValue: 2400,
-      scheduledTime: 'Immediate Response',
-      description: 'Emergency service request captured and auto-routed for prompt arrival.',
-      aiNotes: 'Auto-routed based on urgent priority and nearest technician proximity.',
-      category: 'HVAC',
-    };
-    handleAddJob(emergencyJob);
-    setActiveTab('jobs');
+    // Demo data injection: development builds only. Wrapped in a
+    // compile-time DEV check so the demo strings are dropped from
+    // production bundles entirely.
+    if (!import.meta.env.DEV) {
+      console.warn('[demo] disabled');
+      return;
+    }
+    {
+      await haptic.warning();
+      const emergencyJob: Job = {
+        id: 'RC-' + Math.floor(9000 + Math.random() * 900),
+        title: 'Emergency Service & Urgent System Diagnostic',
+        clientName: 'Priority Client Call',
+        clientPhone: '+1 (555) 392-8811',
+        address: '450 Tech Parkway, Suite 100',
+        status: 'urgent',
+        priority: 'critical',
+        assignedTechnician: 'Marcus Vance (Lead Specialist)',
+        estimatedValue: 2400,
+        scheduledTime: 'Immediate Response',
+        description: 'Emergency service request captured and auto-routed for prompt arrival.',
+        aiNotes: 'Auto-routed based on urgent priority and nearest technician proximity.',
+        category: 'HVAC',
+      };
+      handleAddJob(emergencyJob);
+      setActiveTab('jobs');
+    }
   };
 
   const handleTriggerTestPush = () => {
