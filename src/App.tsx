@@ -348,10 +348,28 @@ export default function App() {
     return localStorage.getItem('rcos_dismissed_suggestion_preset_id');
   });
 
-  // Evaluate services against business context and query proactive optimization AI agent
-  const evaluateIndustryOptimization = async (customBiz?: BusinessAccount) => {
-    const targetBiz = customBiz || businessAccount;
-    if (!targetBiz || !targetBiz.services || targetBiz.services.length === 0) return;
+  // Latest values for the async evaluator (never a stale closure).
+  const dismissedSuggestionRef = useRef(dismissedSuggestionPresetId);
+  dismissedSuggestionRef.current = dismissedSuggestionPresetId;
+  const businessForSuggestionRef = useRef(businessAccount);
+  businessForSuggestionRef.current = businessAccount;
+  // Key of the last business/industry/services combination sent to the
+  // (paid) AI suggestion endpoint, so it fires at most once per change.
+  const lastSuggestionKeyRef = useRef<string>('');
+
+  const industrySuggestionKey = (biz?: BusinessAccount | null): string => {
+    if (!biz || !biz.services || biz.services.length === 0) return '';
+    return `${biz.id}::${biz.industry || ''}::${[...biz.services].sort().join('|')}`;
+  };
+
+  // Evaluate services against business context and query proactive optimization AI agent.
+  // `force` re-asks even when nothing changed (explicit "check now" from the user).
+  const evaluateIndustryOptimization = async (customBiz?: BusinessAccount, force = false) => {
+    const targetBiz = customBiz || businessForSuggestionRef.current;
+    const key = industrySuggestionKey(targetBiz);
+    if (!targetBiz || !key) return;
+    if (!force && key === lastSuggestionKeyRef.current) return;
+    lastSuggestionKeyRef.current = key;
 
     try {
       const res = await apiFetch<{ suggestion: IndustryOptimizationSuggestion | null }>(
@@ -368,28 +386,33 @@ export default function App() {
 
       if (res?.suggestion && res.suggestion.suggestedPresetId) {
         // Only trigger if user hasn't explicitly dismissed this exact suggestion
-        if (res.suggestion.suggestedPresetId !== dismissedSuggestionPresetId) {
+        // (read the CURRENT dismissed value, not the one captured at call time).
+        if (res.suggestion.suggestedPresetId !== dismissedSuggestionRef.current) {
           setProactiveSuggestion(asSafeSuggestion(res.suggestion));
         }
       } else {
         setProactiveSuggestion(null);
       }
     } catch {
-      // Non-blocking background agent failure
+      // Non-blocking background agent failure. Allow a retry on the next change.
+      if (lastSuggestionKeyRef.current === key) lastSuggestionKeyRef.current = '';
     }
   };
 
-  // Monitor services and trigger evaluation when services change
+  // Monitor services and trigger evaluation when the services set really
+  // changes. Depends on a stable string key, not the services array (every
+  // Firestore snapshot creates a new array, which fired a paid AI call per write).
+  const currentSuggestionKey = industrySuggestionKey(businessAccount);
   useEffect(() => {
-    const servicesStr = (businessAccount?.services || []).join('|');
-    if (!servicesStr) return;
+    if (!currentSuggestionKey || currentSuggestionKey === lastSuggestionKeyRef.current) return;
 
     const timer = setTimeout(() => {
-      evaluateIndustryOptimization();
+      void evaluateIndustryOptimization();
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [businessAccount?.services, businessAccount?.industry]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSuggestionKey]);
 
   // Handler when user applies the optimized preset recommendation
   const handleApplyOptimization = async (updatedBiz: BusinessAccount) => {
@@ -2388,7 +2411,7 @@ export default function App() {
             });
             evaluateIndustryOptimization(updatedBiz);
           }}
-          onRequestAISuggestionCheck={() => evaluateIndustryOptimization()}
+          onRequestAISuggestionCheck={() => evaluateIndustryOptimization(undefined, true)}
         />
 
         {/* Proactive AI Industry Profile Optimization Modal (User must explicitly approve) */}
