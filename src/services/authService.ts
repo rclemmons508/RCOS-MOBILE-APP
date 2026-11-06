@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { setCachedAccessToken } from '../lib/gmail';
 import { Capacitor } from '@capacitor/core';
+import { createPasswordHash, checkPassword } from './passwordHash';
 
 const STORAGE_KEY_SESSION = 'rcos_active_session';
 const STORAGE_KEY_USERS = 'rcos_registered_users';
@@ -54,37 +55,12 @@ function markFirebaseResetSent(email: string): void {
   } catch { /* storage unavailable — the email may be sent again next login */ }
 }
 
-/**
- * SHA-256 hex digest of `salt:password`. Only the hash is ever stored —
- * the password itself is never written to disk. Used to check the typed
- * password at login and before sensitive actions (e.g. Delete Account).
- */
-async function hashPassword(password: string, salt: string): Promise<string> {
-  // WebCrypto is unavailable on plain-HTTP pages (not a secure context).
-  // Fall back to a simple deterministic hash so password checks still work
-  // there instead of crashing login — weaker, but far better than no check.
-  if (!crypto?.subtle) {
-    let h1 = 0xdeadbeef;
-    let h2 = 0x41c6ce57;
-    const input = `${salt}:${password}`;
-    for (let i = 0; i < input.length; i++) {
-      const ch = input.charCodeAt(i);
-      h1 = Math.imul(h1 ^ ch, 2654435761);
-      h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    return ((h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0'));
-  }
-  const data = new TextEncoder().encode(`${salt}:${password}`);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function makeSalt(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+/** Remove credential fields from a user object (sessions and returned users never carry them). */
+function withoutCredentials<T extends Partial<User>>(user: T): T {
+  const { passwordHash: _h, passwordSalt: _s, ...rest } = user;
+  void _h;
+  void _s;
+  return rest as T;
 }
 
 export const SEED_USERS: User[] = [];
@@ -159,7 +135,7 @@ class AuthService {
           void _createdAt;
           void _lastActiveAt;
           return {
-            ...user,
+            ...withoutCredentials(user),
             preferences: prefs
           };
         }
@@ -187,7 +163,7 @@ class AuthService {
           createdAt = prev.sessionCreatedAt;
         }
       } catch {}
-      const stored: StoredSession = { ...user, sessionCreatedAt: createdAt, sessionLastActiveAt: now };
+      const stored: StoredSession = { ...withoutCredentials(user), sessionCreatedAt: createdAt, sessionLastActiveAt: now };
       localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(stored));
       localStorage.setItem('rcos_auth_user', JSON.stringify({ email: user.email, displayName: user.fullName, uid: user.id }));
       // Also register or update in users list
@@ -347,7 +323,7 @@ class AuthService {
     }
 
     if (existing.passwordHash) {
-      if ((await hashPassword(password, existing.passwordSalt || '')) !== existing.passwordHash) {
+      if (!(await this.verifyLocalHash(existing, password))) {
         throw new Error('Wrong password. Please try again.');
       }
     } else {
@@ -359,7 +335,7 @@ class AuthService {
     }
 
     const loggedIn: User = {
-      ...existing,
+      ...withoutCredentials(existing),
       authenticated: true,
       lastLogin: 'Just now',
       preferences: userPreferencesService.getUserPreferences(existing.email)
@@ -395,13 +371,8 @@ class AuthService {
     if (users[idx].passwordHash) {
       throw new Error('This account already has a password set.');
     }
-    const salt = makeSalt();
-    users[idx] = {
-      ...users[idx],
-      passwordHash: await hashPassword(newPassword, salt),
-      passwordSalt: salt,
-    };
-    this.saveRegisteredUsers(users);
+    const { hash, salt } = await createPasswordHash(newPassword);
+    this.writeLocalCredentials(cleanEmail, hash, salt);
   }
 
   /**
@@ -415,7 +386,7 @@ class AuthService {
     const user = this.getRegisteredUsers().find(u => u.email.toLowerCase() === cleanEmail);
     if (!user?.passwordHash) return false;
     try {
-      return (await hashPassword(password, user.passwordSalt || '')) === user.passwordHash;
+      return await this.verifyLocalHash(user, password);
     } catch {
       return false;
     }
@@ -446,7 +417,7 @@ class AuthService {
     const users = this.getRegisteredUsers();
     const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
     if (idx < 0) return null;
-    const updated = { ...users[idx], ...patch };
+    const updated = { ...users[idx], ...withoutCredentials(patch) };
     users[idx] = updated;
     this.saveRegisteredUsers(users);
     try {
@@ -455,7 +426,7 @@ class AuthService {
         this.saveActiveSession(updated);
       }
     } catch { /* session already updated via the users list */ }
-    return updated;
+    return withoutCredentials(updated);
   }
 
   /**
@@ -475,6 +446,15 @@ class AuthService {
   }): Promise<User> {
     const cleanEmail = (data.email || '').trim().toLowerCase();
     if (!cleanEmail) throw new Error('Email is required.');
+    // Never register over an existing login (account takeover): the old
+    // code upserted, which replaced that account's password hash and
+    // signed the registrant in as its owner, with their cached company.
+    if (this.getRegisteredUsers().some(u => u.email.toLowerCase() === cleanEmail)) {
+      throw new Error('An account with this email already exists. Please sign in instead.');
+    }
+    if (!data.password || data.password.length < 6) {
+      throw new Error('Password must be at least 6 characters.');
+    }
 
     // The biometrics flag must never claim biometrics are on while the
     // master switch is off (audit M7): the switch wins over any caller
@@ -515,15 +495,14 @@ class AuthService {
       ).catch(() => {});
     }
 
-    // Store only a salted hash of the password — never the password itself.
-    // Without this, login could never tell a right password from a wrong one.
-    if (data.password) {
-      const salt = makeSalt();
-      newUser.passwordHash = await hashPassword(data.password, salt);
-      newUser.passwordSalt = salt;
+    // Store only a salted PBKDF2 hash of the password — never the password itself.
+    const { hash, salt } = await createPasswordHash(data.password);
+    // Re-check right before writing (another tab/flow may have created it).
+    if (this.getRegisteredUsers().some(u => u.email.toLowerCase() === cleanEmail)) {
+      throw new Error('An account with this email already exists. Please sign in instead.');
     }
-
     this.upsertUser(newUser);
+    this.writeLocalCredentials(cleanEmail, hash, salt);
     this.saveActiveSession(newUser);
     // Mirror the new account into Firebase Auth (best effort): the phone
     // app needs a Firebase session so its API calls can carry a token
@@ -644,17 +623,73 @@ class AuthService {
     return matchedUser;
   }
 
+  /**
+   * Insert or update a user's PROFILE fields in the local users list.
+   * Credentials are never written here: any passwordHash/passwordSalt on
+   * `user` is ignored and an existing record keeps its own. Only
+   * writeLocalCredentials() / clearLocalCredentials() change them, so a
+   * profile save, session save, or sign-in can never overwrite another
+   * login's password.
+   */
   private upsertUser(user: User): void {
     try {
       const users = this.getRegisteredUsers();
+      const profile = withoutCredentials(user);
       const idx = users.findIndex(u => u.email.toLowerCase() === user.email.toLowerCase());
       if (idx >= 0) {
-        users[idx] = { ...users[idx], ...user };
+        const { passwordHash, passwordSalt } = users[idx];
+        users[idx] = { ...users[idx], ...profile, passwordHash, passwordSalt };
+        if (!passwordHash) delete users[idx].passwordHash;
+        if (!passwordSalt) delete users[idx].passwordSalt;
       } else {
-        users.push(user);
+        users.push(profile);
       }
       this.saveRegisteredUsers(users);
     } catch {}
+  }
+
+  /** Store a (PBKDF2) local hash for an existing record. */
+  private writeLocalCredentials(email: string, hash: string, salt: string): void {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const users = this.getRegisteredUsers();
+    const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    if (idx < 0) return;
+    users[idx] = { ...users[idx], passwordHash: hash, passwordSalt: salt };
+    this.saveRegisteredUsers(users);
+  }
+
+  /** Drop the local hash for a record (e.g. once Firebase owns the account). */
+  private clearLocalCredentials(email: string): void {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const users = this.getRegisteredUsers();
+    const idx = users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+    if (idx < 0 || (!users[idx].passwordHash && !users[idx].passwordSalt)) return;
+    const next = { ...users[idx] };
+    delete next.passwordHash;
+    delete next.passwordSalt;
+    users[idx] = next;
+    this.saveRegisteredUsers(users);
+  }
+
+  /**
+   * Check a password against a record's local hash. Legacy hashes
+   * (single SHA-256 / 64-bit fallback) still verify, and on success are
+   * transparently re-hashed with PBKDF2 so existing users are never
+   * locked out and never stay on the weak format.
+   */
+  private async verifyLocalHash(record: User, password: string): Promise<boolean> {
+    if (!record.passwordHash) return false;
+    const result = await checkPassword(password, record.passwordHash, record.passwordSalt || '');
+    if (result === 'mismatch') return false;
+    if (result === 'ok-needs-upgrade') {
+      try {
+        const { hash, salt } = await createPasswordHash(password);
+        this.writeLocalCredentials(record.email, hash, salt);
+      } catch {
+        /* no WebCrypto here — keep the legacy hash; upgrade on a later login */
+      }
+    }
+    return true;
   }
 }
 
