@@ -2978,51 +2978,53 @@ app.post('/api/hitl/evaluate', (req: Request, res: Response) => {
   }
 });
 
-// 5. Telemetry & Observability Summary
+// 5. Telemetry & Observability Summary — REMOVED (audit #24). It returned
+// hard-coded token/cost/latency numbers that looked like real metrics, and
+// no screen in the app calls it. Answer honestly instead of inventing data.
 app.get('/api/telemetry/report', (_req: Request, res: Response) => {
-  try {
-    return res.json({
-      totalTokens: 142850,
-      totalCostUsd: 0.0482,
-      avgLatencyMs: 14,
-      p95LatencyMs: 22,
-      activeAgents: 4,
-      negotiationsToday: 18,
-      complianceValidated: true,
-      lastAuditSync: new Date().toISOString()
-    });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
+  res.status(410).json({ error: 'Telemetry reporting is not available. No usage metrics are collected yet.' });
 });
 
 // 6. Billing & Financial Settlement
+// Inputs are coerced/validated (audit #24): `materials` sent as a string
+// used to concatenate ("435" + "250" -> "435250") into the total.
+const BillingEstimateSchema = z.object({
+  category: z.preprocess((v) => (typeof v === 'string' ? v.slice(0, 80) : undefined), z.string().optional()).transform((v) => v || 'HVAC'),
+  hours: z.preprocess((v) => (v === undefined || v === null || v === '' ? 3 : Number(v)), z.number().finite().min(0).max(1000)),
+  materials: z.preprocess((v) => (v === undefined || v === null || v === '' ? 250 : Number(v)), z.number().finite().min(0).max(10_000_000)),
+  isEmergency: z.preprocess((v) => v === true || v === 'true', z.boolean()),
+});
+const cents = (n: number) => Math.round(n * 100) / 100;
 app.post('/api/billing/estimate', (req: Request, res: Response) => {
-  try {
-    const { category = 'HVAC', hours = 3, materials = 250, isEmergency = false } = req.body;
-    const hourlyRate = category === 'Software AI' ? 225 : category === 'Electrical' ? 165 : 145;
-    const labor = hours * hourlyRate;
-    const subtotal = labor + materials + (isEmergency ? (labor + materials) * 0.45 : 0);
-    const tax = Math.round(subtotal * 0.0825);
-    const total = subtotal + tax;
-    const depositPct = isEmergency ? 35 : 20;
-    const requiredDeposit = Math.round((total * depositPct) / 100);
-
-    return res.json({
-      estimateId: `EST-${Math.floor(1000 + Math.random() * 9000)}`,
-      hourlyRate,
-      labor,
-      materials,
-      emergencySurcharge: isEmergency ? Math.round((labor + materials) * 0.45) : 0,
-      subtotal,
-      tax,
-      total,
-      requiredDepositPercentage: depositPct,
-      requiredDeposit
-    });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
+  const parsed = BillingEstimateSchema.safeParse(req.body && typeof req.body === 'object' ? req.body : {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'hours and materials must be non-negative numbers.' });
   }
+  const { category, hours, materials, isEmergency } = parsed.data;
+  const hourlyRate = category === 'Software AI' ? 225 : category === 'Electrical' ? 165 : 145;
+  const labor = cents(hours * hourlyRate);
+  const emergencySurcharge = isEmergency ? cents((labor + materials) * 0.45) : 0;
+  const subtotal = cents(labor + materials + emergencySurcharge);
+  const tax = cents(subtotal * 0.0825);
+  const total = cents(subtotal + tax);
+  const depositPct = isEmergency ? 35 : 20;
+  const requiredDeposit = cents((total * depositPct) / 100);
+
+  return res.json({
+    estimateId: `EST-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+    hourlyRate,
+    labor,
+    materials,
+    emergencySurcharge,
+    subtotal,
+    tax,
+    total,
+    requiredDepositPercentage: depositPct,
+    requiredDeposit,
+    // Built-in default rates and an 8.25% tax rate, not the business's own
+    // price list or local tax — an estimate for the owner to review.
+    basis: 'default_rates',
+  });
 });
 
 // 7. Vector Knowledge Store RAG Search
@@ -3033,7 +3035,7 @@ app.post('/api/knowledge/query', aiRateLimiter, async (req: Request, res: Respon
   }
 
   const fallbackKnowledge = () =>
-    `[RCOS Vector RAG Grounding - ${category}] Standard Operating Procedure for "${query}": Secure initial pre-authorized diagnostic deposit ($250-$350), mandate lockout/tagout safety compliance, and dispatch certified field technician with standard diagnostic toolset.`;
+    `[Offline fallback - ${category}] General guidance for "${query}": Secure initial pre-authorized diagnostic deposit ($250-$350), mandate lockout/tagout safety compliance, and dispatch certified field technician with standard diagnostic toolset.`;
 
   try {
     const prompt = `You are the RCOS Vector Knowledge Specialist for RC Solutions.
@@ -3051,17 +3053,21 @@ Provide a 2-3 sentence grounded answer based on RC Solutions standard operating 
     return res.json({
       query,
       aiGroundedResponse: result.text,
-      similarityScore: 0.94,
-      sourceDoc: 'RC Solutions Operations Manual v4.2 & Historical Retrospectives',
+      // No vector store or source documents exist: the answer is a plain
+      // model (or offline fallback) response. The old fixed
+      // similarityScore 0.94 and made-up source document were removed
+      // (audit #24).
+      grounded: false,
+      sourceDoc: null,
       modelUsed: result.modelUsed
     });
   } catch {
     return res.json({
       query,
       aiGroundedResponse: fallbackKnowledge(),
-      similarityScore: 0.94,
-      sourceDoc: 'RC Solutions Operations Manual v4.2 & Historical Retrospectives',
-      modelUsed: 'rcos-offline-engine'
+      grounded: false,
+      sourceDoc: null,
+      modelUsed: 'keyword-fallback'
     });
   }
 });
