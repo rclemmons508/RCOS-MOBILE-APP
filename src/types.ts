@@ -620,8 +620,9 @@ export interface User {
   phone?: string;
   contactEmail?: string;
   /**
-   * Local SHA-256 hash of the account password + salt. The password itself
-   * is NEVER stored. Login checks the typed password against this hash;
+   * Local PBKDF2 hash of the account password + salt (offline fallback
+   * store for accounts with no Firebase login; legacy SHA-256 hashes are
+   * upgraded on login). The password itself is NEVER stored. Login checks the typed password against this hash;
    * older accounts created before passwords were enforced have no hash.
    * Since the Stage 2 audit, a hashless account can NOT log in with a
    * blank password and does NOT adopt a typed password on first login —
@@ -629,6 +630,13 @@ export interface User {
    */
   passwordHash?: string;
   passwordSalt?: string;
+  /**
+   * True once Firebase Auth owns this login (registered, signed in, or
+   * migrated through Firebase). A linked record is only a local profile
+   * cache: it has no local password hash and can never sign in from the
+   * local store (not even offline).
+   */
+  firebaseLinked?: boolean;
   organization: string;
   /**
    * The company this login belongs to (owner or joined team member).

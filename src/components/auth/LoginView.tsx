@@ -242,7 +242,16 @@ const [joinPassword, setJoinPassword] = useState('');
       await haptic.success();
       onLoginSuccess(user);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Could not join that company.');
+      const msg = err?.message || 'Could not join that company.';
+      if (/already exists/i.test(msg)) {
+        // The email already has a login (on this phone or in Firebase):
+        // joining attached the company to it; sign in with that account.
+        setErrorMsg('An account with this email already exists. Sign in with it to open your team.');
+        setTab('signin');
+        setLoginEmail(joinEmail.trim());
+        return;
+      }
+      setErrorMsg(msg);
     } finally {
       setIsLoading(false);
     }
