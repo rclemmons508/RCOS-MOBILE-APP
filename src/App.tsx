@@ -70,7 +70,7 @@ import {
 import { setCachedAccessToken } from './lib/gmail';
 import { firestoreService } from './services/firestoreService';
 import { userPreferencesService } from './services/userPreferencesService';
-import { apiFetch } from './lib/api';
+import { apiFetch, ApiError } from './lib/api';
 import { auth } from './lib/firebase';
 import { updateProfile } from 'firebase/auth';
 import { useSyncEngine } from './hooks/useSyncEngine';
@@ -1481,9 +1481,9 @@ export default function App() {
     }
   };
 
-  // Local mirror of the server's edited-amounts application (Bug 3): when
-  // the decide call fails and we fall back to a local update, the edited
-  // amounts still land on the card instead of being silently dropped.
+  // Local mirror of the server's edited-amounts application (Bug 3), used
+  // for on-device actions (local emergency escalations / no business id).
+  // A failed server decide no longer falls back to a local update.
   const withEditedAmounts = (act: ActionRecord, edited: EditedAmounts): ActionRecord => {
     if (!act.result) return act;
     const items = edited.items.map((item) => ({
@@ -1543,13 +1543,35 @@ export default function App() {
     };
   };
 
+  // Error toast for a decision the server did not accept. Shown directly
+  // (not through notification preferences): it answers the owner's own tap.
+  const showDecisionError = (title: string, message: string) => {
+    setActivePushToast({
+      id: uniqueId('notif-'),
+      title,
+      message,
+      type: 'system_alert',
+      timestamp: 'Just now',
+      read: false,
+      priority: 'high',
+      module: 'Core',
+    });
+  };
+
+  /**
+   * Approve / reject / edit an action. Resolves true when the decision
+   * took effect, false when it did not (the card stays pending and an
+   * error toast explains why). Server-owned actions are NEVER marked
+   * approved locally when the API call fails: the owner would believe a
+   * quote or invoice went out when it didn't.
+   */
   const handleApprovalDecision = async (
     actionId: string,
     decision: 'approved' | 'rejected' | 'edited',
     editedContent?: string,
     note?: string,
     editedAmounts?: EditedAmounts
-  ) => {
+  ): Promise<boolean> => {
     const target = actions.find((x) => x.id === actionId);
     // Server-owned actions go through the API; local emergency escalations are handled on-device.
     if (target && !target.id.startsWith('local-emg-') && businessAccount?.id) {
@@ -1562,9 +1584,36 @@ export default function App() {
           }
         );
         setActions((prev) => prev.map((x) => (x.id === actionId ? updated : x)));
-        return;
-      } catch {
-        /* fall through to local update */
+        return true;
+      } catch (err: any) {
+        const status = err instanceof ApiError ? err.status : 0;
+        const data = err instanceof ApiError ? err.data : undefined;
+        if (status === 409) {
+          // Someone (another device or teammate) already decided it: show
+          // the server's copy instead of our stale pending card.
+          const serverAction = data?.action as ActionRecord | undefined;
+          if (serverAction && serverAction.id === actionId) {
+            setActions((prev) => prev.map((x) => (x.id === actionId ? serverAction : x)));
+          }
+          showDecisionError(
+            'Already decided',
+            data?.error || 'This item was already handled on another device. The latest status is shown.'
+          );
+          return false;
+        }
+        if (status === 503 && data?.code === 'auth_gate_unavailable') {
+          showDecisionError(
+            'Approvals temporarily unavailable',
+            'The server is finishing its sign-in setup, so nothing was approved or sent. The item is still waiting for you. Please try again in a few minutes.'
+          );
+          return false;
+        }
+        showDecisionError(
+          decision === 'rejected' ? 'Could not reject' : 'Not approved — nothing was sent',
+          (err?.message ? `${err.message} ` : '') +
+            'The item is still pending. Check your connection and try again.'
+        );
+        return false;
       }
     }
     setActions((prev) =>
@@ -1587,6 +1636,7 @@ export default function App() {
         };
       })
     );
+    return true;
   };
 
   const handleSimulateInboundCall = () => {
@@ -1977,7 +2027,7 @@ export default function App() {
               onOpenAuth={() => setIsAuthModalOpen(true)}
               onOpenNotifications={() => setIsNotifCenterOpen(true)}
               onOpenInbox={() => setIsInboxOpen(true)}
-              onApproveQuote={(actionId) => handleApprovalDecision(actionId, 'approved')}
+              onApproveQuote={async (actionId) => { await handleApprovalDecision(actionId, 'approved'); }}
               onScheduleJob={handleScheduleJob}
               onMarkPaid={handleMarkPaid}
               onOpenAppCheck={() => openSettings('agents')}

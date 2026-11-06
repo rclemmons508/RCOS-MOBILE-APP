@@ -25,7 +25,7 @@ import { AI_EMPLOYEES } from '../data/employees';
 interface ApprovalQueueViewProps {
   business: BusinessAccount;
   actions: ActionRecord[];
-  onDecision: (actionId: string, decision: 'approved' | 'rejected' | 'edited', editedContent?: string, note?: string, editedAmounts?: EditedAmounts) => Promise<void>;
+  onDecision: (actionId: string, decision: 'approved' | 'rejected' | 'edited', editedContent?: string, note?: string, editedAmounts?: EditedAmounts) => Promise<boolean | void>;
   onRefresh: () => void;
   onScheduleJob: (action: ActionRecord) => Promise<void>;
   onMarkPaid: (action: ActionRecord) => Promise<void>;
@@ -306,7 +306,9 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
   const handleEditAndApprove = async (actionId: string) => {
     setProcessingId(actionId);
     try {
-      await onDecision(actionId, 'edited', editText, undefined, editAmounts ?? undefined);
+      const ok = await onDecision(actionId, 'edited', editText, undefined, editAmounts ?? undefined);
+      // Keep the edit form (and the owner's edits) open when it failed.
+      if (ok === false) return;
       setEditingActionId(null);
       setEditAmounts(null);
     } finally {
@@ -402,7 +404,8 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
   const handleReject = async (actionId: string) => {
     setProcessingId(actionId);
     try {
-      await onDecision(actionId, 'rejected', undefined, rejectionNote);
+      const ok = await onDecision(actionId, 'rejected', undefined, rejectionNote);
+      if (ok === false) return;
       setRejectingActionId(null);
       setRejectionNote('');
     } finally {
