@@ -130,6 +130,13 @@ jobs:
             fi
           fi
 
+      # Without signing, still run the R8/minify release build so shrinking
+      # problems surface on PRs. The unsigned output is not uploaded.
+      - name: Check unsigned release build (R8)
+        if: steps.signing.outputs.release != 'true'
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
+        working-directory: android
+
       - name: Verify signing secrets present
         if: steps.signing.outputs.release == 'true'
         run: |

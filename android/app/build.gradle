@@ -58,7 +58,12 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            // Sign only when the keystore exists (CI decodes it on main/manual
+            // runs). Without it the build produces app-release-unsigned.apk,
+            // which PR CI uses to check that R8 shrinking still succeeds.
+            if (file("$rootDir/release.p12").exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     compileOptions {
