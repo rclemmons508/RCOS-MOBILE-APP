@@ -19,6 +19,18 @@ export class ApiError extends Error {
   }
 }
 
+/** Email of the app's active local session (authService's store), lowercased; '' when none. */
+function activeSessionEmail(): string {
+  try {
+    const raw = localStorage.getItem('rcos_active_session');
+    if (!raw) return '';
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.email === 'string' ? parsed.email.trim().toLowerCase() : '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Production HTTP client with timeout, auth token injection, and structured error handling.
  */
@@ -33,10 +45,15 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiOptions = 
     headers.set('Content-Type', 'application/json');
   }
 
-  // Inject Firebase Auth token if authenticated
+  // Inject Firebase Auth token if authenticated — but never a token for a
+  // different person than the app's active session (e.g. a stale Firebase
+  // user left over from a previous operator).
   try {
     const currentUser = auth.currentUser;
-    if (currentUser) {
+    const sessionEmail = activeSessionEmail();
+    const tokenMatchesSession =
+      !sessionEmail || (currentUser?.email || '').toLowerCase() === sessionEmail;
+    if (currentUser && tokenMatchesSession) {
       const idToken = await currentUser.getIdToken();
       if (idToken) {
         headers.set('Authorization', `Bearer ${idToken}`);

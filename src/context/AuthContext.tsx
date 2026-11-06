@@ -76,11 +76,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(currentUser);
         setAuthError(null);
       } else {
-        // If there is an active direct session in localStorage, do not clear it
-        const activeStored = localStorage.getItem('rcos_auth_user') || localStorage.getItem('rcos_active_session');
-        if (!activeStored) {
-          setUser(null);
-        }
+        // Firebase signed out: never keep the previous Firebase user around,
+        // even while a local session exists (audit High #4 — it was stale).
+        setUser(null);
       }
       setLoading(false);
     });

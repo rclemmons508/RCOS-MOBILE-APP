@@ -198,7 +198,8 @@ class AuthService {
   }
 
   /**
-   * Synchronously clear active session
+   * Synchronously clear active session (the Firebase sign-out it starts
+   * runs in the background).
    */
   clearActiveSession(): void {
     try {
@@ -206,6 +207,10 @@ class AuthService {
       localStorage.removeItem('rcos_auth_user');
       setCachedAccessToken(null);
     } catch {}
+    // Always end the Firebase session too (audit High #4): otherwise
+    // apiFetch keeps attaching the previous user's ID token after an
+    // expired / cleared local session.
+    void signOut(auth).catch(() => {});
   }
 
   /**
