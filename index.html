@@ -20,9 +20,9 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="/icon-512.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Fonts are self-hosted (public/fonts) so the offline Android APK renders them. -->
+    <link rel="preload" href="/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/fonts/fonts.css">
   </head>
   <body class="bg-black text-zinc-100 antialiased selection:bg-lime-500 selection:text-black min-h-screen overflow-x-hidden">
     <div id="root" class="min-h-screen flex flex-col w-full overflow-x-hidden"></div>

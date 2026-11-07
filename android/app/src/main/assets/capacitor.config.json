@@ -4,5 +4,20 @@
 	"webDir": "dist",
 	"server": {
 		"androidScheme": "https"
+	},
+	"android": {
+		"allowMixedContent": false
+	},
+	"cordova": {
+		"accessOrigins": [
+			"https://rcos-mobile-app-production.up.railway.app",
+			"https://*.googleapis.com",
+			"https://*.google.com",
+			"https://*.gstatic.com",
+			"https://*.firebaseapp.com",
+			"https://*.firebaseio.com",
+			"https://*.livekit.cloud",
+			"wss://*.livekit.cloud"
+		]
 	}
 }

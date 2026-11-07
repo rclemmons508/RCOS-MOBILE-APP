@@ -638,13 +638,16 @@ export async function extractDocumentText(input: AnalyzeDocumentInput): Promise<
 
   try {
     if (isPdf) {
-      // Import the inner parser directly: pdf-parse's index.js runs a debug
-      // block (reads ./test/data/05-versions-space.pdf) when loaded without
-      // a CJS parent, which crashes under ESM/tsx imports.
-      const pdfMod: any = await import('pdf-parse/lib/pdf-parse.js');
-      const parse = pdfMod.default ?? pdfMod;
-      const data = await parse(buf);
-      return typeof data?.text === 'string' ? data.text : '';
+      // pdf-parse 2.x (maintained, current pdf.js). Lazy-loaded so the
+      // pdf.js bundle is only pulled in when a PDF is actually uploaded.
+      const { PDFParse } = await import('pdf-parse');
+      const parser = new PDFParse({ data: new Uint8Array(buf) });
+      try {
+        const data = await parser.getText({ pageJoiner: '' });
+        return typeof data?.text === 'string' ? data.text : '';
+      } finally {
+        await parser.destroy();
+      }
     }
     if (isDocx) {
       const mammothMod: any = await import('mammoth');

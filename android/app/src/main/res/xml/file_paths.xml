@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider roots. Only app-specific directories are exposed:
+  - Pictures/ under the app's external files dir: Capacitor's WebView file
+    chooser writes camera captures there (BridgeWebChromeClient) when an
+    <input type="file" accept="image/*"> offers the camera.
+  - the app's internal cache dir.
+  Never expose external-path "." (all of shared storage).
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
+    <external-files-path name="my_images" path="Pictures/" />
     <cache-path name="my_cache_images" path="." />
 </paths>

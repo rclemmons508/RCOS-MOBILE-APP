@@ -1,5 +1,28 @@
 apply plugin: 'com.android.application'
 
+// versionCode: -PversionCode=<n> wins, then CI's GITHUB_RUN_NUMBER (strictly
+// increasing per workflow), else a local default. Every CI build therefore
+// installs over the previous one and can be uploaded to Play.
+// NOTE: renaming/recreating the Android workflow resets GITHUB_RUN_NUMBER;
+// pass -PversionCode higher than the last published value if that happens.
+def localVersionCode = 3
+def resolveVersionCode = {
+    def raw = project.findProperty('versionCode') ?: System.getenv('GITHUB_RUN_NUMBER')
+    if (raw != null && raw.toString().trim().isInteger()) {
+        return Math.max(raw.toString().trim().toInteger(), localVersionCode)
+    }
+    return localVersionCode
+}
+
+// versionName follows "version" in the root package.json.
+def resolveVersionName = {
+    try {
+        def pkg = new groovy.json.JsonSlurper().parse(file("$rootDir/../package.json"))
+        if (pkg.version) return pkg.version.toString()
+    } catch (Exception ignored) { }
+    return "1.0.1"
+}
+
 android {
     namespace = "com.rcsolutions.rcosmobile"
     compileSdk = 36
@@ -7,8 +30,8 @@ android {
         applicationId "com.rcsolutions.rcosmobile"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 3
-        versionName "1.0.1"
+        versionCode resolveVersionCode()
+        versionName resolveVersionName()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -29,9 +52,18 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            // R8 code shrinking + resource shrinking. Keep rules for Capacitor,
+            // Cordova and our own AudioRoutePlugin live in proguard-rules.pro.
+            // Smoke-test every signed release APK after changing these.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Sign only when the keystore exists (CI decodes it on main/manual
+            // runs). Without it the build produces app-release-unsigned.apk,
+            // which PR CI uses to check that R8 shrinking still succeeds.
+            if (file("$rootDir/release.p12").exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     compileOptions {
