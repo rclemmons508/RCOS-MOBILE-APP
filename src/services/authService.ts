@@ -229,6 +229,43 @@ class AuthService {
     }
   }
 
+  /**
+   * "Forgot password?" on the login screen. Firebase Auth is the authority
+   * for passwords, so the reset always goes through Firebase. With email
+   * enumeration protection on, Firebase answers success even for unknown
+   * emails, so the caller should show a neutral "if an account exists"
+   * confirmation.
+   */
+  async requestPasswordReset(rawEmail: string): Promise<void> {
+    const email = (rawEmail || '').trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error('Enter the email address you sign in with, then tap "Forgot password?" again.');
+    }
+    if (!isFirebaseConfigured) {
+      throw new Error('Password reset is not available on this build. Contact your company owner or support.');
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      markFirebaseResetSent(email);
+    } catch (err: any) {
+      const code = String(err?.code || '');
+      if (code === 'auth/invalid-email') {
+        throw new Error('That email address doesn\'t look right. Check it and try again.');
+      }
+      if (code === 'auth/user-not-found') {
+        // Only reachable when enumeration protection is off; stay neutral.
+        return;
+      }
+      if (code === 'auth/too-many-requests') {
+        throw new Error('Too many reset requests. Wait a few minutes, then check your inbox (and Spam folder) for an earlier reset email.');
+      }
+      if (code === 'auth/network-request-failed') {
+        throw new Error('No internet connection. Connect and try again.');
+      }
+      throw new Error(err?.message || 'Could not send the password-reset email. Please try again.');
+    }
+  }
+
   /** Sign Firebase out when it holds a different user than `email`. */
   private async signOutOtherFirebaseUser(email: string): Promise<void> {
     const current = auth.currentUser;
@@ -320,7 +357,7 @@ class AuthService {
     email: string,
     password: string
   ): Promise<FirebaseUser | 'local-only'> {
-    const wrong = new Error('Wrong email or password. Please try again.');
+    const wrong = new Error('Wrong email or password. If you can\'t remember it, tap "Forgot password?" to get a reset link.');
     if (!existing) throw wrong;
     if (existing.firebaseLinked) throw wrong;
     if (!existing.passwordHash) {
@@ -340,7 +377,8 @@ class AuthService {
         await this.sendDriftResetEmail(email, true);
         throw new Error(
           'This account\'s password was changed on another device. Sign in with your current password, ' +
-          `or use the password-reset email sent to ${email}.`
+          `or use the password-reset email we just sent to ${email}. ` +
+          'If you don\'t see it within a few minutes, check your Spam or Junk folder.'
         );
       }
       console.warn('[AuthService] Legacy account not migrated to Firebase yet (local login continues):', code || err?.message);

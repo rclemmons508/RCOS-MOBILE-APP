@@ -44,6 +44,7 @@ import { GmailComposeModal } from '../gmail/GmailComposeModal';
 import { GmailMessageDetailModal } from '../gmail/GmailMessageDetailModal';
 import { GmailConfirmModal, GmailActionType } from '../gmail/GmailConfirmModal';
 import { User, Job } from '../../types';
+import { safeHref } from '../../lib/safeOpen';
 
 interface GmailTabProps {
   currentUser?: User | null;
@@ -346,10 +347,15 @@ export const GmailTab: React.FC<GmailTabProps> = ({
   // Permanent Delete
   const handlePermanentDelete = async (messageId: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    let outcome: 'deleted' | 'trashed' = 'deleted';
     if (isLiveConnected && token) {
-      await deleteGmailMessage(messageId);
+      outcome = (await deleteGmailMessage(messageId)).outcome;
     }
-    setStatusNotice('Message permanently deleted from Gmail.');
+    setStatusNotice(
+      outcome === 'deleted'
+        ? 'Message permanently deleted from Gmail.'
+        : 'Message moved to Gmail Trash. Gmail deletes it for good after 30 days.'
+    );
     setTimeout(() => setStatusNotice(null), 3000);
   };
 
@@ -558,7 +564,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                     <div className="flex flex-wrap items-center gap-2 pt-0.5">
                       {authError.helpUrl && (
                         <a
-                          href={authError.helpUrl}
+                          href={safeHref(authError.helpUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-cyan-400 border border-zinc-700 font-medium text-[11px] flex items-center gap-1 transition"
@@ -590,7 +596,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-lime-400" />
               <span className="truncate">{statusNotice}</span>
             </div>
-            <button
+            <button aria-label="Dismiss notice"
               type="button"
               onClick={() => setStatusNotice(null)}
               className="text-zinc-500 hover:text-white"
@@ -611,7 +617,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
             className="w-full pl-8 pr-8 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 transition"
           />
           {searchQuery && (
-            <button
+            <button aria-label="Clear search"
               type="button"
               onClick={() => setSearchQuery('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"

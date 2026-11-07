@@ -46,7 +46,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
   const [title, setTitle] = useState(job.title);
   const [clientName, setClientName] = useState(job.clientName);
-  const [clientPhone, setClientPhone] = useState(job.clientPhone || '+1 (555) 000-1234');
+  const [clientPhone, setClientPhone] = useState(job.clientPhone || '');
   const [address, setAddress] = useState(job.address);
   const [status, setStatus] = useState<Job['status']>(job.status);
   const [priority, setPriority] = useState<Job['priority']>(job.priority);
@@ -130,7 +130,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-2xl max-h-[92vh] bg-zinc-950 border border-zinc-800 rounded-3xl flex flex-col shadow-2xl overflow-hidden">
         {/* Toast Feedback */}
         {toastMessage && (
@@ -161,7 +161,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               </h2>
             </div>
           </div>
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"

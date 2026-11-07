@@ -5,6 +5,7 @@ import { Browser } from '@capacitor/browser';
 import { apiFetch } from './api';
 import { getApiBaseUrl } from '../config/api';
 import { teamHeaders } from '../services/teamService';
+import { safeOpenUrl } from './safeOpen';
 
 export interface GmailMessageSummary {
   id: string;
@@ -205,7 +206,9 @@ export async function authenticateGmail(
       // Give up after 5 minutes (e.g. the user closed the browser tab).
       setTimeout(() => finish(false, new Error('Gmail login timed out. Please try again.')), 5 * 60 * 1000);
 
-      Browser.open({ url: startUrl }).catch((e) => finish(false, e));
+      safeOpenUrl(startUrl)
+        .then((opened) => { if (!opened) finish(false, new Error('Could not open the Google sign-in page.')); })
+        .catch((e) => finish(false, e));
     });
   }
 
@@ -537,12 +540,21 @@ export async function untrashGmailMessage(id: string): Promise<any> {
 }
 
 /**
- * Permanently Delete Message
+ * "Delete permanently". A true permanent delete needs the full
+ * https://mail.google.com/ scope, which the app no longer requests (see
+ * GMAIL_SCOPES). Tokens granted before the scope cut can still delete;
+ * otherwise the message is moved to Trash (Gmail empties Trash after 30 days).
  */
-export async function deleteGmailMessage(id: string): Promise<any> {
-  return await fetchWithAuth(`/messages/${id}`, {
-    method: 'DELETE',
-  });
+export async function deleteGmailMessage(id: string): Promise<{ outcome: 'deleted' | 'trashed' }> {
+  try {
+    await fetchWithAuth(`/messages/${id}`, {
+      method: 'DELETE',
+    });
+    return { outcome: 'deleted' };
+  } catch {
+    await trashGmailMessage(id);
+    return { outcome: 'trashed' };
+  }
 }
 
 /**

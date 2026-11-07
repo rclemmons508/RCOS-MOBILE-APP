@@ -16,6 +16,7 @@ import {
 import { BusinessAccount } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
 import { apiFetch } from '../lib/api';
+import { uniqueId } from '../lib/businessScope';
 import { employeeCustomizationService } from '../services/employeeCustomizationService';
 import { resolveBehaviorProtocol } from '../utils/agentBehavior';
 import { getEmployeeIcon, agentColorSet } from '../utils/employeeIcon';
@@ -76,6 +77,59 @@ const DEFAULT_BIZ: BusinessAccount = {
 
 const timeNow = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+/** Most messages kept per thread (on screen and in storage). */
+const MAX_THREAD_MESSAGES = 100;
+
+function chatThreadKey(businessId: string, userEmail: string): string {
+  const who = (userEmail || '').trim().toLowerCase() || 'anonymous';
+  return `rcos_chat_${businessId}:${who}`;
+}
+
+function readSavedThread(key: string): ChatMessageItem[] | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.slice(-MAX_THREAD_MESSAGES) as ChatMessageItem[];
+  } catch {
+    return null;
+  }
+}
+
+function welcomeThread(businessName: string): ChatMessageItem[] {
+  return [
+    {
+      id: 'msg_welcome',
+      role: 'assistant',
+      content: `Hello! I'm Morgan Vance, your Executive Assistant for ${businessName}. I coordinate your operational team, enforce safety boundaries, and assist with any day-to-day task. How can I help direct operations today?`,
+      timestamp: timeNow(),
+      modelUsed: 'gemini-3.8-flash',
+      roleId: 'executive_assistant'
+    }
+  ];
+}
+
+function loadThread(key: string, businessName: string): ChatMessageItem[] {
+  const saved = readSavedThread(key);
+  return saved && saved.length > 0 ? saved : welcomeThread(businessName);
+}
+
+/** Persist the newest messages; a full or blocked storage never crashes the chat. */
+function saveThread(key: string, messages: ChatMessageItem[]): void {
+  const capped = messages.slice(-MAX_THREAD_MESSAGES);
+  try {
+    localStorage.setItem(key, JSON.stringify(capped));
+  } catch {
+    // QuotaExceededError: retry with half the history, then give up quietly.
+    try {
+      localStorage.setItem(key, JSON.stringify(capped.slice(-Math.floor(MAX_THREAD_MESSAGES / 2))));
+    } catch {
+      console.warn('[GeminiChat] Could not save chat history (storage full or unavailable).');
+    }
+  }
+}
+
 export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
   business: propBusiness,
   onClose,
@@ -84,28 +138,19 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
   onBusinessRefresh
 }) => {
   const business = propBusiness || DEFAULT_BIZ;
-  const threadKey = `rcos_chat_${business.id}`;
+  // One thread per signed-in user AND business: teammates sharing a device
+  // must never see each other's AI chat, and switching company must never
+  // write one company's thread under another's key.
+  const threadKey = chatThreadKey(business.id, senderEmail);
 
-  const [messages, setMessages] = useState<ChatMessageItem[]>(() => {
-    const saved = localStorage.getItem(threadKey);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        // fallback
-      }
-    }
-    return [
-      {
-        id: 'msg_welcome',
-        role: 'assistant',
-        content: `Hello! I'm Morgan Vance, your Executive Assistant for ${business.name}. I coordinate your operational team, enforce safety boundaries, and assist with any day-to-day task. How can I help direct operations today?`,
-        timestamp: timeNow(),
-        modelUsed: 'gemini-3.8-flash',
-        roleId: 'executive_assistant'
-      }
-    ];
-  });
+  const [messages, setMessages] = useState<ChatMessageItem[]>(() => loadThread(threadKey, business.name));
+  // The key the on-screen `messages` belong to. When the key changes
+  // (user/business switch), load that thread before anything is saved.
+  const [threadOwnerKey, setThreadOwnerKey] = useState(threadKey);
+  if (threadOwnerKey !== threadKey) {
+    setThreadOwnerKey(threadKey);
+    setMessages(loadThread(threadKey, business.name));
+  }
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -120,9 +165,10 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    localStorage.setItem(threadKey, JSON.stringify(messages));
+    // Only persist a thread under the key it was loaded from.
+    if (threadOwnerKey === threadKey) saveThread(threadKey, messages);
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, threadKey]);
+  }, [messages, threadKey, threadOwnerKey]);
 
   useEffect(() => () => {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
@@ -150,7 +196,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
     if (!textToSend.trim() || loading) return;
 
     const userMsg: ChatMessageItem = {
-      id: `msg_${Date.now()}`,
+      id: uniqueId('msg_'),
       role: 'user',
       content: textToSend.trim(),
       timestamp: timeNow()
@@ -167,7 +213,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
       setMessages(prev => [
         ...prev,
         {
-          id: `msg_${Date.now() + 1}`,
+          id: uniqueId('msg_'),
           role: 'assistant',
           content: `Here's exactly what I'll do. Check it, fix anything that's wrong, then tap Confirm — nothing happens until you do.`,
           timestamp: timeNow(),
@@ -197,7 +243,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
 
       if (data?.content) {
         const assistantMsg: ChatMessageItem = {
-          id: `msg_${Date.now() + 1}`,
+          id: uniqueId('msg_'),
           role: 'assistant',
           content: data.content,
           timestamp: timeNow(),
@@ -212,7 +258,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
       setMessages(prev => [
         ...prev,
         {
-          id: `msg_${Date.now() + 1}`,
+          id: uniqueId('msg_'),
           role: 'assistant',
           content: 'Operational task processed. Sub-agents and field dispatch records remain synchronized.',
           timestamp: timeNow(),
@@ -251,7 +297,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
       return [
         ...updated,
         {
-          id: `msg_${Date.now() + 2}`,
+          id: uniqueId('msg_'),
           role: 'assistant' as const,
           content: result.ok
             ? `${result.summary}${result.recordId ? ` (Record: ${result.recordId})` : ''}${where}`
@@ -272,10 +318,14 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
   };
 
   const handleClearHistory = () => {
-    localStorage.removeItem(threadKey);
+    try {
+      localStorage.removeItem(threadKey);
+    } catch {
+      /* storage unavailable */
+    }
     setMessages([
       {
-        id: `msg_${Date.now()}`,
+        id: uniqueId('msg_'),
         role: 'assistant',
         content: `Session refreshed. I'm ${activeEmployee.name} (${activeEmployee.roleTitle}). How can I assist with your ${business.name} operations?`,
         timestamp: timeNow(),
@@ -286,15 +336,9 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
 
   /** Re-reads the saved thread and re-renders it. Never wipes history — that is what Clear is for. */
   const handleRefreshThread = () => {
-    const saved = localStorage.getItem(threadKey);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) setMessages(parsed);
-      } catch (e) {
-        // Keep the on-screen thread if the saved copy is unreadable.
-      }
-    }
+    const saved = readSavedThread(threadKey);
+    // Keep the on-screen thread if the saved copy is missing or unreadable.
+    if (saved) setMessages(saved);
     showNotice('Thread refreshed');
   };
 
@@ -444,7 +488,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
         </button>
 
         {onClose && (
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"

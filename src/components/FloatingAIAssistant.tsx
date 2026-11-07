@@ -134,7 +134,7 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
 
       {/* Slide-Up Multi-Agent AI Console Drawer */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4">
           <div className="w-full max-w-md h-[84dvh] sm:h-[80vh] bg-zinc-950 border border-zinc-800 rounded-3xl flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300">
             {/* Modal Header */}
             <div className="p-3.5 border-b border-zinc-800 bg-black flex items-center justify-between">
@@ -150,7 +150,7 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
                   <p className="text-[10px] text-zinc-400">Powered by RC Solutions AI Core</p>
                 </div>
               </div>
-              <button
+              <button aria-label="Close"
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="p-1.5 rounded-lg bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"

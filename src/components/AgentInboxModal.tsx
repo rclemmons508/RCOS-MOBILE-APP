@@ -12,6 +12,7 @@ import {
 import { AgentInboxMessage, TabType } from '../types';
 import { AGENT_META } from '../services/agentInboxService';
 import { buildSmsUrl, isFollowupMessage, parseSmsUrl } from '../utils/followups';
+import { safeOpenUrl } from '../lib/safeOpen';
 
 interface AgentInboxModalProps {
   isOpen: boolean;
@@ -60,12 +61,13 @@ const MessageCard: React.FC<{
   const [editText, setEditText] = useState(sms?.text || '');
   const openSmsApp = (draft: string) => {
     if (!sms) return;
-    window.location.href = buildSmsUrl(sms.phone, draft);
+    void safeOpenUrl(buildSmsUrl(sms.phone, draft), { allowContact: true });
   };
 
   const goAction = () => {
     if (msg.actionTab) onNavigateTab(msg.actionTab);
-    else if (msg.actionUrl) window.open(msg.actionUrl, '_blank', 'noopener');
+    // Server-stored string: only http(s), same-app routes and sms:/tel:/mailto: open.
+    else if (msg.actionUrl) void safeOpenUrl(msg.actionUrl, { allowContact: true });
     onRespond(msg, 'answered');
   };
 
@@ -253,14 +255,14 @@ export const AgentInboxModal: React.FC<AgentInboxModalProps> = ({
   const handled = messages.filter((m) => m.status === 'answered' || m.status === 'dismissed');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative w-full sm:max-w-lg bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col">
         <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-zinc-800">
           <Inbox className="w-5 h-5 text-lime-400" />
           <div className="text-base font-extrabold text-white">Agent Inbox</div>
           <div className="text-[10px] text-zinc-500">Your team messages you here</div>
-          <button onClick={onClose} className="ml-auto p-2 rounded-xl bg-zinc-900 text-zinc-400">
+          <button aria-label="Close" onClick={onClose} className="ml-auto p-2 rounded-xl bg-zinc-900 text-zinc-400">
             <X className="w-4 h-4" />
           </button>
         </div>

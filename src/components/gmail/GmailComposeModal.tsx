@@ -103,7 +103,7 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+      <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
         <div className="w-full max-w-xl max-h-[92vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden">
           
           {/* Header */}
@@ -117,7 +117,7 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
                 <p className="text-[11px] text-zinc-400">Authenticated via Google Workspace</p>
               </div>
             </div>
-            <button
+            <button aria-label="Close"
               type="button"
               onClick={onClose}
               className="p-1 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"

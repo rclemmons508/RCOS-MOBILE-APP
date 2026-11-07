@@ -324,7 +324,7 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
             : 'Listening… hold the button to talk';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 flex flex-col">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/85 flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
         <div className="flex items-center gap-3 min-w-0">

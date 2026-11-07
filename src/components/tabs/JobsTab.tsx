@@ -52,7 +52,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   // New Job Form State
   const [title, setTitle] = useState('');
   const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('+1 (555) 234-8901');
+  const [clientPhone, setClientPhone] = useState('');
   const [address, setAddress] = useState('');
   const [category, setCategory] = useState<Job['category']>('HVAC');
   const [priority, setPriority] = useState<Job['priority']>('high');
@@ -89,15 +89,14 @@ export const JobsTab: React.FC<JobsTabProps> = ({
       id: `RC-${Math.floor(1000 + Math.random() * 9000)}`,
       title,
       clientName,
-      clientPhone: clientPhone || '+1 (555) 234-8901',
-      address: address || 'RC Solutions Commercial Hub, Austin TX',
+      clientPhone: clientPhone.trim(),
+      address: address.trim(),
       status: priority === 'critical' ? 'urgent' : 'dispatched',
       priority,
-      assignedTechnician: 'Marcus Vance (Senior Specialist)',
+      assignedTechnician: 'Unassigned',
       estimatedValue: Number(estimatedValue) || 1850,
       scheduledTime: 'Today at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       description: description || 'Inbound service request captured and processed via RCOS Job Engine.',
-      aiNotes: 'RCOS AI automatically optimized route and dispatched nearest specialist.',
       category
     };
 
@@ -116,7 +115,11 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const handleSmsClient = (e: React.MouseEvent, job: Job) => {
     e.stopPropagation();
     haptic.light();
-    setSmsFeedback(`Dispatched automated SMS ETA alert to ${job.clientName} (${job.clientPhone || '+1 (555) 000-1234'}).`);
+    if (!job.clientPhone) {
+      setSmsFeedback(`No phone number on file for ${job.clientName}. Add one to the job first.`);
+    } else {
+      setSmsFeedback(`Dispatched automated SMS ETA alert to ${job.clientName} (${job.clientPhone}).`);
+    }
     setTimeout(() => setSmsFeedback(null), 3000);
   };
 
@@ -435,14 +438,14 @@ export const JobsTab: React.FC<JobsTabProps> = ({
 
       {/* Dispatch New Task Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                 <Briefcase className="w-4 h-4 text-amber-400" />
                 <span>Dispatch New RCOS Task</span>
               </h3>
-              <button
+              <button aria-label="Close"
                 type="button"
                 onClick={() => setShowCreateModal(false)}
                 className="text-zinc-400 hover:text-white cursor-pointer"

@@ -1065,7 +1065,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         </div>
                       </div>
                       {onDismissSuggestion && (
-                        <button
+                        <button aria-label="Dismiss suggestion"
                           type="button"
                           onClick={() => {
                             haptic.light();

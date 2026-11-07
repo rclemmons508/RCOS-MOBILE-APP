@@ -48,7 +48,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-in fade-in duration-300">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-in fade-in duration-300">
       <div className="w-full max-w-sm bg-gradient-to-b from-zinc-900 to-zinc-950 border border-lime-500/40 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5 text-center relative overflow-hidden">
         {/* Pulsing ring aura */}
         <div className="absolute -top-12 -left-12 w-32 h-32 bg-lime-500/20 rounded-full blur-2xl pointer-events-none" />

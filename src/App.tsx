@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { 
   TabType, 
   PhoneCall, 
@@ -31,33 +31,21 @@ import { MoreMenu } from './components/nav/MoreMenu';
 import { RequestsView } from './components/nav/RequestsView';
 import { FloatingAIAssistant } from './components/FloatingAIAssistant';
 import { DashboardTab } from './components/tabs/DashboardTab';
-import { PhoneSystemTab } from './components/tabs/PhoneSystemTab';
-import { JobsTab } from './components/tabs/JobsTab';
-import { ClientsTab } from './components/tabs/ClientsTab';
-import { SettingsTab, ProfileUpdate } from './components/tabs/SettingsTab';
-import { TeamChatView } from './components/tabs/TeamChatView';
+import type { ProfileUpdate } from './components/tabs/SettingsTab';
 import { teamService } from './services/teamService';
 import { countTeamUnread, getTeamLastSeenId } from './services/teamUnread';
 import { useTeamLiveEvents } from './hooks/useTeamLiveEvents';
 import { industryLabel } from './utils/industry';
 import { asSafeSuggestion } from './utils/safeRender';
-import { GmailTab } from './components/tabs/GmailTab';
-import { GeminiChatView } from './components/GeminiChatView';
-import { AiTeamView } from './components/AiTeamView';
-import { ApprovalQueueView } from './components/ApprovalQueueView';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
-import { NotificationPreferencesModal } from './components/notifications/NotificationPreferencesModal';
 import { AgentInboxModal } from './components/AgentInboxModal';
 import { agentInboxService } from './services/agentInboxService';
 import { AuthModal } from './components/auth/AuthModal';
 import { useBiometrics } from './context/BiometricContext';
 import { biometricService } from './services/biometricService';
 import { LoginView } from './components/auth/LoginView';
-import { OnboardingModal } from './components/OnboardingModal';
 import { showChecklistAgain } from './utils/getStartedChecklist';
-import { ServiceManagerModal } from './components/ServiceManagerModal';
-import { ProactiveIndustrySuggestionModal } from './components/ProactiveIndustrySuggestionModal';
 import { authService } from './services/authService';
 import { APP_BUILD_ID } from './utils/buildInfo';
 import {
@@ -70,7 +58,7 @@ import {
 import { setCachedAccessToken } from './lib/gmail';
 import { firestoreService } from './services/firestoreService';
 import { userPreferencesService } from './services/userPreferencesService';
-import { apiFetch } from './lib/api';
+import { apiFetch, ApiError } from './lib/api';
 import { auth } from './lib/firebase';
 import { updateProfile } from 'firebase/auth';
 import { useSyncEngine } from './hooks/useSyncEngine';
@@ -95,6 +83,31 @@ import {
   loadMainAiAlertState,
   saveMainAiAlertState,
 } from './utils/mainAiAlerts';
+
+// Code-split heavy tabs and modals (audit #24): each loads on first use
+// instead of shipping in the startup bundle (livekit-client rides with
+// the Phone tab / AI Team view, Gmail + DOMPurify with the Gmail tab).
+const PhoneSystemTab = lazy(() => import('./components/tabs/PhoneSystemTab').then((m) => ({ default: m.PhoneSystemTab })));
+const JobsTab = lazy(() => import('./components/tabs/JobsTab').then((m) => ({ default: m.JobsTab })));
+const ClientsTab = lazy(() => import('./components/tabs/ClientsTab').then((m) => ({ default: m.ClientsTab })));
+const TeamChatView = lazy(() => import('./components/tabs/TeamChatView').then((m) => ({ default: m.TeamChatView })));
+const GmailTab = lazy(() => import('./components/tabs/GmailTab').then((m) => ({ default: m.GmailTab })));
+const GeminiChatView = lazy(() => import('./components/GeminiChatView').then((m) => ({ default: m.GeminiChatView })));
+const AiTeamView = lazy(() => import('./components/AiTeamView').then((m) => ({ default: m.AiTeamView })));
+const ApprovalQueueView = lazy(() => import('./components/ApprovalQueueView').then((m) => ({ default: m.ApprovalQueueView })));
+const NotificationPreferencesModal = lazy(() => import('./components/notifications/NotificationPreferencesModal').then((m) => ({ default: m.NotificationPreferencesModal })));
+const OnboardingModal = lazy(() => import('./components/OnboardingModal').then((m) => ({ default: m.OnboardingModal })));
+const ServiceManagerModal = lazy(() => import('./components/ServiceManagerModal').then((m) => ({ default: m.ServiceManagerModal })));
+const ProactiveIndustrySuggestionModal = lazy(() => import('./components/ProactiveIndustrySuggestionModal').then((m) => ({ default: m.ProactiveIndustrySuggestionModal })));
+const SettingsTab = lazy(() => import('./components/tabs/SettingsTab').then((m) => ({ default: m.SettingsTab })));
+
+
+/** Shown while a code-split tab or modal downloads (usually a few ms). */
+const TabLoadingFallback: React.FC = () => (
+  <div role="status" aria-live="polite" className="flex items-center justify-center py-16 text-xs text-zinc-500 font-mono">
+    Loading…
+  </div>
+);
 
 const BLANK_BUSINESS: BusinessAccount = {
   id: '',
@@ -348,10 +361,28 @@ export default function App() {
     return localStorage.getItem('rcos_dismissed_suggestion_preset_id');
   });
 
-  // Evaluate services against business context and query proactive optimization AI agent
-  const evaluateIndustryOptimization = async (customBiz?: BusinessAccount) => {
-    const targetBiz = customBiz || businessAccount;
-    if (!targetBiz || !targetBiz.services || targetBiz.services.length === 0) return;
+  // Latest values for the async evaluator (never a stale closure).
+  const dismissedSuggestionRef = useRef(dismissedSuggestionPresetId);
+  dismissedSuggestionRef.current = dismissedSuggestionPresetId;
+  const businessForSuggestionRef = useRef(businessAccount);
+  businessForSuggestionRef.current = businessAccount;
+  // Key of the last business/industry/services combination sent to the
+  // (paid) AI suggestion endpoint, so it fires at most once per change.
+  const lastSuggestionKeyRef = useRef<string>('');
+
+  const industrySuggestionKey = (biz?: BusinessAccount | null): string => {
+    if (!biz || !biz.services || biz.services.length === 0) return '';
+    return `${biz.id}::${biz.industry || ''}::${[...biz.services].sort().join('|')}`;
+  };
+
+  // Evaluate services against business context and query proactive optimization AI agent.
+  // `force` re-asks even when nothing changed (explicit "check now" from the user).
+  const evaluateIndustryOptimization = async (customBiz?: BusinessAccount, force = false) => {
+    const targetBiz = customBiz || businessForSuggestionRef.current;
+    const key = industrySuggestionKey(targetBiz);
+    if (!targetBiz || !key) return;
+    if (!force && key === lastSuggestionKeyRef.current) return;
+    lastSuggestionKeyRef.current = key;
 
     try {
       const res = await apiFetch<{ suggestion: IndustryOptimizationSuggestion | null }>(
@@ -368,28 +399,33 @@ export default function App() {
 
       if (res?.suggestion && res.suggestion.suggestedPresetId) {
         // Only trigger if user hasn't explicitly dismissed this exact suggestion
-        if (res.suggestion.suggestedPresetId !== dismissedSuggestionPresetId) {
+        // (read the CURRENT dismissed value, not the one captured at call time).
+        if (res.suggestion.suggestedPresetId !== dismissedSuggestionRef.current) {
           setProactiveSuggestion(asSafeSuggestion(res.suggestion));
         }
       } else {
         setProactiveSuggestion(null);
       }
     } catch {
-      // Non-blocking background agent failure
+      // Non-blocking background agent failure. Allow a retry on the next change.
+      if (lastSuggestionKeyRef.current === key) lastSuggestionKeyRef.current = '';
     }
   };
 
-  // Monitor services and trigger evaluation when services change
+  // Monitor services and trigger evaluation when the services set really
+  // changes. Depends on a stable string key, not the services array (every
+  // Firestore snapshot creates a new array, which fired a paid AI call per write).
+  const currentSuggestionKey = industrySuggestionKey(businessAccount);
   useEffect(() => {
-    const servicesStr = (businessAccount?.services || []).join('|');
-    if (!servicesStr) return;
+    if (!currentSuggestionKey || currentSuggestionKey === lastSuggestionKeyRef.current) return;
 
     const timer = setTimeout(() => {
-      evaluateIndustryOptimization();
+      void evaluateIndustryOptimization();
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [businessAccount?.services, businessAccount?.industry]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSuggestionKey]);
 
   // Handler when user applies the optimized preset recommendation
   const handleApplyOptimization = async (updatedBiz: BusinessAccount) => {
@@ -1211,8 +1247,37 @@ export default function App() {
   );
 
 
+  // Latest notification preferences for sendPushNotification, which is
+  // called from long-lived callbacks/intervals that would otherwise keep
+  // reading the preferences captured when they were created.
+  const notifPreferencesRef = useRef(notifPreferences);
+  notifPreferencesRef.current = notifPreferences;
+  // One shared AudioContext for every chime. Browsers cap live contexts
+  // (~6 in Chromium); creating one per notification silenced chimes.
+  const chimeCtxRef = useRef<AudioContext | null>(null);
+  const getChimeContext = (): AudioContext | null => {
+    try {
+      if (!chimeCtxRef.current || chimeCtxRef.current.state === 'closed') {
+        const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+        if (!Ctor) return null;
+        chimeCtxRef.current = new Ctor();
+      }
+      const ctx = chimeCtxRef.current;
+      if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+      return ctx;
+    } catch {
+      return null;
+    }
+  };
+  useEffect(() => () => {
+    const ctx = chimeCtxRef.current;
+    chimeCtxRef.current = null;
+    if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => {});
+  }, []);
+
   // Helper to trigger live push notification
   const sendPushNotification = (newNotif: Omit<RCOSNotification, 'id' | 'timestamp' | 'read'>) => {
+    const notifPreferences = notifPreferencesRef.current;
     const fullNotif: RCOSNotification = {
       ...newNotif,
       id: uniqueId('notif-'),
@@ -1261,7 +1326,8 @@ export default function App() {
 
         if (allowAudioChime) {
           try {
-            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const ctx = getChimeContext();
+            if (!ctx) throw new Error('AudioContext unavailable');
             const osc = ctx.createOscillator();
             const gainNode = ctx.createGain();
             osc.type = 'sine';
@@ -1374,7 +1440,7 @@ export default function App() {
     if (!bizId) return;
     const q = quoteAction.result?.quoteDetails;
     const job: Job = {
-      id: `job_${Date.now()}`,
+      id: uniqueId('job_'),
       title: q?.items?.[0]?.description || quoteAction.title || 'Scheduled job',
       clientName: q?.clientName || 'Client',
       clientPhone: '',
@@ -1481,9 +1547,9 @@ export default function App() {
     }
   };
 
-  // Local mirror of the server's edited-amounts application (Bug 3): when
-  // the decide call fails and we fall back to a local update, the edited
-  // amounts still land on the card instead of being silently dropped.
+  // Local mirror of the server's edited-amounts application (Bug 3), used
+  // for on-device actions (local emergency escalations / no business id).
+  // A failed server decide no longer falls back to a local update.
   const withEditedAmounts = (act: ActionRecord, edited: EditedAmounts): ActionRecord => {
     if (!act.result) return act;
     const items = edited.items.map((item) => ({
@@ -1543,13 +1609,35 @@ export default function App() {
     };
   };
 
+  // Error toast for a decision the server did not accept. Shown directly
+  // (not through notification preferences): it answers the owner's own tap.
+  const showDecisionError = (title: string, message: string) => {
+    setActivePushToast({
+      id: uniqueId('notif-'),
+      title,
+      message,
+      type: 'system_alert',
+      timestamp: 'Just now',
+      read: false,
+      priority: 'high',
+      module: 'Core',
+    });
+  };
+
+  /**
+   * Approve / reject / edit an action. Resolves true when the decision
+   * took effect, false when it did not (the card stays pending and an
+   * error toast explains why). Server-owned actions are NEVER marked
+   * approved locally when the API call fails: the owner would believe a
+   * quote or invoice went out when it didn't.
+   */
   const handleApprovalDecision = async (
     actionId: string,
     decision: 'approved' | 'rejected' | 'edited',
     editedContent?: string,
     note?: string,
     editedAmounts?: EditedAmounts
-  ) => {
+  ): Promise<boolean> => {
     const target = actions.find((x) => x.id === actionId);
     // Server-owned actions go through the API; local emergency escalations are handled on-device.
     if (target && !target.id.startsWith('local-emg-') && businessAccount?.id) {
@@ -1562,9 +1650,36 @@ export default function App() {
           }
         );
         setActions((prev) => prev.map((x) => (x.id === actionId ? updated : x)));
-        return;
-      } catch {
-        /* fall through to local update */
+        return true;
+      } catch (err: any) {
+        const status = err instanceof ApiError ? err.status : 0;
+        const data = err instanceof ApiError ? err.data : undefined;
+        if (status === 409) {
+          // Someone (another device or teammate) already decided it: show
+          // the server's copy instead of our stale pending card.
+          const serverAction = data?.action as ActionRecord | undefined;
+          if (serverAction && serverAction.id === actionId) {
+            setActions((prev) => prev.map((x) => (x.id === actionId ? serverAction : x)));
+          }
+          showDecisionError(
+            'Already decided',
+            data?.error || 'This item was already handled on another device. The latest status is shown.'
+          );
+          return false;
+        }
+        if (status === 503 && data?.code === 'auth_gate_unavailable') {
+          showDecisionError(
+            'Approvals temporarily unavailable',
+            'The server is finishing its sign-in setup, so nothing was approved or sent. The item is still waiting for you. Please try again in a few minutes.'
+          );
+          return false;
+        }
+        showDecisionError(
+          decision === 'rejected' ? 'Could not reject' : 'Not approved — nothing was sent',
+          (err?.message ? `${err.message} ` : '') +
+            'The item is still pending. Check your connection and try again.'
+        );
+        return false;
       }
     }
     setActions((prev) =>
@@ -1587,60 +1702,75 @@ export default function App() {
         };
       })
     );
+    return true;
   };
 
   const handleSimulateInboundCall = () => {
-    // Demo data injection disabled in production builds.
-    if (import.meta.env.PROD) { console.warn('[demo] disabled'); return; }
-    const newCall: PhoneCall = {
-      id: 'call-' + Date.now(),
-      callerName: 'Alex Vance (Apex Corporate)',
-      callerNumber: '+1 (555) 492-0012',
-      type: 'inbound',
-      status: 'completed',
-      timestamp: 'Just now',
-      duration: '1m 20s',
-      summary: 'Inbound emergency call. RCOS Voice AI generated priority job ticket & SMS dispatch.',
-      sentiment: 'urgent',
-      actionRequired: 'Auto-Dispatched Field Technician',
-    };
-    setCalls((prev) => [newCall, ...prev]);
-    setMetrics((prev) => ({
-      ...prev,
-      callsHandled: prev.callsHandled + 1,
-    }));
-    sendPushNotification({
-      type: 'call_event',
-      title: 'Inbound AI Call Processed',
-      message: 'Apex Corporate call answered by Voice AI Agent. Priority ticket logged.',
-      priority: 'high',
-      module: 'Phone System',
-      actionTaken: 'Transcript Saved',
-    });
-    setActiveTab('phone');
+    // Demo data injection: development builds only. Wrapped in a
+    // compile-time DEV check so the demo strings are dropped from
+    // production bundles entirely.
+    if (!import.meta.env.DEV) {
+      console.warn('[demo] disabled');
+      return;
+    }
+    {
+      const newCall: PhoneCall = {
+        id: 'call-' + Date.now(),
+        callerName: 'Alex Vance (Apex Corporate)',
+        callerNumber: '+1 (555) 492-0012',
+        type: 'inbound',
+        status: 'completed',
+        timestamp: 'Just now',
+        duration: '1m 20s',
+        summary: 'Inbound emergency call. RCOS Voice AI generated priority job ticket & SMS dispatch.',
+        sentiment: 'urgent',
+        actionRequired: 'Auto-Dispatched Field Technician',
+      };
+      setCalls((prev) => [newCall, ...prev]);
+      setMetrics((prev) => ({
+        ...prev,
+        callsHandled: prev.callsHandled + 1,
+      }));
+      sendPushNotification({
+        type: 'call_event',
+        title: 'Inbound AI Call Processed',
+        message: 'Apex Corporate call answered by Voice AI Agent. Priority ticket logged.',
+        priority: 'high',
+        module: 'Phone System',
+        actionTaken: 'Transcript Saved',
+      });
+      setActiveTab('phone');
+    }
   };
 
   const handleEmergencyJobTrigger = async () => {
-    // Demo data injection disabled in production builds.
-    if (import.meta.env.PROD) { console.warn('[demo] disabled'); return; }
-    await haptic.warning();
-    const emergencyJob: Job = {
-      id: 'RC-' + Math.floor(9000 + Math.random() * 900),
-      title: 'Emergency Service & Urgent System Diagnostic',
-      clientName: 'Priority Client Call',
-      clientPhone: '+1 (555) 392-8811',
-      address: '450 Tech Parkway, Suite 100',
-      status: 'urgent',
-      priority: 'critical',
-      assignedTechnician: 'Marcus Vance (Lead Specialist)',
-      estimatedValue: 2400,
-      scheduledTime: 'Immediate Response',
-      description: 'Emergency service request captured and auto-routed for prompt arrival.',
-      aiNotes: 'Auto-routed based on urgent priority and nearest technician proximity.',
-      category: 'HVAC',
-    };
-    handleAddJob(emergencyJob);
-    setActiveTab('jobs');
+    // Demo data injection: development builds only. Wrapped in a
+    // compile-time DEV check so the demo strings are dropped from
+    // production bundles entirely.
+    if (!import.meta.env.DEV) {
+      console.warn('[demo] disabled');
+      return;
+    }
+    {
+      await haptic.warning();
+      const emergencyJob: Job = {
+        id: 'RC-' + Math.floor(9000 + Math.random() * 900),
+        title: 'Emergency Service & Urgent System Diagnostic',
+        clientName: 'Priority Client Call',
+        clientPhone: '+1 (555) 392-8811',
+        address: '450 Tech Parkway, Suite 100',
+        status: 'urgent',
+        priority: 'critical',
+        assignedTechnician: 'Marcus Vance (Lead Specialist)',
+        estimatedValue: 2400,
+        scheduledTime: 'Immediate Response',
+        description: 'Emergency service request captured and auto-routed for prompt arrival.',
+        aiNotes: 'Auto-routed based on urgent priority and nearest technician proximity.',
+        category: 'HVAC',
+      };
+      handleAddJob(emergencyJob);
+      setActiveTab('jobs');
+    }
   };
 
   const handleTriggerTestPush = () => {
@@ -1726,6 +1856,19 @@ export default function App() {
     });
   };
 
+  // Field-level business save (audit #18): send ONLY the changed fields
+  // to the server PUT (an allow-listed partial update) and to Firestore
+  // (updateDoc). Saving the whole business record made the last writer
+  // overwrite every teammate's concurrent edits to unrelated fields.
+  const saveBusinessFields = async (businessId: string, patch: Partial<BusinessAccount>) => {
+    if (!businessId) return;
+    await apiFetch(`/api/business/${businessId}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch)
+    }).catch(() => null);
+    await firestoreService.updateBusinessFields(businessId, patch).catch(() => null);
+  };
+
   // Settings → My Profile save: business record (contact info + picture),
   // login user record (name + avatar shown in headers), and the Firebase
   // display name when a Firebase user is signed in. The login email itself
@@ -1768,11 +1911,10 @@ export default function App() {
       setBusinessAccount(updatedBiz);
       setCachedBusiness(currentUser, updatedBiz);
       if (updatedBiz.id) {
-        await apiFetch(`/api/business/${updatedBiz.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(updatedBiz)
-        }).catch(() => null);
-        await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+        // Only the roster changed. (Server PUT is owner-only while the
+        // login gate is on; a member's own entry then syncs on the next
+        // owner save — the local copy above is already updated.)
+        await saveBusinessFields(updatedBiz.id, { members: updatedMembers });
       }
     }
     if (auth.currentUser) {
@@ -1810,11 +1952,7 @@ export default function App() {
     };
     setBusinessAccount(updatedBiz);
     setCachedBusiness(currentUser, updatedBiz);
-    await apiFetch(`/api/business/${updatedBiz.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updatedBiz)
-    }).catch(() => null);
-    await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+    await saveBusinessFields(updatedBiz.id, { contactPhone: c.contactPhone, contactEmail: c.contactEmail });
   };
 
   // Settings → Teach Your Team save: the owner's business knowledge lives
@@ -1829,11 +1967,7 @@ export default function App() {
     };
     setBusinessAccount(updatedBiz);
     setCachedBusiness(currentUser, updatedBiz);
-    await apiFetch(`/api/business/${updatedBiz.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updatedBiz)
-    }).catch(() => null);
-    await firestoreService.saveBusiness(updatedBiz).catch(() => null);
+    await saveBusinessFields(updatedBiz.id, { businessKnowledge: knowledge });
   };
 
   const handleLogout = async () => {
@@ -1930,6 +2064,7 @@ export default function App() {
 
         {/* Tab Views Container with Safe Scrollable Bounds */}
         <main className="flex-1 w-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pl-[max(0.25rem,env(safe-area-inset-left))] pr-[max(0.25rem,env(safe-area-inset-right))]">
+          <Suspense fallback={<TabLoadingFallback />}>
           {(activeTab === 'jobs' || activeTab === 'approvals' || activeTab === 'clients') && (
             <div className="px-3.5 sm:px-4 pt-2">
               <JobsHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} />
@@ -1977,7 +2112,7 @@ export default function App() {
               onOpenAuth={() => setIsAuthModalOpen(true)}
               onOpenNotifications={() => setIsNotifCenterOpen(true)}
               onOpenInbox={() => setIsInboxOpen(true)}
-              onApproveQuote={(actionId) => handleApprovalDecision(actionId, 'approved')}
+              onApproveQuote={async (actionId) => { await handleApprovalDecision(actionId, 'approved'); }}
               onScheduleJob={handleScheduleJob}
               onMarkPaid={handleMarkPaid}
               onOpenAppCheck={() => openSettings('agents')}
@@ -2019,7 +2154,7 @@ export default function App() {
               availableDepartments={activeBusiness.availableDepartments}
               onSendMessage={(text) => {
                 const newMessage = {
-                  id: 'msg-' + Date.now(),
+                  id: uniqueId('msg-'),
                   senderId: currentUser?.id || 'usr-operator',
                   senderName: currentUser?.fullName || 'Lead Operator',
                   avatar: currentUser?.avatar,
@@ -2050,7 +2185,7 @@ export default function App() {
               onOpenAuthModal={() => setIsAuthModalOpen(true)}
               onAddJobFromEmail={(jobData) => {
                 const newJob: Job = {
-                  id: `job-${Date.now()}`,
+                  id: uniqueId('job-'),
                   title: jobData.title || 'Email Dispatch Request',
                   clientName: jobData.clientName || 'Gmail Client',
                   clientPhone: jobData.clientPhone || '',
@@ -2065,7 +2200,7 @@ export default function App() {
                 };
                 setJobs(prev => [newJob, ...prev]);
                 setActivePushToast({
-                  id: `notif-${Date.now()}`,
+                  id: uniqueId('notif-'),
                   title: 'New Dispatch Job Created',
                   message: `Job "${newJob.title}" originated from Gmail was added to the queue.`,
                   type: 'emergency_dispatch',
@@ -2247,6 +2382,7 @@ export default function App() {
           {activeTab === 'more' && (
             <MoreMenu onOpenSettings={openSettings} />
           )}
+          </Suspense>
         </main>
 
         {/* Floating Multi-Agent AI Assistant Button */}
@@ -2278,14 +2414,18 @@ export default function App() {
           onTriggerTestNotification={handleTriggerTestPush}
         />
 
-        {/* Notification Preferences Modal */}
-        <NotificationPreferencesModal
-          isOpen={isNotifPrefsOpen}
-          onClose={() => setIsNotifPrefsOpen(false)}
-          preferences={notifPreferences}
-          onSavePreferences={(updated) => setNotifPreferences(updated)}
-          onTriggerTestPush={handleTriggerTestPush}
-        />
+        {/* Notification Preferences Modal (loaded on first open) */}
+        {isNotifPrefsOpen && (
+          <Suspense fallback={null}>
+            <NotificationPreferencesModal
+              isOpen={isNotifPrefsOpen}
+              onClose={() => setIsNotifPrefsOpen(false)}
+              preferences={notifPreferences}
+              onSavePreferences={(updated) => setNotifPreferences(updated)}
+              onTriggerTestPush={handleTriggerTestPush}
+            />
+          </Suspense>
+        )}
 
         {/* Proactive Agent Inbox */}
         <AgentInboxModal
@@ -2309,40 +2449,41 @@ export default function App() {
           onLogout={handleLogout}
         />
 
-        {/* Business Services Catalog Manager Modal */}
-        <ServiceManagerModal
-          isOpen={isServiceManagerOpen}
-          onClose={() => setIsServiceManagerOpen(false)}
-          business={activeBusiness}
-          onUpdateServices={(updatedServices) => {
-            const updatedBiz = {
-              ...activeBusiness,
-              services: updatedServices,
-              updatedAt: new Date().toISOString()
-            };
-            setBusinessAccount(updatedBiz);
-            setCachedBusiness(currentUser, updatedBiz);
-            if (updatedBiz.id) {
-              apiFetch(`/api/business/${updatedBiz.id}`, {
-                method: 'PUT',
-                body: JSON.stringify(updatedBiz)
-              }).catch(() => null);
-              firestoreService.saveBusiness(updatedBiz).catch(() => null);
-            }
-            sendPushNotification({
-              type: 'system_alert',
-              title: 'Services Catalog Updated',
-              message: `Now offering ${updatedServices.length} operational capabilities. AI Monitor evaluating profile fit...`,
-              priority: 'low',
-              module: 'Service Catalog'
-            });
-            evaluateIndustryOptimization(updatedBiz);
-          }}
-          onRequestAISuggestionCheck={() => evaluateIndustryOptimization()}
-        />
+        {/* Business Services Catalog Manager Modal (loaded on first open) */}
+        {isServiceManagerOpen && (
+          <Suspense fallback={null}>
+            <ServiceManagerModal
+              isOpen={isServiceManagerOpen}
+              onClose={() => setIsServiceManagerOpen(false)}
+              business={activeBusiness}
+              onUpdateServices={(updatedServices) => {
+                const updatedBiz = {
+                  ...activeBusiness,
+                  services: updatedServices,
+                  updatedAt: new Date().toISOString()
+                };
+                setBusinessAccount(updatedBiz);
+                setCachedBusiness(currentUser, updatedBiz);
+                if (updatedBiz.id) {
+                  void saveBusinessFields(updatedBiz.id, { services: updatedServices });
+                }
+                sendPushNotification({
+                  type: 'system_alert',
+                  title: 'Services Catalog Updated',
+                  message: `Now offering ${updatedServices.length} operational capabilities. AI Monitor evaluating profile fit...`,
+                  priority: 'low',
+                  module: 'Service Catalog'
+                });
+                evaluateIndustryOptimization(updatedBiz);
+              }}
+              onRequestAISuggestionCheck={() => evaluateIndustryOptimization(undefined, true)}
+            />
+          </Suspense>
+        )}
 
         {/* Proactive AI Industry Profile Optimization Modal (User must explicitly approve) */}
         {proactiveSuggestion && (
+          <Suspense fallback={null}>
           <ProactiveIndustrySuggestionModal
             isOpen={isSuggestionModalOpen}
             onClose={() => setIsSuggestionModalOpen(false)}
@@ -2351,10 +2492,12 @@ export default function App() {
             onApplyOptimization={handleApplyOptimization}
             onDismissSuggestion={handleDismissSuggestion}
           />
+          </Suspense>
         )}
 
         {/* Industry Setup & Onboarding System */}
         {isOnboardingOpen && (
+          <Suspense fallback={<TabLoadingFallback />}>
           <OnboardingModal
             initialBusiness={businessAccount}
             onCancel={() => setIsOnboardingOpen(false)}
@@ -2414,6 +2557,7 @@ export default function App() {
               });
             }}
           />
+          </Suspense>
         )}
 
       </div>

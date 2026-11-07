@@ -4,6 +4,7 @@ import {
   getDoc,
   getDocs, 
   setDoc, 
+  updateDoc,
   deleteDoc, 
   onSnapshot, 
   query, 
@@ -57,6 +58,41 @@ const normalizeDocValue = (value: unknown): unknown => {
 
 const normalizeDoc = <T,>(data: Record<string, unknown>): T => normalizeDocValue(data) as T;
 
+/**
+ * Denormalized `memberEmails` map the Firestore rules check membership
+ * against ({ "<lowercase email>": "owner" | "member" }): rules cannot
+ * search the `members` list of maps. Always derived from the roster.
+ */
+export function deriveMemberEmails(
+  members: BusinessAccount['members'] | undefined
+): Record<string, 'owner' | 'member'> {
+  const memberEmails: Record<string, 'owner' | 'member'> = {};
+  for (const m of members || []) {
+    const email = String(m?.email || '').toLowerCase().trim();
+    if (!email) continue;
+    // An email listed twice keeps its strongest role.
+    if (memberEmails[email] === 'owner') continue;
+    memberEmails[email] = m?.role === 'owner' ? 'owner' : 'member';
+  }
+  return memberEmails;
+}
+
+/** Deep-copy plain objects/arrays without `undefined` values (Firestore rejects them). */
+function stripUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) return value.filter((v) => v !== undefined).map(stripUndefined);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v !== undefined) out[k] = stripUndefined(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** Fields a field-level business update may never touch from the client. */
+const PROTECTED_BUSINESS_FIELDS = new Set(['id', 'ownerId', 'createdAt', 'memberEmails']);
+
 export const firestoreService = {
   // ==================== BUSINESS ====================
   async getBusiness(businessId: string): Promise<BusinessAccount | null> {
@@ -73,25 +109,65 @@ export const firestoreService = {
   async saveBusiness(business: BusinessAccount): Promise<void> {
     const docRef = doc(db, 'businesses', business.id);
     const ownerId = auth.currentUser?.uid || business.ownerId || 'unassigned_owner';
-    // Stage 2 audit (C2): the Firestore rules check member access against a
-    // denormalized `memberEmails` map — rules cannot search the `members`
-    // list of maps. Derive it from the roster on every save so the mirror
-    // can never go stale while the roster changes.
-    const memberEmails: Record<string, 'owner' | 'member'> = {};
-    for (const m of business.members || []) {
-      const email = String(m?.email || '').toLowerCase().trim();
-      if (email) memberEmails[email] = m?.role === 'owner' ? 'owner' : 'member';
+    // Stage 2 audit (C2): the Firestore rules (firestore.rules → isMemberData /
+    // isOwnerData) check member access against the denormalized
+    // `memberEmails` map { "<lowercase email>": "owner" | "member" } — rules
+    // cannot search the `members` list of maps. Derive it from the roster on
+    // every save so the mirror never goes stale while the roster changes.
+    const memberEmails = deriveMemberEmails(business.members);
+    // The signed-in Firebase user writing as the doc's owner (ownerId is
+    // their UID) is always listed as 'owner', so a business restored with
+    // an empty roster still lets its owner in by email on other devices.
+    const myEmail = (auth.currentUser?.email || '').toLowerCase().trim();
+    if (myEmail && auth.currentUser?.uid === ownerId && !memberEmails[myEmail]) {
+      memberEmails[myEmail] = 'owner';
     }
+    // Strip any stale/foreign memberEmails the record carried; the map is
+    // only ever the roster-derived one above.
+    const { memberEmails: _staleMemberEmails, ...rest } = business as BusinessAccount & {
+      memberEmails?: unknown;
+    };
     const payload = {
-      ...business,
+      ...rest,
       memberEmails,
       ownerId,
       updatedAt: new Date().toISOString()
     };
+    // Firestore rejects `undefined` anywhere in a write; drop those keys.
+    const clean = stripUndefined(payload) as Record<string, unknown>;
     try {
-      await setDoc(docRef, payload, { merge: true });
+      // mergeFields (not merge:true): each top-level field written here
+      // REPLACES the stored one. merge:true deep-merges maps, which would
+      // keep a removed member's email in memberEmails (and their access).
+      // Fields this record doesn't carry are left untouched.
+      await setDoc(docRef, clean, { mergeFields: Object.keys(clean) });
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `businesses/${business.id}`);
+    }
+  },
+
+  /**
+   * Field-level update of an existing business doc (updateDoc): only the
+   * given fields change, so concurrent edits by teammates to OTHER fields
+   * are never overwritten by a stale full-record save. When the roster
+   * changes, its memberEmails mirror is updated in the same write.
+   */
+  async updateBusinessFields(businessId: string, patch: Partial<BusinessAccount>): Promise<void> {
+    if (!businessId) return;
+    const docRef = doc(db, 'businesses', businessId);
+    const payload: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined || PROTECTED_BUSINESS_FIELDS.has(k)) continue;
+      payload[k] = v;
+    }
+    if (Array.isArray(patch.members)) {
+      payload.memberEmails = deriveMemberEmails(patch.members);
+    }
+    payload.updatedAt = new Date().toISOString();
+    try {
+      await updateDoc(docRef, stripUndefined(payload) as Record<string, unknown>);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `businesses/${businessId}`);
     }
   },
 

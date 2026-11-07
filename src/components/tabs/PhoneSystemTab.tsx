@@ -34,6 +34,7 @@ import { VoiceCallButton } from '../phone/VoiceCallButton';
 import { apiFetch } from '../../lib/api';
 import { withBusinessId, filterToBusiness } from '../../lib/businessScope';
 import { firestoreService } from '../../services/firestoreService';
+import { safeHref } from '../../lib/safeOpen';
 
 interface PhoneSystemTabProps {
   calls: PhoneCall[];
@@ -745,7 +746,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                                   <span>Carrier Audio Recording Available</span>
                                 </span>
                                 <a
-                                  href={call.recordingUrl}
+                                  href={safeHref(call.recordingUrl)}
                                   target="_blank"
                                   rel="noreferrer"
                                   className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold flex items-center gap-1 font-mono"
