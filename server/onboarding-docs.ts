@@ -61,6 +61,20 @@ export interface AnalyzeDocumentResult {
   contactInfo?: AnalyzeContactInfo;
 }
 
+// Client onboarding extraction (Add Client auto-fill). Same honesty rules
+// as business onboarding — only fields the document actually states come
+// back; anything missing stays empty and is reported as missing, never
+// invented. `found` lists the fields that were actually extracted.
+export interface AnalyzeClientResult {
+  source: 'llm' | 'fallback';
+  companyName?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  found: string[];
+}
+
 export interface ScoredPresetMatch {
   preset: (typeof INDUSTRY_PRESETS)[number];
   score: number;
@@ -1005,4 +1019,162 @@ export async function analyzeDocument(input: AnalyzeDocumentInput): Promise<Anal
     priceHints,
     contactInfo: hasContact ? contactInfo : undefined,
   };
+}
+
+// ---- Client onboarding extraction (Add Client auto-fill) ----
+// Same document parsing + honesty rules as business onboarding, but a
+// smaller result: the client company's name, contact person, phone,
+// email, and onboarding notes. Nothing is ever invented — a field the
+// document does not state stays empty and is reported as missing.
+
+const CLIENT_EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+const CLIENT_PHONE_RE = /(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/;
+
+function extractClientEmail(text: string): string | undefined {
+  const hit = text.match(CLIENT_EMAIL_RE);
+  return hit ? hit[0].trim() : undefined;
+}
+
+function extractClientPhone(text: string): string | undefined {
+  const hit = text.match(CLIENT_PHONE_RE);
+  if (!hit) return undefined;
+  // Reject a match that is really part of a longer number (invoice no, etc).
+  const idx = text.indexOf(hit[0]);
+  const before = idx > 0 ? text[idx - 1] : '';
+  const after = idx + hit[0].length < text.length ? text[idx + hit[0].length] : '';
+  if (/\d/.test(before) || /\d/.test(after)) return undefined;
+  const value = hit[0].trim().replace(/[.,;]+$/, '');
+  return value || undefined;
+}
+
+function extractClientContactName(text: string): string | undefined {
+  const hit = text.match(
+    /(?:primary\s+contact|contact\s+name|contact|attn\.?|attention|name)\s*:\s*([A-Za-z][A-Za-z .'-]{2,40})/i
+  );
+  if (!hit?.[1]) return undefined;
+  const value = hit[1].trim().replace(/[.,;]+$/, '');
+  if (!value || /^(llc|inc|company|services|solutions)$/i.test(value)) return undefined;
+  return value;
+}
+
+// Company name from the document text only — never from the file name.
+// A file-name guess is too weak for a client record, where Company is a
+// required field: better empty (and reported missing) than a wrong name
+// the user might not notice.
+function extractClientCompanyName(text: string): string | undefined {
+  const name = extractBusinessName(text, '');
+  if (!name) return undefined;
+  return text.toLowerCase().includes(name.toLowerCase()) ? name : undefined;
+}
+
+function buildClientFallbackResult(text: string): AnalyzeClientResult {
+  const companyName = extractClientCompanyName(text);
+  const contactName = extractClientContactName(text);
+  const phone = extractClientPhone(text);
+  const email = extractClientEmail(text);
+  const found: string[] = [];
+  if (companyName) found.push('company');
+  if (contactName) found.push('contact');
+  if (phone) found.push('phone');
+  if (email) found.push('email');
+  return { source: 'fallback', companyName, contactName, phone, email, notes: undefined, found };
+}
+
+function buildClientLlmPrompt(text: string, fileName: string, fileType: string): string {
+  return `You are an AI assistant helping onboard a new client company into the RCOS business app.
+Read the client information below (a file or pasted text from the client company) and extract ONLY what it actually states.
+
+DOCUMENT FILENAME: ${fileName || 'client_info.txt'}
+DOCUMENT MIME TYPE: ${fileType || 'text/plain'}
+
+CLIENT INFORMATION:
+"""
+${text.slice(0, 10000)}
+"""
+
+EXTRACTION RULES:
+1. "companyName": The client company's official name, exactly as stated. Omit if not stated — never guess one from a file name or email domain.
+2. "contactName": The person to contact at the company — from a signature, a "Contact:" / "Attn:" line, or an email sign-off. A full personal name only; omit if no person is named.
+3. "phone": The company's or contact's phone number, exactly as printed. Omit if not stated.
+4. "email": The contact email address, exactly as printed. Omit if not stated.
+5. "notes": One or two short sentences of onboarding-relevant detail actually in the document (service tier, requirements, SLA, billing terms). Omit if there is nothing of the sort.
+
+Respond with ONLY valid JSON with this exact schema:
+{
+  "companyName": "...",
+  "contactName": "...",
+  "phone": "...",
+  "email": "...",
+  "notes": "..."
+}`;
+}
+
+export async function analyzeClientDocument(input: AnalyzeDocumentInput): Promise<AnalyzeClientResult> {
+  const fileName = typeof input.fileName === 'string' ? input.fileName : '';
+  const fileType = typeof input.fileType === 'string' ? input.fileType : '';
+  const fileBase64 = typeof input.fileBase64 === 'string' ? input.fileBase64 : '';
+
+  const text = await extractDocumentText(input);
+  if (!text && !fileBase64) {
+    throw new Error('No document text or file payload provided');
+  }
+
+  const fallback = buildClientFallbackResult(text);
+  const prompt = buildClientLlmPrompt(
+    text || '(No readable text could be extracted from this file. Use the file name and any attached file content.)',
+    fileName,
+    fileType
+  );
+
+  // No extractable text + a binary payload: let the LLM read the file
+  // itself (images, scanned PDFs). Otherwise the extracted text is enough.
+  let contents: any = prompt;
+  if (!text && fileBase64) {
+    contents = [
+      {
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: fileType || 'application/octet-stream', data: fileBase64 } },
+          { text: prompt },
+        ],
+      },
+    ];
+  }
+
+  const aiRes = await executeGeminiWithFallback({
+    preferredModel: FAST_MODEL,
+    contents,
+    config: { responseMimeType: 'application/json' },
+    fallbackFn: () => JSON.stringify(fallback),
+    // Slow answers on long documents take ~27s; the app waits 60s, so
+    // allow 40s per attempt (total budget stays 45s, under the app's 60s).
+    timeoutMs: 40_000,
+  });
+
+  // The LLM did not run (no key, or every model failed): return the
+  // regex fallback, honestly labelled — never as an LLM result.
+  if (aiRes.source !== 'llm') return fallback;
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(aiRes.text || '');
+  } catch {
+    return fallback;
+  }
+  if (!parsed || typeof parsed !== 'object') return fallback;
+
+  const asText = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim() ? v.trim() : undefined;
+  const companyName = asText(parsed.companyName);
+  const contactName = asText(parsed.contactName);
+  const phone = asText(parsed.phone);
+  const email = asText(parsed.email);
+  const notes = asText(parsed.notes);
+  const found: string[] = [];
+  if (companyName) found.push('company');
+  if (contactName) found.push('contact');
+  if (phone) found.push('phone');
+  if (email) found.push('email');
+  if (notes) found.push('notes');
+  return { source: 'llm', companyName, contactName, phone, email, notes, found };
 }

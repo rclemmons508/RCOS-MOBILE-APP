@@ -32,7 +32,7 @@ import { sendVonageSms, isVonageConfigured } from './server/vonage';
 import { checkDestination, envInt, normalizeE164, takeDailyQuota } from './server/phone-policy';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
-import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
+import { analyzeDocument, analyzeClientDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
 import { z } from 'zod';
 
@@ -1806,12 +1806,19 @@ app.post('/api/business/:id/team-messages', teamMessageLimiter, requireVerifiedA
 // Parsing + scored matching live in ./server/onboarding-docs; this route is
 // a thin handler so the file stays small enough to push via the API.
 app.post('/api/business/analyze-document', aiRateLimiter, async (req: Request, res: Response) => {
-  const { fileText, fileName, fileType, fileBase64, rawInput } = req.body || {};
+  const { fileText, fileName, fileType, fileBase64, rawInput, mode } = req.body || {};
   const text = typeof fileText === 'string' ? fileText : typeof rawInput === 'string' ? rawInput : '';
   if (!text.trim() && !fileBase64) {
     return res.status(400).json({ error: 'No document text or file payload provided' });
   }
   try {
+    // Client mode: extract client-company details for the Add Client form.
+    // Same document parsing + honesty rules as business onboarding, but a
+    // smaller result (company / contact / phone / email / notes).
+    if (mode === 'client') {
+      res.json(await analyzeClientDocument({ fileText: text, fileName, fileType, fileBase64 }));
+      return;
+    }
     res.json(await analyzeDocument({ fileText: text, fileName, fileType, fileBase64 }));
   } catch (err: any) {
     console.error('[Onboarding Agent] Document analysis error:', err);
