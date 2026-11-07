@@ -12,10 +12,14 @@
  */
 import { Request, Response, Router } from 'express';
 import twilio from 'twilio';
-import { db } from './db';
+import { randomUUID } from 'node:crypto';
+import { db, defaultPhoneBusinessId, ScopedVoicemail } from './db';
 import { executeGeminiWithFallback, PRIMARY_MODEL } from './gemini';
 import { ActionRecord, PhoneCall, VoicemailRecord } from '../src/types';
-import { requireAuth } from './auth';
+import { isGateOn, requireVerifiedAuth, verifiedCaller } from './auth';
+import { businessIsMember, businessIsOwner, operatorBusinessId } from './tenancy';
+import { checkDestination, envInt, normalizeE164, isAllowedDestination, takeDailyQuota } from './phone-policy';
+import type { BusinessAccount, TelephonyConfig } from '../src/types';
 
 export const telephonyRouter = Router();
 
@@ -85,11 +89,113 @@ function getTwilioClient() {
   return null;
 }
 
+// ---- Who may touch the carrier line (audit #7, #8) ----
+// The Twilio number and its routing config are global (one carrier line),
+// so they belong to the business that owns the line: TWILIO_BUSINESS_ID,
+// else the only business on the server (db.defaultPhoneBusinessId()).
+// Every user-facing telephony route requires a VERIFIED Firebase sign-in
+// (requireVerifiedAuth — denied outright while the login gate is off, even
+// with ALLOW_OPEN_API) and a role on that business:
+//   - read config: member;  - change config / test carrier: owner;
+//   - place an outbound call: owner or member.
+function lineBusiness(): BusinessAccount | undefined {
+  const id = defaultPhoneBusinessId();
+  return id ? db.getBusiness(id) : undefined;
+}
+
+function requireLineRole(role: 'owner' | 'member') {
+  return (req: Request, res: Response, next: () => void) => {
+    if (!isGateOn()) {
+      return res.status(401).json({ error: 'Please sign in to use this feature. The phone line is managed only with the login gate on.' });
+    }
+    const caller = verifiedCaller(req);
+    if (!caller) return res.status(401).json({ error: 'Please sign in to use this feature.' });
+    const business = lineBusiness();
+    if (!business) {
+      return res.status(409).json({ error: 'No business owns the phone line yet. Set TWILIO_BUSINESS_ID on the server.' });
+    }
+    const allowed = role === 'owner' ? businessIsOwner(business, caller) : businessIsMember(business, caller);
+    if (!allowed) {
+      return res.status(403).json({ error: role === 'owner' ? 'Only the owner of the business that owns this phone line can do this.' : 'You are not on the team that owns this phone line.' });
+    }
+    (req as any).lineBusiness = business;
+    return next();
+  };
+}
+
+// Allow-listed, validated config update. Unknown fields are ignored;
+// phoneNumber / webhookUrl / credential flags are server-derived and can
+// never be set by a client. Forwarding numbers must be valid E.164 in an
+// allowed country (see server/phone-policy.ts) — they are dial targets.
+function sanitizeTelephonyConfig(body: any): { ok: true; patch: Partial<TelephonyConfig> } | { ok: false; error: string } {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return { ok: false, error: 'Send a JSON object.' };
+  const patch: Partial<TelephonyConfig> = {};
+  if (body.answeringStrategy !== undefined) {
+    if (!['ai_first', 'human_first', 'simultaneous_ring'].includes(body.answeringStrategy)) {
+      return { ok: false, error: 'answeringStrategy must be ai_first, human_first or simultaneous_ring.' };
+    }
+    patch.answeringStrategy = body.answeringStrategy;
+  }
+  if (body.ringDurationSeconds !== undefined) {
+    const n = Number(body.ringDurationSeconds);
+    if (!Number.isInteger(n) || n < 5 || n > 60) return { ok: false, error: 'ringDurationSeconds must be a whole number from 5 to 60.' };
+    patch.ringDurationSeconds = n;
+  }
+  const phoneField = (label: string, value: unknown): string | { error: string } => {
+    if (value === '' || value === null) return '';
+    const checked = checkDestination(value);
+    return checked.ok ? checked.e164 : { error: `${label}: ${checked.error}` };
+  };
+  if (body.operatorForwardingPhone !== undefined) {
+    const v = phoneField('operatorForwardingPhone', body.operatorForwardingPhone);
+    if (typeof v !== 'string') return { ok: false, error: v.error };
+    patch.operatorForwardingPhone = v;
+  }
+  if (body.departmentForwardingNumbers !== undefined) {
+    const d = body.departmentForwardingNumbers;
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return { ok: false, error: 'departmentForwardingNumbers must be an object.' };
+    const out: Partial<TelephonyConfig['departmentForwardingNumbers']> = {};
+    for (const key of ['dispatch', 'billing', 'emergency', 'sales', 'support'] as const) {
+      if (d[key] === undefined) continue;
+      const v = phoneField(`departmentForwardingNumbers.${key}`, d[key]);
+      if (typeof v !== 'string') return { ok: false, error: v.error };
+      out[key] = v;
+    }
+    patch.departmentForwardingNumbers = out as TelephonyConfig['departmentForwardingNumbers'];
+  }
+  if (body.greetingMessage !== undefined) {
+    if (typeof body.greetingMessage !== 'string' || body.greetingMessage.length > 500) {
+      return { ok: false, error: 'greetingMessage must be text up to 500 characters.' };
+    }
+    patch.greetingMessage = body.greetingMessage;
+  }
+  if (body.ttsVoice !== undefined) {
+    if (typeof body.ttsVoice !== 'string' || !/^[A-Za-z0-9._-]{1,60}$/.test(body.ttsVoice)) {
+      return { ok: false, error: 'ttsVoice must be a voice name such as Polly.Joanna.' };
+    }
+    patch.ttsVoice = body.ttsVoice;
+  }
+  for (const flag of ['recordingEnabled', 'transcriptionEnabled'] as const) {
+    if (body[flag] !== undefined) {
+      if (typeof body[flag] !== 'boolean') return { ok: false, error: `${flag} must be true or false.` };
+      patch[flag] = body[flag];
+    }
+  }
+  return { ok: true, patch };
+}
+
+// A stored forwarding number is dialed only if it still passes the policy
+// (config written before this check existed is not trusted blindly).
+function safeDialTarget(value: unknown): string | null {
+  const e164 = normalizeE164(value);
+  return e164 && isAllowedDestination(e164) ? e164 : null;
+}
+
 /**
  * GET /api/twilio/config
  * Returns active telephony status, forwarding numbers, and webhook setup
  */
-telephonyRouter.get('/config', requireAuth, (req: Request, res: Response) => {
+telephonyRouter.get('/config', requireVerifiedAuth, requireLineRole('member'), (req: Request, res: Response) => {
   const config = db.getTelephonyConfig();
   res.json({
     ...config,
@@ -102,8 +208,10 @@ telephonyRouter.get('/config', requireAuth, (req: Request, res: Response) => {
  * POST /api/twilio/config
  * Updates telephony routing rules and real department forwarding phone numbers
  */
-telephonyRouter.post('/config', requireAuth, (req: Request, res: Response) => {
-  const updated = db.saveTelephonyConfig(req.body);
+telephonyRouter.post('/config', requireVerifiedAuth, requireLineRole('owner'), (req: Request, res: Response) => {
+  const checked = sanitizeTelephonyConfig(req.body);
+  if (!checked.ok) return res.status(400).json({ error: checked.error });
+  const updated = db.saveTelephonyConfig(checked.patch);
   res.json({
     success: true,
     config: updated,
@@ -115,7 +223,7 @@ telephonyRouter.post('/config', requireAuth, (req: Request, res: Response) => {
  * POST /api/twilio/test-carrier
  * Tests Twilio credentials against the live Twilio API
  */
-telephonyRouter.post('/test-carrier', requireAuth, async (req: Request, res: Response) => {
+telephonyRouter.post('/test-carrier', requireVerifiedAuth, requireLineRole('owner'), async (req: Request, res: Response) => {
   const client = getTwilioClient();
   const config = db.getTelephonyConfig();
 
@@ -167,14 +275,14 @@ telephonyRouter.post('/voice/incoming', requireTwilioSignature, (req: Request, r
   const config = db.getTelephonyConfig();
 
   const callerPhone = req.body.From || 'Unknown Caller';
-  const callSid = req.body.CallSid || `real_call_${Date.now()}`;
+  const callSid = req.body.CallSid || `real_call_${randomUUID()}`;
   const callerCity = req.body.CallerCity ? `${req.body.CallerCity}, ${req.body.CallerState}` : '';
 
   console.log(`[PSTN Telecom] Real inbound call received from ${callerPhone} (CallSid: ${callSid})`);
 
   // Record real PSTN call in database
   const realCall: PhoneCall = {
-    id: `call_${Date.now()}`,
+    id: `call_${randomUUID()}`,
     twilioCallSid: callSid,
     callerName: callerCity ? `${callerPhone} (${callerCity})` : callerPhone,
     callerNumber: callerPhone,
@@ -196,7 +304,8 @@ telephonyRouter.post('/voice/incoming', requireTwilioSignature, (req: Request, r
   db.saveCall(realCall);
 
   // Strategy 1: Human First (Rings operator phone first, falls back to AI Receptionist)
-  if (config.answeringStrategy === 'human_first' && config.operatorForwardingPhone) {
+  const operatorTarget = safeDialTarget(config.operatorForwardingPhone);
+  if (config.answeringStrategy === 'human_first' && operatorTarget) {
     twiml.say(
       { voice: (config.ttsVoice as any) || 'Polly.Joanna' },
       'Thank you for calling RC Solutions. Connecting you to an on-call operations specialist.'
@@ -207,7 +316,7 @@ telephonyRouter.post('/voice/incoming', requireTwilioSignature, (req: Request, r
       action: '/api/twilio/voice/human-fallback',
       method: 'POST'
     });
-    dial.number(config.operatorForwardingPhone);
+    dial.number(operatorTarget);
     res.type('text/xml');
     return res.send(twiml.toString());
   }
@@ -296,7 +405,7 @@ telephonyRouter.post('/voice/handle-speech', requireTwilioSignature, async (req:
   // Update existing call transcript
   const calls = db.getCalls();
   const activeCall = calls.find(c => c.twilioCallSid === callSid) || {
-    id: `call_${Date.now()}`,
+    id: `call_${randomUUID()}`,
     twilioCallSid: callSid,
     callerName: callerNumber,
     callerNumber: callerNumber,
@@ -436,7 +545,27 @@ Respond in JSON format:
   // 1. Transfer Call to Real Forwarding Number
   if (parsed.intent === 'transfer_call') {
     const deptKey = (parsed.departmentKey as keyof typeof config.departmentForwardingNumbers) || 'dispatch';
-    const realDeptPhone = config.departmentForwardingNumbers[deptKey] || config.operatorForwardingPhone;
+    const realDeptPhone = safeDialTarget(config.departmentForwardingNumbers[deptKey]) || safeDialTarget(config.operatorForwardingPhone);
+    if (!realDeptPhone) {
+      // No valid/allowed forwarding number on file: never dial an
+      // unvetted number — take a message instead.
+      activeCall.status = 'voicemail';
+      db.saveCall(activeCall);
+      twiml.say(
+        { voice: (config.ttsVoice as any) || 'Polly.Joanna' },
+        'I am sorry, I cannot transfer your call right now. Please leave a message after the tone and we will call you back.'
+      );
+      twiml.record({
+        action: '/api/twilio/voice/voicemail',
+        transcribe: true,
+        transcribeCallback: '/api/twilio/voice/voicemail-transcription',
+        maxLength: 120,
+        playBeep: true,
+        finishOnKey: '#'
+      });
+      res.type('text/xml');
+      return res.send(twiml.toString());
+    }
 
     activeCall.status = 'transferred';
     activeCall.department = parsed.departmentName || deptKey;
@@ -486,10 +615,34 @@ Respond in JSON format:
   // 3. Request Quote Approval
   if (parsed.intent === 'request_quote') {
     const amt = parsed.quoteDetails?.estimatedAmount || 1200;
-    const defaultBiz = db.getAllBusinesses()[0] || { id: 'biz_rc_solutions', dollarThreshold: 250 };
+    // Phone quotes belong to the business that owns the line
+    // (TWILIO_BUSINESS_ID), else OPERATOR_BUSINESS_ID / the only business
+    // (audit #11) — never "whichever business is first". With no owner
+    // resolvable the quote is not created; the caller is asked to leave a
+    // message instead.
+    const quoteBusinessId = defaultPhoneBusinessId() || operatorBusinessId();
+    if (!quoteBusinessId || !db.getBusiness(quoteBusinessId)) {
+      console.warn('[Twilio] Phone quote requested but no business owns the line (set TWILIO_BUSINESS_ID). Taking a message instead.');
+      activeCall.status = 'voicemail';
+      db.saveCall(activeCall);
+      twiml.say(
+        { voice: (config.ttsVoice as any) || 'Polly.Joanna' },
+        'I will have someone follow up with a quote. Please leave your name and details after the tone.'
+      );
+      twiml.record({
+        action: '/api/twilio/voice/voicemail',
+        transcribe: true,
+        transcribeCallback: '/api/twilio/voice/voicemail-transcription',
+        maxLength: 120,
+        playBeep: true,
+        finishOnKey: '#'
+      });
+      res.type('text/xml');
+      return res.send(twiml.toString());
+    }
     const quoteAction: ActionRecord = {
-      id: `act_${Date.now()}`,
-      businessId: defaultBiz.id,
+      id: `act_${randomUUID()}`,
+      businessId: quoteBusinessId,
       employeeId: 'executive_assistant',
       actionType: 'generate_quote',
       riskCategory: 'commitment_outbound',
@@ -632,8 +785,11 @@ telephonyRouter.post('/voice/voicemail', requireTwilioSignature, (req: Request, 
 
   console.log(`[PSTN Voicemail] New recording received: ${recordingUrl} (Duration: ${recordingDuration}s)`);
 
-  const newVoicemail: VoicemailRecord = {
-    id: `vm_${Date.now()}`,
+  const recordingSid = typeof req.body.RecordingSid === 'string' ? req.body.RecordingSid : undefined;
+  const newVoicemail: ScopedVoicemail = {
+    ...(typeof callSid === 'string' && callSid ? { twilioCallSid: callSid } : {}),
+    ...(recordingSid ? { twilioRecordingSid: recordingSid } : {}),
+    id: `vm_${randomUUID()}`,
     callerName: callerNumber,
     callerNumber: callerNumber,
     company: 'Incoming Commercial Line',
@@ -674,15 +830,24 @@ telephonyRouter.post('/voice/voicemail', requireTwilioSignature, (req: Request, 
  * Twilio carrier speech-to-text callback for completed voicemails
  */
 telephonyRouter.post('/voice/voicemail-transcription', requireTwilioSignature, (req: Request, res: Response) => {
-  const transcriptionText = req.body.TranscriptionText || '';
-  const recordingUrl = req.body.RecordingUrl;
-  const callerNumber = req.body.From || '';
+  const transcriptionText = typeof req.body.TranscriptionText === 'string' ? req.body.TranscriptionText : '';
+  const recordingUrl = typeof req.body.RecordingUrl === 'string' ? req.body.RecordingUrl : '';
+  const recordingSid = typeof req.body.RecordingSid === 'string' ? req.body.RecordingSid : '';
+  const callSid = typeof req.body.CallSid === 'string' ? req.body.CallSid : '';
 
-  console.log(`[PSTN Transcription] Text: "${transcriptionText}" for recording ${recordingUrl}`);
+  console.log(`[PSTN Transcription] Received transcription for recording ${recordingSid || '(no sid)'}`);
 
   if (transcriptionText) {
+    // Match by Twilio identifiers only (audit #25): RecordingSid, then
+    // CallSid, then the exact recording URL for voicemails stored before
+    // the sids were recorded. Never by caller number — a repeat caller's
+    // transcript used to land on their older voicemail.
     const voicemails = db.getVoicemails();
-    const vm = voicemails.find(v => v.audioUrl?.includes(recordingUrl) || v.callerNumber === callerNumber);
+    const vm =
+      (recordingSid && voicemails.find(v => v.twilioRecordingSid === recordingSid)) ||
+      (callSid && voicemails.find(v => v.twilioCallSid === callSid)) ||
+      (recordingUrl && voicemails.find(v => v.audioUrl === `${recordingUrl}.mp3` || v.audioUrl === recordingUrl)) ||
+      undefined;
     if (vm) {
       vm.transcription = transcriptionText;
       const lower = transcriptionText.toLowerCase();
@@ -700,22 +865,32 @@ telephonyRouter.post('/voice/voicemail-transcription', requireTwilioSignature, (
  * POST /api/twilio/voice/outbound-call
  * Place a real outbound telephone call to any real cell phone or landline
  */
-telephonyRouter.post('/voice/outbound-call', requireAuth, async (req: Request, res: Response) => {
-  const { toPhone, callerTopic = 'Customer Service Follow-up', simulateFallback = false } = req.body;
+// Outbound dialing (audit #8): verified owner/member of the line's
+// business only, destination must be valid E.164 in an allowed country
+// (OUTBOUND_ALLOWED_COUNTRY_CODES, default "1" = US/Canada, with
+// Caribbean/premium +1 area codes blocked), and at most
+// OUTBOUND_CALL_DAILY_CAP calls per business per UTC day (default 25).
+// Also enable Twilio Geo Permissions (Console > Voice > Settings) as the
+// carrier-side backstop.
+telephonyRouter.post('/voice/outbound-call', requireVerifiedAuth, requireLineRole('member'), async (req: Request, res: Response) => {
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const toPhone = body.toPhone;
+  const callerTopic = typeof body.callerTopic === 'string' && body.callerTopic.trim()
+    ? body.callerTopic.trim().slice(0, 200)
+    : 'Customer Service Follow-up';
+  const simulateFallback = body.simulateFallback === true;
   if (!toPhone) {
     return res.status(400).json({ error: 'Target phone number is required (e.g. +14155552671)' });
   }
-
-  // Normalize phone number to E.164 standard
-  let formattedTo = String(toPhone).trim().replace(/[\s()-]/g, '');
-  if (!formattedTo.startsWith('+')) {
-    if (formattedTo.length === 10) {
-      formattedTo = `+1${formattedTo}`;
-    } else if (formattedTo.length === 11 && formattedTo.startsWith('1')) {
-      formattedTo = `+${formattedTo}`;
-    } else {
-      formattedTo = `+${formattedTo}`;
-    }
+  const destination = checkDestination(toPhone);
+  if (!destination.ok) {
+    return res.status(400).json({ error: destination.error });
+  }
+  const formattedTo = destination.e164;
+  const lineBiz = (req as any).lineBusiness as BusinessAccount;
+  const dailyCap = envInt('OUTBOUND_CALL_DAILY_CAP', 25);
+  if (!takeDailyQuota('outbound-call', lineBiz.id, dailyCap)) {
+    return res.status(429).json({ error: `Daily outbound call limit reached (${dailyCap} per day). Try again tomorrow.` });
   }
 
   const client = getTwilioClient();
@@ -725,8 +900,8 @@ telephonyRouter.post('/voice/outbound-call', requireAuth, async (req: Request, r
   // If simulation is explicitly requested or client is missing, provide a safe simulated call
   if (simulateFallback || !client) {
     const simulatedCall: PhoneCall = {
-      id: `sim_call_${Date.now()}`,
-      twilioCallSid: `sim_${Date.now()}`,
+      id: `sim_call_${randomUUID()}`,
+      twilioCallSid: `sim_${randomUUID()}`,
       callerName: formattedTo,
       callerNumber: formattedTo,
       type: 'outbound',
@@ -788,7 +963,7 @@ telephonyRouter.post('/voice/outbound-call', requireAuth, async (req: Request, r
     });
 
     const newCall: PhoneCall = {
-      id: `call_${Date.now()}`,
+      id: `call_${randomUUID()}`,
       twilioCallSid: call.sid,
       callerName: formattedTo,
       callerNumber: formattedTo,
@@ -829,7 +1004,7 @@ telephonyRouter.post('/voice/outbound-call', requireAuth, async (req: Request, r
 
       // Record notice in call history so the operator has visibility
       const noticeCall: PhoneCall = {
-        id: `call_notice_${Date.now()}`,
+        id: `call_notice_${randomUUID()}`,
         callerName: `${formattedTo} (Twilio Trial Unverified)`,
         callerNumber: formattedTo,
         type: 'outbound',

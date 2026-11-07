@@ -27,9 +27,11 @@ import { withBehaviorProtocol, withBusinessKnowledge, resolveBusinessKnowledge }
 import { AI_EMPLOYEES } from './src/data/employees';
 
 import { telephonyRouter } from './server/telephony';
-import { sendVonageSms } from './server/vonage';
+import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails, explicitOperatorBusinessId, operatorBusinessId } from './server/tenancy';
+import { sendVonageSms, isVonageConfigured } from './server/vonage';
+import { checkDestination, envInt, normalizeE164, takeDailyQuota } from './server/phone-policy';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
-import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens } from './server/gmail-oauth';
+import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
 import { analyzeDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
 import { z } from 'zod';
@@ -120,6 +122,27 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // The map key is scoped per limiter name, so a busy AI route cannot
 // burn the delete-account budget (or vice versa).
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+// Bounded (audit #22): expired buckets are swept every minute, and the map
+// never holds more than RATE_LIMIT_MAX_KEYS entries — when full, expired
+// entries are dropped first and then the oldest inserted (Map keeps
+// insertion order), so rotating IPs cannot grow memory without bound.
+const RATE_LIMIT_MAX_KEYS = 50_000;
+function sweepRateLimits(now = Date.now()): void {
+  for (const [k, v] of rateLimitMap) if (now > v.resetAt) rateLimitMap.delete(k);
+}
+setInterval(() => sweepRateLimits(), 60_000).unref();
+function rememberRateLimit(key: string, value: { count: number; resetAt: number }): void {
+  if (!rateLimitMap.has(key) && rateLimitMap.size >= RATE_LIMIT_MAX_KEYS) {
+    sweepRateLimits();
+    while (rateLimitMap.size >= RATE_LIMIT_MAX_KEYS) {
+      const oldest = rateLimitMap.keys().next().value;
+      if (oldest === undefined) break;
+      rateLimitMap.delete(oldest);
+    }
+  }
+  rateLimitMap.delete(key); // re-insert so insertion order tracks recency
+  rateLimitMap.set(key, value);
+}
 function limiterKey(req: Request): string {
   const caller = (req as any).user as { uid?: string; email?: string | null } | undefined;
   if (caller?.uid) return `uid:${caller.uid}`;
@@ -133,7 +156,7 @@ function createRateLimiter(name: string, maxRequests: number, windowMs: number) 
     const record = rateLimitMap.get(key);
 
     if (!record || now > record.resetAt) {
-      rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+      rememberRateLimit(key, { count: 1, resetAt: now + windowMs });
       return next();
     }
 
@@ -157,7 +180,7 @@ function createRateLimiter(name: string, maxRequests: number, windowMs: number) 
 // GET /api/diagnostics/scan is exempt from the default limiter (M3 —
 // left exactly as-is as the verification probe while the gate is off).
 const aiRateLimiter = createRateLimiter('ai', 60, 60000); // 60 req / min
-const publicIntakeRateLimiter = createRateLimiter('public-intake', 30, 60000); // 30 req / min
+const publicIntakeRateLimiter = createRateLimiter('public-intake', 10, 60000); // 10 req / min per IP (audit #20, was 30)
 const deleteAccountLimiter = createRateLimiter('delete-account', 3, 10 * 60 * 1000); // 3 delete tries / 10 min
 const smsSendLimiter = createRateLimiter('sms-send', 30, 60000); // 30 follow-up sends / min
 const gmailSendLimiter = createRateLimiter('gmail-send', 30, 60000); // 30 Gmail sends/drafts / min
@@ -169,18 +192,30 @@ const voiceTokenLimiter = createRateLimiter('voice-token', 10, 60000); // 10 Liv
 const quoteInvoiceLimiter = createRateLimiter('quote-invoice', 30, 60000); // 30 quote/invoice creations / min (M9)
 const teamMessageLimiter = createRateLimiter('team-message', 60, 60000); // 60 team-chat posts / min (H10)
 const ttsLimiter = createRateLimiter('tts', 30, 60000); // 30 TTS syntheses / min
+const twilioWebhookLimiter = createRateLimiter('twilio-webhook', 600, 60000); // signed carrier webhooks
+const outboundCallLimiter = createRateLimiter('outbound-call', 5, 60000); // 5 outbound dials / min / user (audit #8)
+const telephonyConfigLimiter = createRateLimiter('telephony-config', 10, 60000); // 10 config writes / min (audit #7)
+
+// Twilio's signed webhook paths, relative to the /api mount.
+const TWILIO_WEBHOOK_PATHS = new Set([
+  '/twilio/voice/incoming',
+  '/twilio/voice/human-fallback',
+  '/twilio/voice/handle-speech',
+  '/twilio/voice/dial-status',
+  '/twilio/voice/voicemail',
+  '/twilio/voice/voicemail-transcription',
+  '/twilio/voice/status',
+]);
+function isTwilioWebhookPath(p: string): boolean {
+  return TWILIO_WEBHOOK_PATHS.has(p);
+}
 
 // Telephony provider: 'twilio' mounts the Twilio PSTN router. Anything else parks it —
 // testing/review builds use the in-app WebRTC voice call instead (see /api/voice/token).
 // Set TELEPHONY_PROVIDER=twilio in the environment to re-enable the carrier.
+// The router itself is mounted further down, AFTER the login gate and the
+// default rate limiters (audit #7) — see "Twilio carrier router" below.
 const telephonyProvider = (process.env.TELEPHONY_PROVIDER || 'webrtc').toLowerCase();
-if (telephonyProvider === 'twilio') {
-  app.use('/api/twilio', telephonyRouter);
-} else {
-  app.use('/api/twilio', (_req: Request, res: Response) =>
-    res.status(503).json({ error: 'Phone carrier is parked (TELEPHONY_PROVIDER is not "twilio"). Use the in-app voice call instead.' })
-  );
-}
 
 // ==================== API ROUTES ====================
 
@@ -233,6 +268,12 @@ app.use('/api', (req: Request, res: Response, next) => {
   // handler. GET does NOT skip: reading the call routing log requires a
   // signed-in user (the old blanket skip let anyone read it).
   if (req.method === 'POST' && req.path === '/voice/routing-log') return next();
+  // Twilio carrier webhooks: Twilio cannot sign in as a user — the
+  // X-Twilio-Signature (checked fail-closed inside server/telephony.ts)
+  // is the credential. Only these exact webhook paths skip the gate; the
+  // user-facing /twilio/config, /twilio/test-carrier and
+  // /twilio/voice/outbound-call routes stay gated.
+  if (req.method === 'POST' && isTwilioWebhookPath(req.path)) return next();
   // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
   if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
     if (voiceSecretMatches(req.headers['x-voice-secret'])) return next();
@@ -248,12 +289,33 @@ app.use('/api', (req: Request, res: Response, next) => {
 // verification probe while the gate is off).
 app.use('/api', (req: Request, res: Response, next) => {
   if (req.path === '/diagnostics/scan') return next();
+  // Signed Twilio webhooks get their own, larger bucket (keyed by Twilio's
+  // egress IP) so a busy phone line cannot exhaust the user limiters.
+  if (req.method === 'POST' && isTwilioWebhookPath(req.path)) return twilioWebhookLimiter(req, res, next);
   return generalApiLimiter(req, res, next);
 });
 app.use('/api', (req: Request, res: Response, next) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  if (isTwilioWebhookPath(req.path)) return next();
   return writeLimiter(req, res, next);
 });
+
+// ---- Twilio carrier router (audit #7) ----
+// Mounted after the login gate and the default limiters so the config and
+// outbound-call routes are rate limited (plus outboundCallLimiter below)
+// and the webhooks pass the twilio-webhook limiter. 'twilio' mounts it;
+// anything else parks it (testing/review builds use the in-app WebRTC
+// voice call instead — see /api/voice/token).
+if (telephonyProvider === 'twilio') {
+  app.use('/api/twilio/voice/outbound-call', outboundCallLimiter);
+  app.use('/api/twilio/config', (req: Request, res: Response, next) =>
+    req.method === 'POST' ? telephonyConfigLimiter(req, res, next) : next());
+  app.use('/api/twilio', telephonyRouter);
+} else {
+  app.use('/api/twilio', (_req: Request, res: Response) =>
+    res.status(503).json({ error: 'Phone carrier is parked (TELEPHONY_PROVIDER is not "twilio"). Use the in-app voice call instead.' })
+  );
+}
 
 // ---- Per-business ownership (login-gate ON only) ----
 // When the gate is OFF (today's deployment, FIREBASE_SERVICE_ACCOUNT
@@ -290,38 +352,6 @@ function deriveMemberEmails(members: Array<{ email?: unknown; role?: unknown }>)
     if (email) out[email] = m.role === 'owner' ? 'owner' : 'member';
   }
   return out;
-}
-
-function businessMemberFor(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): BusinessMember | undefined {
-  if (!caller) return undefined;
-  const email = (caller.email || '').toLowerCase().trim();
-  return (business.members || []).find((m) => (
-    (email !== '' && String(m?.email || '').toLowerCase().trim() === email) ||
-    (!!caller.uid && !!m?.userId && m.userId === caller.uid)
-  ));
-}
-
-function businessOwnerEmails(business: BusinessAccount): string[] {
-  return [
-    String((business as any).contactEmail || '').toLowerCase().trim(),
-    String((business as any).ownerEmail || '').toLowerCase().trim(),
-  ].filter(Boolean);
-}
-
-function businessIsMember(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): boolean {
-  if (!caller) return false;
-  if (businessMemberFor(business, caller)) return true;
-  const email = (caller.email || '').toLowerCase().trim();
-  if (email !== '' && businessOwnerEmails(business).includes(email)) return true;
-  return !!caller.uid && !!business.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === caller.uid;
-}
-
-function businessIsOwner(business: BusinessAccount, caller: { uid?: string; email?: string | null } | null): boolean {
-  if (!caller) return false;
-  if (businessMemberFor(business, caller)?.role === 'owner') return true;
-  if (!!caller.uid && !!business.ownerId && business.ownerId !== 'unassigned_owner' && business.ownerId === caller.uid) return true;
-  const email = (caller.email || '').toLowerCase().trim();
-  return email !== '' && businessOwnerEmails(business).includes(email);
 }
 
 // Gate-ON owner check for a single route. Returns true when the request
@@ -616,6 +646,29 @@ app.get('/api/business/:id/gmail-token', gmailTokenLimiter, requireVerifiedAuth,
   }
 });
 
+// Start a Gmail connection bound to the signed-in user (audit #10).
+// Verified Firebase sign-in required (requireVerifiedAuth), and the
+// /api/business/:id middleware has already proven membership. Returns
+// { url, state, expiresAt }: the app opens `url` in the system browser
+// instead of building /oauth/gmail/start?businessId=..&userEmail=.. itself.
+// The token is stored for THIS caller's verified email only, and the
+// callback refuses a Gmail account that does not match it.
+app.post('/api/business/:id/gmail/oauth-start', gmailTokenLimiter, requireVerifiedAuth, (req: Request, res: Response) => {
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const caller = verifiedCaller(req);
+  const email = (caller?.email || '').trim().toLowerCase();
+  if (!caller || !email) {
+    return res.status(401).json({ error: 'Verify your email address (or sign in with Google), then connect Gmail.' });
+  }
+  if (!businessIsMember(business, caller)) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  const started = createGmailOAuthState(business.id, email, caller.uid);
+  if (!started) return res.status(503).json({ error: 'Too many Gmail logins in progress. Please try again in a few minutes.' });
+  res.json(started);
+});
+
 // Permanently delete an account and all of its data. Owner-only, and
 // the owner proof is a VERIFIED Firebase identity only (H11) — the
 // client-sent header/body email and body user-id are never proof, and
@@ -774,7 +827,7 @@ function demoSubmissionToRequest(businessId: string, f: {
   if (f.industry) lines.push('Industry: ' + f.industry);
   if (f.message) lines.push('What they want to automate: ' + f.message);
   return {
-    id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `req_${crypto.randomUUID()}`,
     businessId,
     customerName: f.name,
     customerPhone: f.phone,
@@ -794,11 +847,36 @@ function demoSubmissionToRequest(businessId: string, f: {
   };
 }
 
+// Demo leads queued while no operator business could be resolved are
+// flushed ONLY into the explicitly configured OPERATOR_BUSINESS_ID
+// (audit #11) — never into whatever business is created next. Runs at
+// startup, on each demo submission, and when that business is created.
+function flushPendingIntakeToOperator(): void {
+  const target = explicitOperatorBusinessId();
+  if (!target) return;
+  const pending = db.takePendingIntake();
+  for (const p of pending) {
+    db.saveRequest(demoSubmissionToRequest(target, {
+      name: p.name,
+      company: p.company,
+      industry: p.industry,
+      message: p.message,
+      phone: p.phone,
+      email: p.email,
+      createdAt: p.createdAt,
+    }));
+  }
+  if (pending.length > 0) console.log(`[demo-request] flushed ${pending.length} queued lead(s) into the operator business.`);
+}
+
 // Public demo-request intake for the RC Solutions website.
 // Gate-exempt + CORS-open by design (no account needed to ask for a demo).
-// Saved as a CustomerRequest on the operator's first business, so it shows up in
-// the app's Customer Requests with an SLA badge. No engine auto-trigger — the
-// operator follows up personally.
+// Saved as a CustomerRequest on the OPERATOR's business (OPERATOR_BUSINESS_ID,
+// else the only business on a single-tenant server — see
+// server/tenancy.ts operatorBusinessId), so it shows up in the app's
+// Customer Requests with an SLA badge. With several businesses and no
+// OPERATOR_BUSINESS_ID the lead is queued, never handed to an arbitrary
+// tenant. No engine auto-trigger — the operator follows up personally.
 app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res: Response) => {
   const b = req.body || {};
   // Honeypot: bots fill it, humans never see it.
@@ -815,13 +893,18 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
   const phone = (b.phone || '').toString().slice(0, 30);
   const email = (b.email || '').toString().slice(0, 100);
 
-  const businesses = db.getAllBusinesses();
-  if (businesses.length === 0) {
-    // No business exists yet (e.g. right after an account reset) — queue the
-    // lead instead of losing it. It flushes into Customer Requests as soon as
-    // a business is created, and the website still shows its success page.
+  const operatorId = operatorBusinessId();
+  if (!operatorId) {
+    // No operator business can be resolved (none exists yet, or several
+    // exist and OPERATOR_BUSINESS_ID is unset) — queue the lead instead of
+    // losing it or handing it to a stranger. It flushes into Customer
+    // Requests once OPERATOR_BUSINESS_ID names an existing business, and
+    // the website still shows its success page.
+    if (!(process.env.OPERATOR_BUSINESS_ID || '').trim() && db.getAllBusinesses().length > 1) {
+      console.warn('[demo-request] Several businesses exist and OPERATOR_BUSINESS_ID is not set — lead queued. Set OPERATOR_BUSINESS_ID to receive website leads.');
+    }
     const pending: PendingIntake = {
-      id: `pend_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `pend_${crypto.randomUUID()}`,
       name,
       company,
       industry,
@@ -834,9 +917,8 @@ app.post('/api/public/demo-request', publicIntakeRateLimiter, (req: Request, res
     const queued = db.savePendingIntake(pending);
     return res.status(201).json({ ok: true, id: queued.id });
   }
-  const business = businesses[0];
-
-  const saved = db.saveRequest(demoSubmissionToRequest(business.id, {
+  flushPendingIntakeToOperator();
+  const saved = db.saveRequest(demoSubmissionToRequest(operatorId, {
     name, company, industry, message, phone, email,
     createdAt: new Date().toISOString(),
   }));
@@ -1020,7 +1102,7 @@ app.post('/api/business/:id/agent-messages', (req: Request, res: Response) => {
   if (!AGENT_MESSAGE_KINDS.includes(kind)) return res.status(400).json({ error: 'Invalid kind' });
   if (!title || !body) return res.status(400).json({ error: 'Title and body are required' });
   const msg = db.saveAgentMessage({
-    id: `amsg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: `amsg_${crypto.randomUUID()}`,
     businessId: req.params.id,
     agent,
     kind,
@@ -1065,16 +1147,65 @@ app.post('/api/business/:id/agent-messages/:msgId/respond', (req: Request, res: 
 // { sent: false, configured: false } and the app falls back to its manual
 // Send-now draft — no behavior change when Vonage is not configured.
 // Twilio is untouched: this route is independent of the Twilio router.
+//
+// Abuse limits (audit #18):
+//   - the business must exist (no more self-heal stub creation here);
+//   - `to` must be valid E.164 in an allowed country
+//     (OUTBOUND_ALLOWED_COUNTRY_CODES, default US/Canada);
+//   - the OWNER may text any allowed number; a non-owner MEMBER may text
+//     only a number already on this business's server records (customer
+//     requests, calls, voicemails, quote/invoice actions);
+//   - text is capped at 1000 characters;
+//   - per business per UTC day: SMS_DAILY_CAP texts (default 100) and at
+//     most SMS_PER_RECIPIENT_DAILY_CAP to one number (default 5).
+// Gate OFF (local dev only — production is 503) keeps today's behavior
+// for the owner/member split, since there is no verified identity.
+function businessKnownPhones(businessId: string): Set<string> {
+  const out = new Set<string>();
+  const add = (v: unknown) => { const e = normalizeE164(v); if (e) out.add(e); };
+  for (const r of db.getRequests(businessId)) add(r.customerPhone);
+  for (const c of db.getCalls()) if (c.businessId === businessId) add(c.callerNumber);
+  for (const v of db.getVoicemails()) if (v.businessId === businessId) add((v as any).callerNumber);
+  for (const a of db.getActions(businessId)) {
+    add((a.result as any)?.quoteDetails?.clientPhone);
+    add((a.result as any)?.invoiceDetails?.clientPhone);
+  }
+  return out;
+}
+
 app.post('/api/business/:id/sms/send', smsSendLimiter, async (req: Request, res: Response) => {
-  getOrCreateBusiness(req.params.id); // self-heal: re-create if a redeploy wiped the store
+  const business = db.getBusiness(req.params.id);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
   const { to, text, dedupeKey } = req.body || {};
-  if (typeof to !== 'string' || typeof text !== 'string') {
+  if (typeof to !== 'string' || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'to and text are required' });
   }
+  if (text.length > 1000) {
+    return res.status(400).json({ error: 'Text is too long (1000 characters max).' });
+  }
+  // Not configured: nothing is sent, so no recipient/quota checks are
+  // needed — the app falls back to its manual draft as before.
+  if (!isVonageConfigured()) {
+    return res.json(await sendVonageSms({ businessId: business.id, dedupeKey: typeof dedupeKey === 'string' ? dedupeKey : undefined, to, text }));
+  }
+  const dest = checkDestination(to);
+  if (!dest.ok) return res.status(400).json({ configured: true, sent: false, error: dest.error });
+  const isOwner = !isGateOn() || businessIsOwner(business, verifiedCaller(req));
+  if (!isOwner && !businessKnownPhones(business.id).has(dest.e164)) {
+    return res.status(403).json({ configured: true, sent: false, error: 'Team members can only text this business\'s own customers. Ask the owner to send this one.' });
+  }
+  const perRecipientCap = envInt('SMS_PER_RECIPIENT_DAILY_CAP', 5);
+  const dailyCap = envInt('SMS_DAILY_CAP', 100);
+  if (!takeDailyQuota(`sms-to:${dest.e164}`, business.id, perRecipientCap)) {
+    return res.status(429).json({ configured: true, sent: false, error: `Daily limit reached for texts to ${dest.e164} (${perRecipientCap} per day).` });
+  }
+  if (!takeDailyQuota('sms', business.id, dailyCap)) {
+    return res.status(429).json({ configured: true, sent: false, error: `Daily text limit reached for this business (${dailyCap} per day).` });
+  }
   const result = await sendVonageSms({
-    businessId: req.params.id,
+    businessId: business.id,
     dedupeKey: typeof dedupeKey === 'string' ? dedupeKey : undefined,
-    to,
+    to: dest.e164,
     text,
   });
   res.json(result);
@@ -1209,20 +1340,11 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     return res.status(200).json(saved);
   }
 
-  // Flush any demo leads that arrived while no business existed. They were
-  // queued instead of lost; they now become Customer Requests on this business.
-  const pending = db.takePendingIntake();
-  for (const p of pending) {
-    db.saveRequest(demoSubmissionToRequest(saved.id, {
-      name: p.name,
-      company: p.company,
-      industry: p.industry,
-      message: p.message,
-      phone: p.phone,
-      email: p.email,
-      createdAt: p.createdAt,
-    }));
-  }
+  // Queued demo leads go ONLY to the explicitly configured operator
+  // business (audit #11): a no-op unless this new business IS
+  // OPERATOR_BUSINESS_ID. They are never flushed into an arbitrary new
+  // tenant's business.
+  if (saved.id === explicitOperatorBusinessId()) flushPendingIntakeToOperator();
 
   res.status(201).json(saved);
 });
@@ -1339,7 +1461,10 @@ app.delete('/api/business/:id', (req: Request, res: Response) => {
   // previously had no ownership check at all. (The guarded, confirm-
   // gated delete-account route is separate and unchanged.)
   if (!requireBusinessOwner(req, res, business)) return;
+  // Same full cleanup as delete-account (audit #25): requests, actions,
+  // chat, agent inbox, team data, calls/voicemails, and Gmail tokens.
   const deleted = db.deleteBusiness(req.params.id);
+  if (deleted) deleteGmailTokens(req.params.id);
   res.json({ success: deleted });
 });
 
@@ -1538,7 +1663,7 @@ app.post('/api/team/join', teamInviteLimiter, (req: Request, res: Response) => {
   }
   db.saveTeamInvite({ ...invite, used: true, usedByEmail: email });
   const updated = db.addBusinessMember(business.id, {
-    userId: `usr_${Date.now()}`,
+    userId: `usr_${crypto.randomUUID()}`,
     email,
     name: fullName,
     role: invite.role,
@@ -1559,6 +1684,10 @@ app.post('/api/team/join', teamInviteLimiter, (req: Request, res: Response) => {
 // The stream carries only message ids + sender names; the client fetches
 // the full message text through the normal guarded route on each event.
 const teamEventSubscribers = new Map<string, Set<Response>>();
+// Connection caps (audit #22): per business and server-wide.
+const MAX_TEAM_STREAMS_PER_BUSINESS = 50;
+const MAX_TEAM_STREAMS_TOTAL = 2000;
+let totalTeamStreams = 0;
 function broadcastTeamMessage(businessId: string, msg: TeamMessage): void {
   const subs = teamEventSubscribers.get(businessId);
   if (!subs || subs.size === 0) return;
@@ -1567,7 +1696,7 @@ function broadcastTeamMessage(businessId: string, msg: TeamMessage): void {
     try {
       sub.write(payload);
     } catch {
-      subs.delete(sub);
+      if (subs.delete(sub)) totalTeamStreams = Math.max(0, totalTeamStreams - 1);
     }
   }
 }
@@ -1585,6 +1714,11 @@ app.get('/api/business/:id/team-events', (req: Request, res: Response) => {
   if (hasMembers && !teamMemberFor(business, email)) {
     return res.status(403).json({ error: 'Only people on this team can follow the team chat live.' });
   }
+  const existingSubs = teamEventSubscribers.get(business.id);
+  if ((existingSubs?.size || 0) >= MAX_TEAM_STREAMS_PER_BUSINESS || totalTeamStreams >= MAX_TEAM_STREAMS_TOTAL) {
+    // The client's 30-second safety-net poll still delivers messages.
+    return res.status(429).json({ error: 'Too many live team-chat connections right now.' });
+  }
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -1598,6 +1732,7 @@ app.get('/api/business/:id/team-events', (req: Request, res: Response) => {
     teamEventSubscribers.set(business.id, subs);
   }
   subs.add(res);
+  totalTeamStreams++;
   const heartbeat = setInterval(() => {
     try {
       res.write(': heartbeat\n\n');
@@ -1607,8 +1742,8 @@ app.get('/api/business/:id/team-events', (req: Request, res: Response) => {
   }, 25000);
   req.on('close', () => {
     clearInterval(heartbeat);
-    subs.delete(res);
-    if (subs.size === 0) teamEventSubscribers.delete(business.id);
+    if (subs.delete(res)) totalTeamStreams = Math.max(0, totalTeamStreams - 1);
+    if (subs.size === 0 && teamEventSubscribers.get(business.id) === subs) teamEventSubscribers.delete(business.id);
   });
 });
 
@@ -1651,7 +1786,7 @@ app.post('/api/business/:id/team-messages', teamMessageLimiter, requireVerifiedA
   const senderName = (me?.name || '').trim() || (caller.email || '').trim() || 'Team member';
   const senderAvatar = me?.avatar;
   const msg: TeamMessage = {
-    id: `tm_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+    id: `tm_${crypto.randomUUID()}`,
     businessId: business.id,
     senderId: me?.userId || caller.uid || `usr_${caller.email || 'unknown'}`,
     senderEmail: me?.email || caller.email || '',
@@ -1900,7 +2035,7 @@ Return ONLY valid JSON:
     });
     const parsed = JSON.parse(aiRes.text || fallbackTemplates());
     const drafts: StarterDraft[] = (parsed.drafts || []).map((d: any) => ({
-      id: d.id || `draft_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      id: d.id || `draft_${crypto.randomUUID()}`,
       title: d.title,
       type: d.type,
       content: d.content,
@@ -1908,8 +2043,12 @@ Return ONLY valid JSON:
       createdAt: new Date().toISOString()
     }));
 
-    business.starterDrafts = drafts;
-    db.saveBusiness(business);
+    // Patch only starterDrafts on the current record (audit #13): saving
+    // the `business` object read before the Gemini call would revert any
+    // roster/settings change made while it ran.
+    if (!db.updateBusiness(business.id, { starterDrafts: drafts })) {
+      return res.status(404).json({ error: 'Business not found' });
+    }
     res.json({ drafts });
   } catch (err) {
     console.error('Starter generation error:', err);
@@ -2311,7 +2450,7 @@ Respond in JSON with exact format:
       const q = parsed.actionTriggered;
       const amt = Number(q.estimatedAmount) || 1200;
       const newAction: ActionRecord = {
-        id: `act_${Date.now()}`,
+        id: `act_${crypto.randomUUID()}`,
         businessId: defaultBiz.id,
         employeeId: 'executive_assistant',
         actionType: 'generate_quote',
@@ -2465,17 +2604,22 @@ app.post('/api/phone/voicemails', (req: Request, res: Response) => {
     const vm: ScopedVoicemail = {
       id: id || `vm_${crypto.randomUUID()}`,
       callerName: str(body.callerName, '') || 'Inbound Caller',
-      callerNumber: str(body.callerNumber, '') || '(555) 019-4820',
-      company: str(body.company, '') || 'Commercial Partner',
+      callerNumber: str(body.callerNumber, '') || 'Unknown number',
+      company: str(body.company, ''),
       timestamp: str(body.timestamp, '') || new Date().toISOString(),
-      duration: str(body.duration, '') || '0m 45s',
+      duration: str(body.duration, ''),
       transcription: str(body.transcription, '') || 'No transcription provided.',
-      summary: str(body.summary, '') || 'Voicemail transcribed by RCOS Voice Receptionist.',
+      summary: str(body.summary, ''),
       urgency,
       department: str(body.department, '') || 'Operations',
       audioBase64: typeof body.audioBase64 === 'string' ? body.audioBase64 : undefined,
       reviewed: !!body.reviewed,
       ...(target.businessId ? { businessId: target.businessId } : {}),
+      // Server-owned fields are never taken from the client, and an update
+      // keeps them (carrier ids for transcript matching, recording url).
+      ...(existing?.audioUrl ? { audioUrl: existing.audioUrl } : {}),
+      ...(existing?.twilioCallSid ? { twilioCallSid: existing.twilioCallSid } : {}),
+      ...(existing?.twilioRecordingSid ? { twilioRecordingSid: existing.twilioRecordingSid } : {}),
     };
     const saved = db.saveVoicemail(vm);
     res.status(201).json(saved);
@@ -2508,7 +2652,7 @@ app.post('/api/phone/send-email', (req: Request, res: Response) => {
 
   // Record simulated outbound email
   const emailRecord = {
-    id: `email_${Date.now()}`,
+    id: `email_${crypto.randomUUID()}`,
     recipient,
     subject,
     body,
@@ -2560,7 +2704,7 @@ app.post('/api/phone/request-quote', quoteInvoiceLimiter, requireQuoteAmount, re
 
   const amt = Number(estimatedAmount);
   const newAction: ActionRecord = {
-    id: `act_${Date.now()}`,
+    id: `act_${crypto.randomUUID()}`,
     businessId: defaultBiz.id,
     employeeId: 'executive_assistant',
     actionType: 'generate_quote',
@@ -2671,7 +2815,7 @@ app.post('/api/phone/request-invoice', quoteInvoiceLimiter, requireInvoiceAmount
   }
 
   const newAction: ActionRecord = {
-    id: `act_${Date.now()}`,
+    id: `act_${crypto.randomUUID()}`,
     businessId: defaultBiz.id,
     employeeId: 'finance',
     actionType: 'send_invoice',
@@ -2842,51 +2986,53 @@ app.post('/api/hitl/evaluate', (req: Request, res: Response) => {
   }
 });
 
-// 5. Telemetry & Observability Summary
+// 5. Telemetry & Observability Summary — REMOVED (audit #24). It returned
+// hard-coded token/cost/latency numbers that looked like real metrics, and
+// no screen in the app calls it. Answer honestly instead of inventing data.
 app.get('/api/telemetry/report', (_req: Request, res: Response) => {
-  try {
-    return res.json({
-      totalTokens: 142850,
-      totalCostUsd: 0.0482,
-      avgLatencyMs: 14,
-      p95LatencyMs: 22,
-      activeAgents: 4,
-      negotiationsToday: 18,
-      complianceValidated: true,
-      lastAuditSync: new Date().toISOString()
-    });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
+  res.status(410).json({ error: 'Telemetry reporting is not available. No usage metrics are collected yet.' });
 });
 
 // 6. Billing & Financial Settlement
+// Inputs are coerced/validated (audit #24): `materials` sent as a string
+// used to concatenate ("435" + "250" -> "435250") into the total.
+const BillingEstimateSchema = z.object({
+  category: z.preprocess((v) => (typeof v === 'string' ? v.slice(0, 80) : undefined), z.string().optional()).transform((v) => v || 'HVAC'),
+  hours: z.preprocess((v) => (v === undefined || v === null || v === '' ? 3 : Number(v)), z.number().finite().min(0).max(1000)),
+  materials: z.preprocess((v) => (v === undefined || v === null || v === '' ? 250 : Number(v)), z.number().finite().min(0).max(10_000_000)),
+  isEmergency: z.preprocess((v) => v === true || v === 'true', z.boolean()),
+});
+const cents = (n: number) => Math.round(n * 100) / 100;
 app.post('/api/billing/estimate', (req: Request, res: Response) => {
-  try {
-    const { category = 'HVAC', hours = 3, materials = 250, isEmergency = false } = req.body;
-    const hourlyRate = category === 'Software AI' ? 225 : category === 'Electrical' ? 165 : 145;
-    const labor = hours * hourlyRate;
-    const subtotal = labor + materials + (isEmergency ? (labor + materials) * 0.45 : 0);
-    const tax = Math.round(subtotal * 0.0825);
-    const total = subtotal + tax;
-    const depositPct = isEmergency ? 35 : 20;
-    const requiredDeposit = Math.round((total * depositPct) / 100);
-
-    return res.json({
-      estimateId: `EST-${Math.floor(1000 + Math.random() * 9000)}`,
-      hourlyRate,
-      labor,
-      materials,
-      emergencySurcharge: isEmergency ? Math.round((labor + materials) * 0.45) : 0,
-      subtotal,
-      tax,
-      total,
-      requiredDepositPercentage: depositPct,
-      requiredDeposit
-    });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
+  const parsed = BillingEstimateSchema.safeParse(req.body && typeof req.body === 'object' ? req.body : {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'hours and materials must be non-negative numbers.' });
   }
+  const { category, hours, materials, isEmergency } = parsed.data;
+  const hourlyRate = category === 'Software AI' ? 225 : category === 'Electrical' ? 165 : 145;
+  const labor = cents(hours * hourlyRate);
+  const emergencySurcharge = isEmergency ? cents((labor + materials) * 0.45) : 0;
+  const subtotal = cents(labor + materials + emergencySurcharge);
+  const tax = cents(subtotal * 0.0825);
+  const total = cents(subtotal + tax);
+  const depositPct = isEmergency ? 35 : 20;
+  const requiredDeposit = cents((total * depositPct) / 100);
+
+  return res.json({
+    estimateId: `EST-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+    hourlyRate,
+    labor,
+    materials,
+    emergencySurcharge,
+    subtotal,
+    tax,
+    total,
+    requiredDepositPercentage: depositPct,
+    requiredDeposit,
+    // Built-in default rates and an 8.25% tax rate, not the business's own
+    // price list or local tax — an estimate for the owner to review.
+    basis: 'default_rates',
+  });
 });
 
 // 7. Vector Knowledge Store RAG Search
@@ -2897,7 +3043,7 @@ app.post('/api/knowledge/query', aiRateLimiter, async (req: Request, res: Respon
   }
 
   const fallbackKnowledge = () =>
-    `[RCOS Vector RAG Grounding - ${category}] Standard Operating Procedure for "${query}": Secure initial pre-authorized diagnostic deposit ($250-$350), mandate lockout/tagout safety compliance, and dispatch certified field technician with standard diagnostic toolset.`;
+    `[Offline fallback - ${category}] General guidance for "${query}": Secure initial pre-authorized diagnostic deposit ($250-$350), mandate lockout/tagout safety compliance, and dispatch certified field technician with standard diagnostic toolset.`;
 
   try {
     const prompt = `You are the RCOS Vector Knowledge Specialist for RC Solutions.
@@ -2915,17 +3061,21 @@ Provide a 2-3 sentence grounded answer based on RC Solutions standard operating 
     return res.json({
       query,
       aiGroundedResponse: result.text,
-      similarityScore: 0.94,
-      sourceDoc: 'RC Solutions Operations Manual v4.2 & Historical Retrospectives',
+      // No vector store or source documents exist: the answer is a plain
+      // model (or offline fallback) response. The old fixed
+      // similarityScore 0.94 and made-up source document were removed
+      // (audit #24).
+      grounded: false,
+      sourceDoc: null,
       modelUsed: result.modelUsed
     });
   } catch {
     return res.json({
       query,
       aiGroundedResponse: fallbackKnowledge(),
-      similarityScore: 0.94,
-      sourceDoc: 'RC Solutions Operations Manual v4.2 & Historical Retrospectives',
-      modelUsed: 'rcos-offline-engine'
+      grounded: false,
+      sourceDoc: null,
+      modelUsed: 'keyword-fallback'
     });
   }
 });
@@ -2998,6 +3148,16 @@ app.post('/api/business/:id/requests', publicIntakeRateLimiter, async (req: Requ
 
   const saved = db.saveRequest(newRequest);
 
+  // Paid-AI budget (audit #20): each anonymous submission fans out into
+  // classify + execute Gemini calls, so auto-routing runs for at most
+  // INTAKE_AI_DAILY_CAP submissions per business per UTC day (default 100).
+  // Past the cap the request is still saved and shown (stage Intake) for
+  // the owner to handle by hand — nothing is lost.
+  if (!takeDailyQuota('intake-ai', business.id, envInt('INTAKE_AI_DAILY_CAP', 100))) {
+    console.warn('[intake] Daily AI auto-routing cap reached for a business; request saved without AI routing.');
+    return res.status(201).json(saved);
+  }
+
   // Automatically trigger the RCOS engine to classify, route, and begin qualification/action
   setTimeout(async () => {
     try {
@@ -3005,7 +3165,7 @@ app.post('/api/business/:id/requests', publicIntakeRateLimiter, async (req: Requ
       const classification = await RcosEngine.classifyAndRoute(business, instruction, saved);
 
       const action: ActionRecord = {
-        id: `act_${Date.now()}`,
+        id: `act_${crypto.randomUUID()}`,
         businessId: business.id,
         requestId: saved.id,
         employeeId: classification.employeeId,
@@ -3022,15 +3182,17 @@ app.post('/api/business/:id/requests', publicIntakeRateLimiter, async (req: Requ
       };
       db.saveAction(action);
 
-      // Advance stage to Qualification
-      saved.stage = 'Qualification';
-      db.saveRequest(saved);
+      // Advance stage to Qualification — patch only `stage` on the current
+      // record (audit #13): re-saving the `saved` object captured before the
+      // Gemini calls would revert edits the owner made meanwhile, or
+      // resurrect a request deleted in the meantime.
+      if (!db.updateRequest(saved.id, { stage: 'Qualification' })) return;
 
       await RcosEngine.executeAction(business, action, instruction);
 
-      // Advance stage to Execution
-      saved.stage = 'Execution';
-      db.saveRequest(saved);
+      // Advance stage to Execution (same field-level patch).
+      const current = db.getRequest(saved.id);
+      if (current && current.stage === 'Qualification') db.updateRequest(saved.id, { stage: 'Execution' });
     } catch (e) {
       console.error('Automated intake routing error:', e);
     }
@@ -3071,7 +3233,7 @@ app.post('/api/business/:id/command', aiRateLimiter, async (req: Request, res: R
 
     // 2. Persist initial action record in queued/running state
     const action: ActionRecord = {
-      id: `act_${Date.now()}`,
+      id: `act_${crypto.randomUUID()}`,
       businessId: business.id,
       employeeId: classification.employeeId,
       actionType: classification.actionType,
@@ -3101,6 +3263,7 @@ app.post('/api/business/:id/command', aiRateLimiter, async (req: Request, res: R
 });
 
 // Approval Queue Decisions
+const decisionsInFlight = new Set<string>();
 app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
   if (!business) {
@@ -3121,6 +3284,18 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
   if (RcosEngine.isDecidedStatus(existingAction.status)) {
     return res.status(409).json({ error: `This item was already ${existingAction.status === 'rejected' ? 'rejected' : 'approved'}.`, action: existingAction });
   }
+  // State machine (audit #19): only an item waiting for approval can be
+  // decided (not queued/running/failed work).
+  if (existingAction.status !== 'awaiting_approval') {
+    return res.status(409).json({ error: 'This item is not waiting for approval.', action: existingAction });
+  }
+  // One decision at a time per action: a double-tap (two concurrent
+  // requests) must not both pass the status check above while the first
+  // is still awaiting the engine.
+  if (decisionsInFlight.has(existingAction.id)) {
+    return res.status(409).json({ error: 'This item is already being decided.' });
+  }
+  decisionsInFlight.add(existingAction.id);
 
   let updatedAction: ActionRecord | null;
   try {
@@ -3135,6 +3310,8 @@ app.post('/api/business/:id/actions/:actionId/decide', async (req: Request, res:
   } catch (err) {
     console.error('[Approvals] Decision failed:', err);
     return res.status(500).json({ error: 'Could not record this decision. Please try again.' });
+  } finally {
+    decisionsInFlight.delete(existingAction.id);
   }
 
   if (!updatedAction) {
@@ -3152,8 +3329,30 @@ app.post('/api/business/:id/actions/:actionId/mark-paid', (req: Request, res: Re
   if (!action || action.businessId !== req.params.id) {
     return res.status(404).json({ error: 'Action not found' });
   }
-  const total = action.result?.invoiceDetails?.totalAmount || action.dollarAmount || 0;
-  const amount = Number(req.body?.amount) > 0 ? Number(req.body.amount) : total;
+  // State machine (audit #19): only an APPROVED invoice can be marked
+  // paid, only once, and never for more than its total.
+  const isInvoice = action.actionType === 'send_invoice' || !!action.result?.invoiceDetails;
+  if (!isInvoice) {
+    return res.status(409).json({ error: 'Only invoices can be marked paid.' });
+  }
+  if (action.status !== 'approved' && action.status !== 'completed') {
+    return res.status(409).json({ error: 'Approve this invoice before marking it paid.' });
+  }
+  if (action.paymentStatus === 'paid') {
+    return res.status(409).json({ error: 'This invoice is already marked paid.', action });
+  }
+  const total = Number(action.result?.invoiceDetails?.totalAmount || action.dollarAmount || 0) || 0;
+  let amount = total;
+  if (req.body?.amount !== undefined && req.body?.amount !== null && req.body?.amount !== '') {
+    const requested = Number(req.body.amount);
+    if (!Number.isFinite(requested) || requested <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number.' });
+    }
+    if (total > 0 && requested > total + 0.005) {
+      return res.status(400).json({ error: `Amount cannot be more than the invoice total ($${total}).` });
+    }
+    amount = Math.round(requested * 100) / 100;
+  }
   action.paymentStatus = 'paid';
   action.paidAt = new Date().toISOString();
   action.paidAmount = amount;
@@ -3203,7 +3402,7 @@ app.post('/api/business/:id/chat', aiRateLimiter, async (req: Request, res: Resp
 
   // Save user message
   const userMsg: ChatMessage = {
-    id: `msg_${Date.now()}_user`,
+    id: `msg_${crypto.randomUUID()}_user`,
     businessId: business.id,
     employeeId: targetEmpId,
     role: 'user',
@@ -3261,7 +3460,7 @@ Rules:
     const replyText = aiRes.text || fallbackEmpReply();
 
     const modelMsg: ChatMessage = {
-      id: `msg_${Date.now()}_model`,
+      id: `msg_${crypto.randomUUID()}_model`,
       businessId: business.id,
       employeeId: targetEmpId,
       role: 'model',
@@ -3274,7 +3473,7 @@ Rules:
   } catch (err: any) {
     console.error('Chat error:', err);
     const modelMsg: ChatMessage = {
-      id: `msg_${Date.now()}_model`,
+      id: `msg_${crypto.randomUUID()}_model`,
       businessId: business.id,
       employeeId: targetEmpId,
       role: 'model',
@@ -3289,7 +3488,8 @@ Rules:
 // Job Packs
 app.get('/api/business/:id/job-packs', (req: Request, res: Response) => {
   const business = db.getBusiness(req.params.id);
-  const packs = db.getJobPacks(business?.industry);
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  const packs = db.getJobPacks(business.industry, business.id);
   res.json(packs);
 });
 
@@ -3357,8 +3557,9 @@ Return ONLY valid JSON matching this schema:
       fallbackFn: fallbackPack
     });
     const parsed = JSON.parse(aiRes.text || fallbackPack());
-    const newPack: JobPack = {
-      id: `jp_${Date.now()}`,
+    const newPack: JobPack & { businessId: string } = {
+      businessId: business.id,
+      id: `jp_${crypto.randomUUID()}`,
       serviceType: parsed.serviceType || serviceType,
       industry: business.industry,
       checklist: parsed.checklist || [],
@@ -3462,6 +3663,7 @@ async function startServer() {
 
   httpServer.listen(PORT, () => {
     console.log(`[RCOS] Operational server running on port ${PORT}`);
+    try { flushPendingIntakeToOperator(); } catch (e) { console.error('[demo-request] startup flush failed:', (e as Error)?.message); }
   });
 }
 

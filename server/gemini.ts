@@ -25,6 +25,19 @@ export const CANDIDATE_MODELS = [
   'gemini-flash-latest'
 ];
 
+// Gemini call timeouts (audit: improvements). Every model attempt is
+// aborted after GEMINI_TIMEOUT_MS (default 25s), and one
+// executeGeminiWithFallback call stops trying further models once
+// GEMINI_TOTAL_BUDGET_MS (default 45s) has elapsed, then runs the caller's
+// fallback — a hung upstream can no longer pin a request (and a slot of
+// the event loop's sockets) for minutes across the 3-model chain.
+function envMs(name: string, fallback: number): number {
+  const n = Number.parseInt(String(process.env[name] || ''), 10);
+  return Number.isFinite(n) && n >= 1000 ? n : fallback;
+}
+export const GEMINI_TIMEOUT_MS = envMs('GEMINI_TIMEOUT_MS', 25_000);
+const GEMINI_TOTAL_BUDGET_MS = envMs('GEMINI_TOTAL_BUDGET_MS', 45_000);
+
 export async function generateSpeechAudio(
   text: string, 
   voiceName: 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr' = 'Kore'
@@ -49,6 +62,7 @@ export async function generateSpeechAudio(
         },
       ],
       config: {
+        abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
         responseModalities: ['AUDIO'],
         speechConfig: {
           voiceConfig: {
@@ -73,6 +87,8 @@ export async function executeGeminiWithFallback(params: {
   config?: any;
   preferredModel?: string;
   fallbackFn: () => string;
+  /** Per-attempt timeout override (ms), e.g. for large document analysis. */
+  timeoutMs?: number;
 }): Promise<{ text: string; modelUsed: string; source: 'llm' | 'fallback' }> {
   // If API key is missing, run the caller's keyword fallback. It is labelled
   // honestly as a fallback — never as a neural-engine result.
@@ -84,12 +100,20 @@ export async function executeGeminiWithFallback(params: {
     ? [params.preferredModel, ...CANDIDATE_MODELS.filter(m => m !== params.preferredModel)]
     : CANDIDATE_MODELS;
 
+  const perAttempt = params.timeoutMs && params.timeoutMs >= 1000 ? params.timeoutMs : GEMINI_TIMEOUT_MS;
+  const budget = Math.max(GEMINI_TOTAL_BUDGET_MS, perAttempt);
+  const started = Date.now();
   for (const model of modelsToTry) {
+    const remaining = budget - (Date.now() - started);
+    if (remaining < 1000) {
+      console.warn('[Gemini Engine] Time budget used up; using fallback.');
+      break;
+    }
     try {
       const response = await ai.models.generateContent({
         model,
         contents: params.contents,
-        config: params.config,
+        config: { ...(params.config || {}), abortSignal: AbortSignal.timeout(Math.min(perAttempt, remaining)) },
       });
 
       if (response?.text) {

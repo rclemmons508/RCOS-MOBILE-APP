@@ -898,6 +898,9 @@ export async function analyzeDocument(input: AnalyzeDocumentInput): Promise<Anal
     contents,
     config: { responseMimeType: 'application/json' },
     fallbackFn: () => JSON.stringify(fallback),
+    // Slow answers on long documents take ~27s; the app waits 60s, so
+    // allow 40s per attempt (total budget stays 45s, under the app's 60s).
+    timeoutMs: 40_000,
   });
 
   // The LLM did not run (no key, or every model failed): return the

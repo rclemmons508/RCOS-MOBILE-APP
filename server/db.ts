@@ -27,7 +27,13 @@ try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* exists */ }
 // PhoneCall / VoicemailRecord types live in src/ (client-owned), so the
 // server-side owner field is added here. Legacy records may lack it.
 export type ScopedPhoneCall = PhoneCall & { businessId?: string };
-export type ScopedVoicemail = VoicemailRecord & { businessId?: string };
+export type ScopedVoicemail = VoicemailRecord & {
+  businessId?: string;
+  // Twilio identifiers, so a later transcription webhook attaches to
+  // exactly this voicemail (audit #25) — never matched by caller number.
+  twilioCallSid?: string;
+  twilioRecordingSid?: string;
+};
 
 // The business that owns records arriving with no business of their own
 // (Twilio PSTN webhooks hit one global number): TWILIO_BUSINESS_ID when
@@ -248,17 +254,25 @@ export const db = {
     return idx >= 0 ? data.businesses[idx] : business;
   },
 
-  deleteBusiness(id: string): boolean {
+  // Patch only the given fields on the CURRENT stored record (audit #13).
+  // Use after an await (e.g. a Gemini call) instead of saving a business
+  // object read before the await, which would silently revert any change
+  // (roster, settings) made in the meantime. Returns undefined when the
+  // business no longer exists (deleted meanwhile) — nothing is recreated.
+  updateBusiness(id: string, patch: Partial<BusinessAccount>): BusinessAccount | undefined {
     const data = ensureDb();
-    const initLen = data.businesses.length;
-    data.businesses = data.businesses.filter(b => b.id !== id);
-    data.requests = data.requests.filter(r => r.businessId !== id);
-    data.actions = data.actions.filter(a => a.businessId !== id);
-    data.chatMessages = data.chatMessages.filter(m => m.businessId !== id);
-    if (data.teamMessages) data.teamMessages = data.teamMessages.filter(m => m.businessId !== id);
-    if (data.teamInvites) data.teamInvites = data.teamInvites.filter(i => i.businessId !== id);
+    const idx = data.businesses.findIndex(b => b.id === id);
+    if (idx < 0) return undefined;
+    data.businesses[idx] = { ...data.businesses[idx], ...patch, id, updatedAt: new Date().toISOString() };
     saveDb(data);
-    return data.businesses.length < initLen;
+    return data.businesses[idx];
+  },
+
+  // Same cleanup as deleteBusinessData (audit #25): the old copy here left
+  // agent inbox messages, calls and voicemails behind. Gmail tokens live in
+  // a separate store — callers also run deleteGmailTokens(id).
+  deleteBusiness(id: string): boolean {
+    return this.deleteBusinessData([id]).deletedBusinessIds.length > 0;
   },
 
   /**
@@ -323,6 +337,17 @@ export const db = {
     return idx >= 0 ? data.requests[idx] : req;
   },
 
+  // Field-level patch on the CURRENT stored request (audit #13). Returns
+  // undefined when the request no longer exists — never resurrects it.
+  updateRequest(id: string, patch: Partial<CustomerRequest>): CustomerRequest | undefined {
+    const data = ensureDb();
+    const idx = data.requests.findIndex(r => r.id === id);
+    if (idx < 0) return undefined;
+    data.requests[idx] = { ...data.requests[idx], ...patch, id, updatedAt: new Date().toISOString() };
+    saveDb(data);
+    return data.requests[idx];
+  },
+
   // Pending demo-lead intake — website submissions that arrived while no
   // business existed yet. Queued instead of lost; flushed into Customer
   // Requests when a business is created.
@@ -330,6 +355,8 @@ export const db = {
     const data = ensureDb();
     if (!data.pendingIntake) data.pendingIntake = [];
     data.pendingIntake.push(entry);
+    // Bounded queue (audit #22): keep the newest 500 leads.
+    if (data.pendingIntake.length > 500) data.pendingIntake = data.pendingIntake.slice(-500);
     saveDb(data);
     return entry;
   },
@@ -386,12 +413,19 @@ export const db = {
   },
 
   // Job Packs
-  getJobPacks(industry?: string): JobPack[] {
+  // Seed packs (no businessId) are shared starter templates; generated
+  // packs carry the businessId that created them and are returned only to
+  // that business (audit #17). With no businessId given, only seed packs.
+  getJobPacks(industry?: string, businessId?: string): JobPack[] {
     const data = ensureDb();
+    const visible = data.jobPacks.filter(j => {
+      const owner = (j as JobPack & { businessId?: string }).businessId;
+      return !owner || (!!businessId && owner === businessId);
+    });
     if (industry) {
-      return data.jobPacks.filter(j => j.industry === industry || j.industry === 'general_small_business');
+      return visible.filter(j => j.industry === industry || j.industry === 'general_small_business');
     }
-    return data.jobPacks;
+    return visible;
   },
 
   saveJobPack(jobPack: JobPack): JobPack {
@@ -401,6 +435,15 @@ export const db = {
       data.jobPacks[idx] = jobPack;
     } else {
       data.jobPacks.push(jobPack);
+      // Bounded (audit #17): keep at most 200 generated packs per business.
+      const owner = (jobPack as JobPack & { businessId?: string }).businessId;
+      if (owner) {
+        const mine = data.jobPacks.filter(j => (j as JobPack & { businessId?: string }).businessId === owner);
+        if (mine.length > 200) {
+          const drop = new Set(mine.slice(0, mine.length - 200).map(j => j.id));
+          data.jobPacks = data.jobPacks.filter(j => !drop.has(j.id));
+        }
+      }
     }
     saveDb(data);
     return jobPack;

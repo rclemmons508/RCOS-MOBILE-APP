@@ -60,12 +60,19 @@ service cloud.firestore {
       return id is string && id.size() > 0 && id.size() <= 128;
     }
 
-    // Lowercase email of the caller ('' when the token carries no email).
+    // Lowercase VERIFIED email of the caller ('' when the token carries no
+    // email OR the email is not verified). Audit #9: Firebase email/password
+    // self-signup does not prove the address belongs to the signer, so an
+    // unverified email must never match an owner/member email. UID-based
+    // ownership (ownerId) is unaffected, so the owner is never locked out.
+    // Google sign-in tokens always carry email_verified == true.
     // The app registers Firebase accounts with a lowercased email, and
     // roster emails are stored lowercased, so exact match after .lower()
     // is the case-insensitive comparison the server does with toLowerCase().
     function callerEmail() {
-      return request.auth != null && request.auth.token.email is string
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.get('email_verified', false) == true
         ? request.auth.token.email.lower() : '';
     }
 

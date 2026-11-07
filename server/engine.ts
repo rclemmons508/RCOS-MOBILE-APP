@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { 
   BusinessAccount, 
   ActionRecord, 
@@ -535,6 +536,7 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
     // State machine (audit #19): a decided action is final. Re-approving
     // a quote used to spawn another schedule_job each time.
     if (RcosEngine.isDecidedStatus(action.status)) return null;
+    if (action.status !== 'awaiting_approval') return null;
 
     if (!action.fullTrace) action.fullTrace = [];
 
@@ -650,7 +652,7 @@ Note: Only populate the specific details relevant to this actionType (e.g. quote
             const followUpInstruction = `Schedule the approved quote for ${action.result?.quoteDetails?.clientName || 'the client'}: ${action.title}`;
             const classification = await RcosEngine.classifyAndRoute(business, followUpInstruction);
             const scheduledAction: ActionRecord = {
-              id: `act_${Date.now()}_ops`,
+              id: `act_${randomUUID()}_ops`,
               businessId: business.id,
               requestId: action.requestId,
               employeeId: 'operations',

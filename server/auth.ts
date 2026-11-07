@@ -120,6 +120,30 @@ export function verifiedCaller(req: Request): { uid?: string; email?: string | n
   return caller;
 }
 
+// Audit #9: the caller's email only counts as an identity when Firebase
+// says it is verified (decoded.email_verified === true). Email/password
+// self-signup does not prove ownership of the address, so an unverified
+// email is kept aside as `unverifiedEmail` (for display only) and `email`
+// is null — every owner/member EMAIL match in server.ts therefore requires
+// verification. UID matches (business.ownerId / member userId) are
+// unaffected, so an owner whose business records their uid is never
+// locked out. Google sign-in tokens are always email_verified.
+export function callerFromToken(decoded: { uid: string; email?: string; email_verified?: boolean }): {
+  uid: string;
+  email: string | null;
+  emailVerified: boolean;
+  unverifiedEmail?: string;
+} {
+  const verified = decoded.email_verified === true;
+  const email = decoded.email || null;
+  return {
+    uid: decoded.uid,
+    email: verified ? email : null,
+    emailVerified: verified,
+    ...(email && !verified ? { unverifiedEmail: email } : {}),
+  };
+}
+
 export function isAuthMisconfigured(): boolean {
   return authMisconfigured;
 }
@@ -146,7 +170,7 @@ export async function requireAuth(req: Request, res: Response, next: () => void)
   }
   try {
     const decoded = await admin.auth().verifyIdToken(token);
-    (req as any).user = { uid: decoded.uid, email: decoded.email || null };
+    (req as any).user = callerFromToken(decoded);
     return next();
   } catch {
     return res.status(401).json({ error: 'Your sign-in expired. Please sign in again.' });
@@ -178,7 +202,7 @@ export async function requireVerifiedAuth(req: Request, res: Response, next: Nex
   }
   try {
     const decoded = await admin.auth().verifyIdToken(token);
-    (req as any).user = { uid: decoded.uid, email: decoded.email || null };
+    (req as any).user = callerFromToken(decoded);
     return next();
   } catch {
     return res.status(401).json({ error: 'Your sign-in expired. Please sign in again.' });
