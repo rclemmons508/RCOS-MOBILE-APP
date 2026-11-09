@@ -1955,6 +1955,40 @@ export default function App() {
     await saveBusinessFields(updatedBiz.id, { contactPhone: c.contactPhone, contactEmail: c.contactEmail });
   };
 
+  // Settings → Company Profile save: the business name + public contact
+  // phone/email. The profile card used to show hardcoded demo values
+  // ('Apex Commercial Systems' / '(555) 302-8491') with no save path, so
+  // every login showed the fake profile again while services (read from
+  // the record) stayed correct. Owner-only, like the Company Contact
+  // save; the server PUT allow-list takes name, contactPhone and
+  // contactEmail. An empty name keeps the current name — the record's
+  // name is required, so a blank edit must never clear it.
+  const handleUpdateCompanyProfile = async (p: { name: string; contactPhone: string; contactEmail: string }) => {
+    const email = currentUser?.email;
+    if (!email) throw new Error('No signed-in account found.');
+    if (!activeBusiness.id) throw new Error('No company loaded.');
+    const myEmail = email.toLowerCase();
+    const ownMember = (activeBusiness.members || []).find((m) => (m.email || '').toLowerCase() === myEmail);
+    const isOwner = ownMember
+      ? ownMember.role === 'owner'
+      : ([
+          (activeBusiness.contactEmail || '').toLowerCase(),
+          ((activeBusiness as unknown as { ownerEmail?: string } | null)?.ownerEmail || '').toLowerCase(),
+        ].filter(Boolean).includes(myEmail) ||
+        (!!activeBusiness.ownerId && activeBusiness.ownerId !== 'unassigned_owner' && activeBusiness.ownerId === currentUser?.id));
+    if (!isOwner) throw new Error('Only the company owner can change the company profile.');
+    const updatedBiz: BusinessAccount = {
+      ...activeBusiness,
+      name: p.name || activeBusiness.name,
+      contactPhone: p.contactPhone,
+      contactEmail: p.contactEmail,
+      updatedAt: new Date().toISOString(),
+    };
+    setBusinessAccount(updatedBiz);
+    setCachedBusiness(currentUser, updatedBiz);
+    await saveBusinessFields(updatedBiz.id, { name: updatedBiz.name, contactPhone: p.contactPhone, contactEmail: p.contactEmail });
+  };
+
   // Settings → Teach Your Team save: the owner's business knowledge lives
   // on the business record and rides the same save path as the profile
   // (server PUT + Firestore), so every agent surface reads the same text.
@@ -2311,6 +2345,7 @@ export default function App() {
               business={activeBusiness}
               onUpdateProfile={handleUpdateProfile}
               onUpdateCompanyContact={handleUpdateCompanyContact}
+              onUpdateCompanyProfile={handleUpdateCompanyProfile}
               onUpdateBusinessKnowledge={handleUpdateBusinessKnowledge}
               onLogout={handleLogout}
               automationTasks={automationTasks}
@@ -2341,13 +2376,6 @@ export default function App() {
               }}
               aiAssistantEnabled={aiAssistantEnabled}
               onToggleAiAssistant={() => setAiAssistantEnabled(!aiAssistantEnabled)}
-              industryProfile={industryProfile}
-              onUpdateIndustry={(ind) => {
-                setIndustryProfile(ind);
-                if (currentUser?.email) {
-                  userPreferencesService.saveUserPreferences(currentUser.email, { industryProfile: ind });
-                }
-              }}
               autoDispatchThreshold={autoDispatchThreshold}
               onUpdateAutoDispatchThreshold={(val) => {
                 setAutoDispatchThreshold(val);
