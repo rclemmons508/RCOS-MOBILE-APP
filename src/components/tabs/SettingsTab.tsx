@@ -96,8 +96,8 @@ interface SettingsTabProps {
   onAddCustomTask: (task: AutomationTask) => void;
   aiAssistantEnabled: boolean;
   onToggleAiAssistant: () => void;
-  industryProfile: string;
-  onUpdateIndustry: (industry: string) => void;
+  /** Owner-only: save the Company Profile card (business name + public contact phone/email). */
+  onUpdateCompanyProfile?: (profile: { name: string; contactPhone: string; contactEmail: string }) => Promise<void>;
   autoDispatchThreshold: 'all' | 'critical' | 'high' | 'manual';
   onUpdateAutoDispatchThreshold: (threshold: 'all' | 'critical' | 'high' | 'manual') => void;
   notifPreferences: NotificationPreferences;
@@ -129,6 +129,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   business,
   onUpdateProfile,
   onUpdateCompanyContact,
+  onUpdateCompanyProfile,
   onUpdateBusinessKnowledge,
   onLogout,
   automationTasks,
@@ -147,8 +148,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onAddCustomTask,
   aiAssistantEnabled,
   onToggleAiAssistant,
-  industryProfile,
-  onUpdateIndustry,
   autoDispatchThreshold,
   onUpdateAutoDispatchThreshold,
   notifPreferences,
@@ -175,9 +174,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [fireLog] = useState<AutomationLogEntry[]>(() => getAutomationLog(businessId));
 
   // User & Company Profile State (multi-company support)
-  const [companyName, setCompanyName] = useState(currentUser?.organization || 'Apex Commercial Systems');
-  const [companyPhone, setCompanyPhone] = useState('(555) 302-8491');
-  const [dispatchEmail, setDispatchEmail] = useState(currentUser?.email || 'dispatch@company.com');
+  // These read the BUSINESS record — never demo defaults. The old
+  // initializers fell back to a hardcoded 'Apex Commercial Systems' /
+  // '(555) 302-8491' and had no save path, so every login or reopen
+  // showed the fake profile again while services (read from the record)
+  // stayed correct. Blank here means "not on the record yet", never a guess.
+  const [companyName, setCompanyName] = useState(business?.name || currentUser?.organization || '');
+  const [companyPhone, setCompanyPhone] = useState(business?.contactPhone || '');
+  const [dispatchEmail, setDispatchEmail] = useState(business?.contactEmail || currentUser?.email || '');
   const [is24x7Emergency, setIs24x7Emergency] = useState(true);
 
   // ---- My Profile (editable name, contact info, profile picture) ----
@@ -235,6 +239,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [business?.id]);
 
+  // When a different account/business loads, reset the Company Profile
+  // card to the business record's values — same pattern as the forms
+  // above. Without this, the card kept whatever it first rendered with.
+  useEffect(() => {
+    setCompanyName(business?.name || currentUser?.organization || '');
+    setCompanyPhone(business?.contactPhone || '');
+    setDispatchEmail(business?.contactEmail || currentUser?.email || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business?.id, currentUser?.email]);
+
   const handleSaveCompanyContact = async () => {
     if (companyContactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companyContactEmail.trim())) {
       setCompanyContactError('That company email does not look right.');
@@ -253,6 +267,30 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       setCompanyContactError(e?.message || 'Could not save the company contact. Please try again.');
     } finally {
       setCompanyContactSaving(false);
+    }
+  };
+
+  const [companyProfileSaving, setCompanyProfileSaving] = useState(false);
+  const [companyProfileError, setCompanyProfileError] = useState<string | null>(null);
+  const handleSaveCompanyProfile = async () => {
+    if (dispatchEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dispatchEmail.trim())) {
+      setCompanyProfileError('That work order email does not look right.');
+      return;
+    }
+    if (!onUpdateCompanyProfile) { setCompanyProfileError('Company profile saving is not available right now.'); return; }
+    setCompanyProfileSaving(true);
+    setCompanyProfileError(null);
+    try {
+      await onUpdateCompanyProfile({
+        name: companyName.trim(),
+        contactPhone: companyPhone.trim(),
+        contactEmail: dispatchEmail.trim(),
+      });
+      showToast('Company profile saved!');
+    } catch (e: any) {
+      setCompanyProfileError(e?.message || 'Could not save the company profile. Please try again.');
+    } finally {
+      setCompanyProfileSaving(false);
     }
   };
 
@@ -964,7 +1002,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Apex Mechanical Systems"
+                  placeholder="e.g. Bright Path Plumbing"
                   className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                 />
               </div>
@@ -973,7 +1011,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <div className="p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 flex flex-col justify-between">
                   <div>
                     <label className="text-[10px] text-zinc-400 font-mono block mb-0.5">Active Industry:</label>
-                    <div className="text-xs font-bold text-lime-400 truncate">{industryProfile}</div>
+                    <div className="text-xs font-bold text-lime-400 truncate">{industryName}</div>
                   </div>
                   {onReopenOnboarding && (
                     <button
@@ -996,7 +1034,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     type="text"
                     value={companyPhone}
                     onChange={(e) => setCompanyPhone(e.target.value)}
-                    placeholder="(555) 302-8491"
+                    placeholder="(555) 555-0100"
                     className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none font-mono"
                   />
                 </div>
@@ -1012,6 +1050,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none font-mono"
                 />
               </div>
+
+              {isBusinessOwner && (
+                <>
+                  {companyProfileError && <p className="text-xs text-red-300">{companyProfileError}</p>}
+                  <button
+                    type="button"
+                    onClick={handleSaveCompanyProfile}
+                    disabled={companyProfileSaving}
+                    className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
+                  >
+                    {companyProfileSaving ? 'Saving…' : 'Save company profile'}
+                  </button>
+                </>
+              )}
 
               {/* Service Catalog & Proactive AI Monitor Card */}
               <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
