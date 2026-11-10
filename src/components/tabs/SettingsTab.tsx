@@ -1613,25 +1613,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
-                        <span>{task.name}</span>
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="truncate min-w-0">{task.name}</span>
                         {task.isCustom && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
                             CUSTOM
                           </span>
                         )}
                         {live && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-bold">
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-bold">
                             RUNNING
                           </span>
                         )}
                         {task.isAutomated && task.paused && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
                             PAUSED
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-zinc-400 truncate">
+                      <div className="text-[10px] text-zinc-400 leading-snug">
                         {task.description}
                       </div>
                       <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
@@ -1690,7 +1690,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         <textarea
                           value={task.messageTemplate || FOLLOWUP_META[task.id as 'rule-welcome' | 'rule-missed-call' | 'rule-review'].defaultTemplate}
                           onChange={(e) => onUpdateAutomationTemplate?.(task.id, e.target.value)}
-                          rows={3}
+                          rows={5}
                           autoComplete="off"
                           className="mt-1 w-full bg-zinc-950 border border-zinc-700 rounded-xl px-2.5 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-lime-500"
                         />
