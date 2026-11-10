@@ -31,7 +31,6 @@ import {
   VolumeX, 
   Smartphone, 
   Bell, 
-  Moon, 
   Sparkles, 
   Activity, 
   Sliders, 
@@ -362,7 +361,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   // App Agents State
   const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>('autonomous');
-  const [agentTone, setAgentTone] = useState<'strategic' | 'customer' | 'technical'>('strategic');
   const [customEmployees, setCustomEmployees] = useState<CustomAIEmployee[]>(() =>
     employeeCustomizationService.getEmployees(businessId || '')
   );
@@ -375,8 +373,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
   // Device & Display State
-  const [themeMode, setThemeMode] = useState<'oled' | 'dark' | 'slate'>('oled');
-  const [compactDensity, setCompactDensity] = useState(false);
   const [cacheCleared, setCacheCleared] = useState(false);
 
   const showToast = (msg: string) => {
@@ -1456,55 +1452,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           </div>
 
-          {/* Agent Communication Persona */}
-          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
-            <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-              <Bot className="w-4 h-4 text-lime-400" />
-              <span>Voice AI & Chat Agent Tone</span>
-            </span>
-
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => setAgentTone('strategic')}
-                className={`p-2 rounded-xl border text-center transition cursor-pointer ${
-                  agentTone === 'strategic'
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="text-[11px]">Crisp & Strategic</div>
-                <div className="text-[9px] text-zinc-500">Direct executive style</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAgentTone('customer')}
-                className={`p-2 rounded-xl border text-center transition cursor-pointer ${
-                  agentTone === 'customer'
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="text-[11px]">Customer-Centric</div>
-                <div className="text-[9px] text-zinc-500">Warm & reassuring</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAgentTone('technical')}
-                className={`p-2 rounded-xl border text-center transition cursor-pointer ${
-                  agentTone === 'technical'
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="text-[11px]">Technical Diagnostic</div>
-                <div className="text-[9px] text-zinc-500">Engineering codes</div>
-              </button>
-            </div>
-          </div>
-
           {/* AI Employee Fleet & Job Customization */}
           <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
             <div className="flex items-center justify-between">
@@ -1949,70 +1896,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               >
                 <Bell className="w-3.5 h-3.5 text-lime-400" />
                 <span>Test Alert</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Display & Density Settings */}
-          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3">
-            <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-              <Moon className="w-4 h-4 text-lime-400" />
-              <span>Display & Visual Theme</span>
-            </span>
-
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => setThemeMode('oled')}
-                className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
-                  themeMode === 'oled'
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="font-mono text-[11px]">OLED Black</div>
-                <div className="text-[9px] text-zinc-500">Max contrast & battery</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setThemeMode('dark')}
-                className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
-                  themeMode === 'dark'
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="font-mono text-[11px]">Slate Modern</div>
-                <div className="text-[9px] text-zinc-500">Balanced industrial</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setThemeMode('slate')}
-                className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
-                  themeMode === 'slate'
-                    ? 'bg-lime-500/10 border-lime-500 text-white font-bold'
-                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-              >
-                <div className="font-mono text-[11px]">High Contrast</div>
-                <div className="text-[9px] text-zinc-500">Outdoor sunlight visibility</div>
-              </button>
-            </div>
-
-            <div className="pt-2 border-t border-zinc-900 flex items-center justify-between text-xs">
-              <span className="text-zinc-300 font-semibold">Compact Operations Grid</span>
-              <button
-                type="button"
-                onClick={() => setCompactDensity(!compactDensity)}
-                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${
-                  compactDensity ? 'bg-lime-500' : 'bg-zinc-800'
-                }`}
-              >
-                <span className={`block w-4 h-4 rounded-full bg-black transform transition-transform ${
-                  compactDensity ? 'translate-x-4' : 'translate-x-0.5'
-                }`} />
               </button>
             </div>
           </div>
