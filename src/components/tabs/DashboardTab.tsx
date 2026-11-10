@@ -29,7 +29,6 @@ import { dashboardCard, sectionLabel } from '../ui/cards';
 import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
 import { PipelineHealthCard } from '../dashboard/PipelineHealthCard';
-import { AppCheckCard } from '../dashboard/AppCheckCard';
 import { haptic } from '../../utils/haptics';
 import { buildPublicBookingLink } from '../../config/api';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
@@ -69,8 +68,6 @@ interface DashboardTabProps {
   onApproveQuote?: (actionId: string) => Promise<void> | void;
   onScheduleJob?: (action: ActionRecord) => Promise<void> | void;
   onMarkPaid?: (action: ActionRecord) => Promise<void> | void;
-  /** Opens Settings on the section that holds the guided app check. */
-  onOpenAppCheck?: () => void;
   industry?: string;
   industryModifierOn?: boolean;
   followupsDraftedYesterday?: number;
@@ -107,7 +104,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onApproveQuote,
   onScheduleJob,
   onMarkPaid,
-  onOpenAppCheck,
   industry,
   industryModifierOn,
   followupsDraftedYesterday = 0,
@@ -295,9 +291,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         onScheduleJob={onScheduleJob}
         onMarkPaid={onMarkPaid}
       />
-
-      {/* Guided app check — already in Settings; this card just surfaces it here */}
-      {onOpenAppCheck && <AppCheckCard onOpenAppCheck={onOpenAppCheck} />}
 
       {/* Friendly Header with Business & Operator Status */}
       <div className="flex items-center justify-between gap-2">
