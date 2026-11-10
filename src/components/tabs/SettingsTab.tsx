@@ -100,6 +100,8 @@ interface SettingsTabProps {
   onUpdateCompanyProfile?: (profile: { name: string; contactPhone: string; contactEmail: string }) => Promise<void>;
   autoDispatchThreshold: 'all' | 'critical' | 'high' | 'manual';
   onUpdateAutoDispatchThreshold: (threshold: 'all' | 'critical' | 'high' | 'manual') => void;
+  /** Owner-only: save the Multi-Agent Autonomy Mode to the business record. */
+  onUpdateAutonomyMode: (mode: 'autonomous' | 'supervised') => Promise<void>;
   notifPreferences: NotificationPreferences;
   onUpdateNotifPreferences: (prefs: NotificationPreferences) => void;
   onTriggerTestPush: () => void;
@@ -150,6 +152,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onToggleAiAssistant,
   autoDispatchThreshold,
   onUpdateAutoDispatchThreshold,
+  onUpdateAutonomyMode,
   notifPreferences,
   onUpdateNotifPreferences,
   onTriggerTestPush,
@@ -361,7 +364,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   };
 
   // App Agents State
-  const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>('autonomous');
+  const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>(business?.autonomyMode || 'autonomous');
+  // When a different business loads, reset to its saved mode.
+  useEffect(() => {
+    setAutonomyMode(business?.autonomyMode || 'autonomous');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business?.id]);
   const [agentTone, setAgentTone] = useState<'strategic' | 'customer' | 'technical'>('strategic');
   const [customEmployees, setCustomEmployees] = useState<CustomAIEmployee[]>(() =>
     employeeCustomizationService.getEmployees(businessId || '')
@@ -382,6 +390,21 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const showToast = (msg: string) => {
     setSaveToast(msg);
     setTimeout(() => setSaveToast(null), 2500);
+  };
+
+  // Autonomy Mode: the toggle reads from the business record and saves back
+  // to it (server + Firestore), so the choice survives leaving the page.
+  // On a failed save the toggle flips back and the error is shown.
+  const handleAutonomyChange = async (mode: 'autonomous' | 'supervised') => {
+    const previous = autonomyMode;
+    setAutonomyMode(mode);
+    try {
+      await onUpdateAutonomyMode(mode);
+      showToast(mode === 'autonomous' ? 'Autonomy Mode: Full Autonomous active' : 'Autonomy Mode: Supervised Approval active');
+    } catch (e: any) {
+      setAutonomyMode(previous);
+      showToast(e?.message || 'Could not save that setting.');
+    }
   };
 
   const handleAddTask = (e: React.FormEvent) => {
@@ -1347,10 +1370,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
-                onClick={() => {
-                  setAutonomyMode('autonomous');
-                  showToast('Autonomy Mode: Full Autonomous active');
-                }}
+                onClick={() => handleAutonomyChange('autonomous')}
                 className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                   autonomyMode === 'autonomous'
                     ? 'bg-lime-500/10 border-lime-500 text-white'
@@ -1368,10 +1388,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  setAutonomyMode('supervised');
-                  showToast('Autonomy Mode: Supervised Approval active');
-                }}
+                onClick={() => handleAutonomyChange('supervised')}
                 className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                   autonomyMode === 'supervised'
                     ? 'bg-lime-500/10 border-lime-500 text-white'
