@@ -99,6 +99,8 @@ interface SettingsTabProps {
   onUpdateCompanyProfile?: (profile: { name: string; contactPhone: string; contactEmail: string }) => Promise<void>;
   autoDispatchThreshold: 'all' | 'critical' | 'high' | 'manual';
   onUpdateAutoDispatchThreshold: (threshold: 'all' | 'critical' | 'high' | 'manual') => void;
+  /** Owner-only: save the Multi-Agent Autonomy Mode to the business record. */
+  onUpdateAutonomyMode: (mode: 'autonomous' | 'supervised') => Promise<void>;
   notifPreferences: NotificationPreferences;
   onUpdateNotifPreferences: (prefs: NotificationPreferences) => void;
   onTriggerTestPush: () => void;
@@ -149,6 +151,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onToggleAiAssistant,
   autoDispatchThreshold,
   onUpdateAutoDispatchThreshold,
+  onUpdateAutonomyMode,
   notifPreferences,
   onUpdateNotifPreferences,
   onTriggerTestPush,
@@ -361,6 +364,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   // App Agents State
   const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>('autonomous');
+  const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>(business?.autonomyMode || 'autonomous');
+  // When a different business loads, reset to its saved mode.
+  useEffect(() => {
+    setAutonomyMode(business?.autonomyMode || 'autonomous');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business?.id]);
+  const [agentTone, setAgentTone] = useState<'strategic' | 'customer' | 'technical'>('strategic');
   const [customEmployees, setCustomEmployees] = useState<CustomAIEmployee[]>(() =>
     employeeCustomizationService.getEmployees(businessId || '')
   );
@@ -378,6 +388,21 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const showToast = (msg: string) => {
     setSaveToast(msg);
     setTimeout(() => setSaveToast(null), 2500);
+  };
+
+  // Autonomy Mode: the toggle reads from the business record and saves back
+  // to it (server + Firestore), so the choice survives leaving the page.
+  // On a failed save the toggle flips back and the error is shown.
+  const handleAutonomyChange = async (mode: 'autonomous' | 'supervised') => {
+    const previous = autonomyMode;
+    setAutonomyMode(mode);
+    try {
+      await onUpdateAutonomyMode(mode);
+      showToast(mode === 'autonomous' ? 'Autonomy Mode: Full Autonomous active' : 'Autonomy Mode: Supervised Approval active');
+    } catch (e: any) {
+      setAutonomyMode(previous);
+      showToast(e?.message || 'Could not save that setting.');
+    }
   };
 
   const handleAddTask = (e: React.FormEvent) => {
@@ -1343,10 +1368,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
-                onClick={() => {
-                  setAutonomyMode('autonomous');
-                  showToast('Autonomy Mode: Full Autonomous active');
-                }}
+                onClick={() => handleAutonomyChange('autonomous')}
                 className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                   autonomyMode === 'autonomous'
                     ? 'bg-lime-500/10 border-lime-500 text-white'
@@ -1364,10 +1386,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  setAutonomyMode('supervised');
-                  showToast('Autonomy Mode: Supervised Approval active');
-                }}
+                onClick={() => handleAutonomyChange('supervised')}
                 className={`p-3 rounded-xl border text-left transition cursor-pointer ${
                   autonomyMode === 'supervised'
                     ? 'bg-lime-500/10 border-lime-500 text-white'
@@ -1560,25 +1579,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
-                        <span>{task.name}</span>
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="truncate min-w-0">{task.name}</span>
                         {task.isCustom && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
                             CUSTOM
                           </span>
                         )}
                         {live && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-bold">
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-bold">
                             RUNNING
                           </span>
                         )}
                         {task.isAutomated && task.paused && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
                             PAUSED
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-zinc-400 truncate">
+                      <div className="text-[10px] text-zinc-400 leading-snug">
                         {task.description}
                       </div>
                       <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
@@ -1637,7 +1656,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         <textarea
                           value={task.messageTemplate || FOLLOWUP_META[task.id as 'rule-welcome' | 'rule-missed-call' | 'rule-review'].defaultTemplate}
                           onChange={(e) => onUpdateAutomationTemplate?.(task.id, e.target.value)}
-                          rows={3}
+                          rows={5}
                           autoComplete="off"
                           className="mt-1 w-full bg-zinc-950 border border-zinc-700 rounded-xl px-2.5 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-lime-500"
                         />

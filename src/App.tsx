@@ -1989,6 +1989,35 @@ export default function App() {
     await saveBusinessFields(updatedBiz.id, { name: updatedBiz.name, contactPhone: p.contactPhone, contactEmail: p.contactEmail });
   };
 
+  // Settings → Autonomy Mode save: the agents' autonomy mode lives on the
+  // business record (server PUT allow-list takes autonomyMode; the engine
+  // reads it to decide whether supervised approval is required), but the
+  // Settings toggle only set local state, so leaving the page reset it to
+  // Autonomous. Owner-only, like the Company Profile save.
+  const handleUpdateAutonomyMode = async (mode: 'autonomous' | 'supervised') => {
+    const email = currentUser?.email;
+    if (!email) throw new Error('No signed-in account found.');
+    if (!activeBusiness.id) throw new Error('No company loaded.');
+    const myEmail = email.toLowerCase();
+    const ownMember = (activeBusiness.members || []).find((m) => (m.email || '').toLowerCase() === myEmail);
+    const isOwner = ownMember
+      ? ownMember.role === 'owner'
+      : ([
+          (activeBusiness.contactEmail || '').toLowerCase(),
+          ((activeBusiness as unknown as { ownerEmail?: string } | null)?.ownerEmail || '').toLowerCase(),
+        ].filter(Boolean).includes(myEmail) ||
+        (!!activeBusiness.ownerId && activeBusiness.ownerId !== 'unassigned_owner' && activeBusiness.ownerId === currentUser?.id));
+    if (!isOwner) throw new Error('Only the company owner can change the autonomy mode.');
+    const updatedBiz: BusinessAccount = {
+      ...activeBusiness,
+      autonomyMode: mode,
+      updatedAt: new Date().toISOString(),
+    };
+    setBusinessAccount(updatedBiz);
+    setCachedBusiness(currentUser, updatedBiz);
+    await saveBusinessFields(updatedBiz.id, { autonomyMode: mode });
+  };
+
   // Settings → Teach Your Team save: the owner's business knowledge lives
   // on the business record and rides the same save path as the profile
   // (server PUT + Firestore), so every agent surface reads the same text.
@@ -2149,7 +2178,6 @@ export default function App() {
               onApproveQuote={async (actionId) => { await handleApprovalDecision(actionId, 'approved'); }}
               onScheduleJob={handleScheduleJob}
               onMarkPaid={handleMarkPaid}
-              onOpenAppCheck={() => openSettings('agents')}
               industry={businessAccount?.industry || industryProfile}
               industryModifierOn={industryModifierOn}
             />
@@ -2346,6 +2374,7 @@ export default function App() {
               onUpdateProfile={handleUpdateProfile}
               onUpdateCompanyContact={handleUpdateCompanyContact}
               onUpdateCompanyProfile={handleUpdateCompanyProfile}
+              onUpdateAutonomyMode={handleUpdateAutonomyMode}
               onUpdateBusinessKnowledge={handleUpdateBusinessKnowledge}
               onLogout={handleLogout}
               automationTasks={automationTasks}
