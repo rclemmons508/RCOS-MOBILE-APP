@@ -363,7 +363,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   };
 
   // App Agents State
-  const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>('autonomous');
   const [autonomyMode, setAutonomyMode] = useState<'autonomous' | 'supervised'>(business?.autonomyMode || 'autonomous');
   // When a different business loads, reset to its saved mode.
   useEffect(() => {
