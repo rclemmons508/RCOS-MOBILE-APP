@@ -2207,7 +2207,6 @@ export default function App() {
               calls={calls}
               jobs={jobs}
               actions={actions}
-              metrics={metrics}
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
               unreadInboxCount={agentMessages.filter((m) => m.status === 'unread').length}
@@ -2227,8 +2226,6 @@ export default function App() {
               activeEmployees={activeBusiness.activeEmployees}
               customerRequests={customerRequests}
               clients={clients}
-              automationsOn={automationTasks.filter((t) => t.isAutomated).length}
-              automationsTotal={automationTasks.length}
               proactiveSuggestion={proactiveSuggestion}
               onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
               onDismissSuggestion={handleDismissSuggestion}
@@ -2236,7 +2233,6 @@ export default function App() {
               onNavigateTab={(tab) => setActiveTab(tab)}
               onSimulateCall={handleSimulateInboundCall}
               onTriggerEmergencyJob={handleEmergencyJobTrigger}
-              onOpenAuth={() => setIsAuthModalOpen(true)}
               onOpenNotifications={() => setIsNotifCenterOpen(true)}
               onOpenInbox={() => setIsInboxOpen(true)}
               onApproveQuote={async (actionId) => { await handleApprovalDecision(actionId, 'approved'); }}
@@ -2366,12 +2362,15 @@ export default function App() {
                   firestoreService.saveBusiness(updated).catch(() => {});
                 }
               }}
+              pendingApprovals={actions.filter((x) => x.status === 'awaiting_approval').length}
+              onReviewApprovals={() => setActiveTab('approvals')}
             />
           )}
 
           {activeTab === 'clients' && (
             <ClientsTab
               clients={clients}
+              jobs={jobs}
               onAddClient={handleAddClient}
               onEditClient={handleEditClient}
               onDeleteClient={handleDeleteClient}

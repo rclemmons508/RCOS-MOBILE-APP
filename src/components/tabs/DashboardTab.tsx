@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PhoneCall, Job, Client, ActionRecord, SystemMetric, TabType, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
+import { PhoneCall, Job, Client, ActionRecord, TabType, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
 import { 
   PhoneCall as PhoneIcon, 
   Briefcase, 
@@ -8,8 +8,6 @@ import {
   CheckCircle2, 
   ChevronRight, 
   Bell, 
-  ShieldCheck, 
-  Lock,
   Plus,
   Bot,
   Calendar,
@@ -17,14 +15,15 @@ import {
   MapPin,
   Clock,
   Mail,
-  ArrowRight,
-  Wrench,
   Inbox,
-  Activity,
   Share2,
   Link2,
-  MessageSquare
+  MessageSquare,
+  DollarSign,
+  FileText,
+  Info
 } from 'lucide-react';
+import { RCLogoIcon } from '../RCLogo';
 import { dashboardCard, sectionLabel } from '../ui/cards';
 import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
 import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
@@ -40,7 +39,6 @@ interface DashboardTabProps {
   calls: PhoneCall[];
   jobs: Job[];
   actions: ActionRecord[];
-  metrics: SystemMetric;
   currentUser: User | null;
   unreadNotifCount: number;
   unreadInboxCount: number;
@@ -56,12 +54,9 @@ interface DashboardTabProps {
   activeEmployees?: Record<string, boolean>;
   customerRequests?: CustomerRequest[];
   clients?: Client[];
-  automationsOn?: number;
-  automationsTotal?: number;
   onNavigateTab: (tab: TabType) => void;
   onSimulateCall: () => void;
   onTriggerEmergencyJob: () => void;
-  onOpenAuth: () => void;
   onOpenNotifications: () => void;
   onOpenInbox: () => void;
   /** One-tap dashboard actions — the exact handlers the Approvals screen uses. */
@@ -77,7 +72,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   calls,
   jobs,
   actions = [],
-  metrics,
   currentUser,
   unreadNotifCount,
   unreadInboxCount = 0,
@@ -93,12 +87,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   activeEmployees = {},
   customerRequests = [],
   clients = [],
-  automationsOn = 0,
-  automationsTotal = 0,
   onNavigateTab,
   onSimulateCall,
   onTriggerEmergencyJob,
-  onOpenAuth,
   onOpenNotifications,
   onOpenInbox,
   onApproveQuote,
@@ -111,6 +102,35 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const urgentJobs = jobs.filter(j => j.priority === 'critical' || j.status === 'urgent');
   const upcomingJobs = jobs.filter(j => j.status !== 'completed').slice(0, 3);
   const recentCalls = calls.slice(0, 3);
+
+  // Design 1 "Today's Priorities" + stat tiles — same live data the
+  // "What needs you" strip and the counters used, in the Design 1 layout.
+  // Jobs today reuses the Morning Briefing's filter; unpaid invoices and
+  // waiting quotes reuse its money-loop definitions. Nothing here invents
+  // a number: every count is computed from jobs, actions, calls, and
+  // requests the Dashboard already loads.
+  const todaysJobs = jobs.filter(
+    (j) =>
+      j.scheduledTime.includes('Today') ||
+      j.status === 'dispatched' ||
+      j.status === 'in_progress' ||
+      j.status === 'urgent'
+  );
+  const unpaidInvoices = actions.filter(
+    (a) => a.status === 'approved' && a.result?.invoiceDetails && a.paymentStatus !== 'paid'
+  );
+  const owedTotal = unpaidInvoices.reduce(
+    (sum, a) => sum + (a.result?.invoiceDetails?.totalAmount || 0),
+    0
+  );
+  const pendingQuotes = actions.filter(
+    (a) => a.status === 'awaiting_approval' && (a.result?.quoteDetails || a.result?.invoiceDetails)
+  );
+  const pendingRequestCount = customerRequests.filter((r) => r.status === 'pending').length;
+  const missedCallCount = calls.filter((c) => c.status === 'missed').length;
+  const activeJobsCount = jobs.filter((j) => j.status !== 'completed').length;
+  const activeClientCount = clients.filter((c) => c.status !== 'inactive').length;
+  const firstName = currentUser?.authenticated ? currentUser.fullName.split(' ')[0] : '';
 
   // Master Dashboard helpers
   const empOn = (id: string) => activeEmployees[id] !== false;
@@ -176,75 +196,148 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     action();
   };
 
-  // "What needs you" — live situations from data the Dashboard already
-  // loads (no new server calls). Each row is one clear tap to the screen
-  // that handles it. Nothing here invents a situation: counts come
-  // straight from approvals, requests, calls, and invoice actions.
-  const attentionItems: { key: string; title: string; detail: string; tab: TabType }[] = [];
+  // "Today's Priorities" — the live situations, in Design 1's card.
+  // Each row is one clear tap to the screen that handles it. Rows only
+  // appear when their count is above zero, so the card never invents a
+  // situation: approvals, jobs, invoices, requests, and missed calls all
+  // come straight from data the Dashboard already loads.
+  const priorities: { key: string; icon: React.ReactNode; title: string; tab: TabType }[] = [];
   if (pendingApprovals > 0) {
-    attentionItems.push({
+    priorities.push({
       key: 'approvals',
+      icon: <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />,
       title: `${pendingApprovals} waiting for your approval`,
-      detail: 'Quotes and actions need a yes or no',
       tab: 'approvals',
     });
   }
-  const pendingRequestCount = customerRequests.filter((r) => r.status === 'pending').length;
+  if (todaysJobs.length > 0) {
+    priorities.push({
+      key: 'jobs',
+      icon: <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />,
+      title: `${todaysJobs.length} Job${todaysJobs.length === 1 ? '' : 's'} Scheduled`,
+      tab: 'jobs',
+    });
+  }
+  if (unpaidInvoices.length > 0) {
+    priorities.push({
+      key: 'unpaid',
+      icon: <DollarSign className="w-4 h-4 text-amber-400 shrink-0" />,
+      title: `${unpaidInvoices.length} Unpaid Invoice${unpaidInvoices.length === 1 ? '' : 's'}`,
+      tab: 'approvals',
+    });
+  }
   if (pendingRequestCount > 0) {
-    attentionItems.push({
+    priorities.push({
       key: 'requests',
-      title: `${pendingRequestCount} new customer request${pendingRequestCount === 1 ? '' : 's'}`,
-      detail: 'People waiting to hear back',
+      icon: <Info className="w-4 h-4 text-blue-400 shrink-0" />,
+      title: `${pendingRequestCount} Customer Follow-Up${pendingRequestCount === 1 ? '' : 's'}`,
       tab: 'requests',
     });
   }
-  const missedCallCount = calls.filter((c) => c.status === 'missed').length;
   if (missedCallCount > 0) {
-    attentionItems.push({
+    priorities.push({
       key: 'missed',
-      title: `${missedCallCount} missed call${missedCallCount === 1 ? '' : 's'}`,
-      detail: 'Call back or send a follow-up',
+      icon: <PhoneIcon className="w-4 h-4 text-rose-400 shrink-0" />,
+      title: `${missedCallCount} Missed Call${missedCallCount === 1 ? '' : 's'}`,
       tab: 'phone',
-    });
-  }
-  const unpaidInvoiceCount = actions.filter((a) => a.paymentStatus === 'unpaid').length;
-  if (unpaidInvoiceCount > 0) {
-    attentionItems.push({
-      key: 'unpaid',
-      title: `${unpaidInvoiceCount} unpaid invoice${unpaidInvoiceCount === 1 ? '' : 's'}`,
-      detail: 'Money waiting to be collected',
-      tab: 'jobs',
     });
   }
 
   return (
     <div className="space-y-4 pb-8 px-3.5 sm:px-4 pt-2 max-w-full overflow-x-hidden">
-      {/* What needs you — the situations first, before the briefing */}
+      {/* Design 1 business header: RCOS logo, business name, "Business
+          Operating System", and a real Online badge from the server status
+          the Dashboard already receives. The bell opens notifications.
+          Sign-in lives in the global header's profile button, so this card
+          does not repeat it. */}
+      <div className={`p-3.5 ${dashboardCard} flex items-center justify-between gap-3`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <RCLogoIcon className="h-11 w-11 rounded-2xl" />
+          <div className="min-w-0">
+            <h2 className="text-base font-extrabold text-white tracking-tight truncate">
+              {businessName}
+            </h2>
+            <p className="text-xs text-zinc-400 truncate">Business Operating System</p>
+            <span className={`mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+              serverOnline === true
+                ? 'bg-lime-500/10 text-lime-400 border-lime-500/30'
+                : serverOnline === false
+                ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${serverOnline === true ? 'bg-lime-400 animate-pulse' : serverOnline === false ? 'bg-rose-400' : 'bg-amber-400 animate-pulse'}`} />
+              {serverOnline === true ? 'Online' : serverOnline === false ? 'Offline' : 'Checking…'}
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light();
+            onOpenNotifications();
+          }}
+          className="relative w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-lime-500/40 flex items-center justify-center transition shrink-0 cursor-pointer"
+          aria-label="Open Notifications Center"
+          title="Notifications"
+        >
+          <Bell className="w-4 h-4" />
+          {unreadNotifCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-lime-500 text-black text-[10px] font-bold flex items-center justify-center border border-black">
+              {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Greeting */}
+      <div className="px-1">
+        <h2 className="text-xl font-extrabold text-white tracking-tight">
+          {firstName ? `Welcome Back, ${firstName}!` : 'Welcome Back!'}
+        </h2>
+        <p className="text-xs text-zinc-400 mt-0.5">Let's get your business done today.</p>
+      </div>
+
+      {/* Today's Priorities — Design 1 card. Same live situations the
+          "What needs you" strip showed, plus jobs scheduled today. Each
+          row is one tap to the screen that handles it. */}
       <div className={`p-3.5 ${dashboardCard} space-y-2`}>
-        <span className={sectionLabel}>What needs you</span>
-        {attentionItems.length === 0 ? (
+        <div className="flex items-center justify-between">
+          <span className={sectionLabel}>Today&apos;s Priorities</span>
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light();
+              onNavigateTab('approvals');
+            }}
+            className="text-[11px] font-semibold text-lime-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+          >
+            <span>View All</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        {priorities.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-zinc-300">
             <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />
             <span>You're all caught up — nothing needs you right now.</span>
           </div>
         ) : (
-          attentionItems.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => {
-                haptic.light();
-                onNavigateTab(item.tab);
-              }}
-              className="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-lime-500/40 text-left transition cursor-pointer min-h-[44px]"
-            >
-              <span>
-                <span className="block text-sm font-bold text-white">{item.title}</span>
-                <span className="block text-[11px] text-zinc-400">{item.detail}</span>
-              </span>
-              <ChevronRight className="w-4 h-4 text-lime-400 shrink-0" />
-            </button>
-          ))
+          <div className="space-y-1">
+            {priorities.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  onNavigateTab(item.tab);
+                }}
+                className="w-full flex items-center gap-2.5 min-h-[44px] px-2 py-2 rounded-xl text-left hover:bg-zinc-800/60 active:bg-zinc-800 transition cursor-pointer"
+              >
+                {item.icon}
+                <span className="flex-1 text-sm font-semibold text-white">{item.title}</span>
+                <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
@@ -292,92 +385,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         onMarkPaid={onMarkPaid}
       />
 
-      {/* Friendly Header with Business & Operator Status */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="space-y-0.5 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20">
-              {industryName}
-            </span>
-            <span className="text-[10px] text-zinc-400 font-medium">
-              {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-            </span>
-          </div>
-          <h2 className="text-xl font-extrabold text-white tracking-tight truncate">
-            {businessName}
-          </h2>
-        </div>
-
-        {/* User Profile / Status Chip */}
-        <button
-          type="button"
-          onClick={() => {
-            haptic.light();
-            onOpenAuth();
-          }}
-          className="flex items-center gap-2 p-1.5 pr-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-zinc-700 transition-all cursor-pointer shrink-0"
-        >
-          {currentUser?.authenticated ? (
-            <div className="relative">
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.fullName}
-                className="w-7 h-7 rounded-xl object-cover border border-lime-500/60"
-              />
-              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-lime-400 border border-black" />
-            </div>
-          ) : (
-            <div className="w-7 h-7 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
-              <Lock className="w-3.5 h-3.5" />
-            </div>
-          )}
-          <div className="text-left text-xs min-w-0">
-            <div className="font-semibold text-white truncate max-w-[100px]">
-              {currentUser?.authenticated ? currentUser.fullName.split(' ')[0] : 'Sign In'}
-            </div>
-            <div className="text-[9px] text-zinc-400 font-mono">
-              {currentUser?.authenticated ? 'Online' : 'Guest'}
-            </div>
-          </div>
-        </button>
-      </div>
-
-      {/* System Status Strip — Master Dashboard command view */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center gap-2 min-w-0">
-          <span className={`w-2 h-2 rounded-full shrink-0 ${serverOnline === true ? 'bg-lime-400 animate-pulse' : serverOnline === false ? 'bg-rose-500' : 'bg-amber-400 animate-pulse'}`} />
-          <div className="min-w-0">
-            <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">System</div>
-            <div className="text-xs font-bold text-white truncate">
-              {serverOnline === true ? 'Online' : serverOnline === false ? 'Offline' : 'Checking…'}
-            </div>
-          </div>
-        </div>
-        <div className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center gap-2 min-w-0">
-          <Activity className="w-3.5 h-3.5 text-lime-400 shrink-0" />
-          <div className="min-w-0">
-            <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Automations</div>
-            <div className="text-xs font-bold text-white truncate">{automationsOn}/{automationsTotal} on</div>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            haptic.light();
-            onNavigateTab('approvals');
-          }}
-          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-amber-500/40 flex items-center gap-2 min-w-0 text-left transition cursor-pointer"
-        >
-          <ShieldCheck className={`w-3.5 h-3.5 shrink-0 ${pendingApprovals > 0 ? 'text-amber-400' : 'text-zinc-500'}`} />
-          <div className="min-w-0">
-            <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Approvals</div>
-            <div className={`text-xs font-bold truncate ${pendingApprovals > 0 ? 'text-amber-300' : 'text-white'}`}>
-              {pendingApprovals > 0 ? `${pendingApprovals} waiting` : 'All clear'}
-            </div>
-          </div>
-        </button>
-      </div>
-
       {/* Proactive AI Industry Profile Optimization Banner */}
       {proactiveSuggestion && onReviewSuggestion && onDismissSuggestion && (
         <ProactiveSuggestionBanner
@@ -387,93 +394,74 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         />
       )}
 
-      {/* Primary Operational Summary Counters */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div 
+      {/* Design 1 stat tiles — Jobs, Invoices ($ owed), Quotes waiting,
+          Clients. One row, one tap each. The Clients tile counts the real
+          client list instead of the stale metrics counter the old tile
+          used; the Invoices tile shows the money-loop owed total. */}
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          type="button"
           onClick={() => {
             haptic.light();
             onNavigateTab('jobs');
           }}
-          className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-amber-500/40 transition-all cursor-pointer"
+          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition cursor-pointer text-center min-h-[92px] flex flex-col items-center justify-center gap-1"
         >
-          <div className="flex items-center justify-between text-zinc-400 text-xs">
-            <span className="font-medium">Active Jobs</span>
-            <div className="p-1 rounded-lg bg-amber-500/10 text-amber-400">
-              <Briefcase className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-extrabold text-white mt-1">
-            {jobs.filter(j => j.status !== 'completed').length}
-          </div>
-          <div className="text-[10px] text-zinc-400 mt-0.5 flex items-center gap-1">
-            <span className="text-amber-400 font-semibold">{urgentJobs.length} urgent</span>
-            <span>in queue</span>
-          </div>
-        </div>
+          <span className="p-1.5 rounded-lg bg-lime-500/10 text-lime-400">
+            <Briefcase className="w-4 h-4" />
+          </span>
+          <span className="text-base font-extrabold text-white leading-none">{activeJobsCount}</span>
+          <span className="text-[10px] font-bold text-zinc-400">Jobs</span>
+          <span className="text-[9px] text-zinc-500 leading-none">{urgentJobs.length} urgent</span>
+        </button>
 
-        <div 
+        <button
+          type="button"
           onClick={() => {
             haptic.light();
-            onNavigateTab('phone');
+            onNavigateTab('approvals');
           }}
-          className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-blue-500/40 transition-all cursor-pointer"
+          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition cursor-pointer text-center min-h-[92px] flex flex-col items-center justify-center gap-1"
         >
-          <div className="flex items-center justify-between text-zinc-400 text-xs">
-            <span className="font-medium">Voice AI Calls</span>
-            <div className="p-1 rounded-lg bg-blue-500/10 text-blue-400">
-              <PhoneIcon className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-extrabold text-white mt-1">
-            {metrics.callsHandled}
-          </div>
-          <div className="text-[10px] text-zinc-400 mt-0.5 flex items-center gap-1">
-            <span className="text-blue-400 font-semibold">24/7 Active</span>
-            <span>Receptionist</span>
-          </div>
-        </div>
+          <span className="p-1.5 rounded-lg bg-lime-500/10 text-lime-400">
+            <DollarSign className="w-4 h-4" />
+          </span>
+          <span className="text-base font-extrabold text-white leading-none">${owedTotal.toLocaleString('en-US')}</span>
+          <span className="text-[10px] font-bold text-zinc-400">Invoices</span>
+          <span className="text-[9px] text-zinc-500 leading-none">{unpaidInvoices.length} unpaid</span>
+        </button>
 
-        <div 
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light();
+            onNavigateTab('approvals');
+          }}
+          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition cursor-pointer text-center min-h-[92px] flex flex-col items-center justify-center gap-1"
+        >
+          <span className="p-1.5 rounded-lg bg-lime-500/10 text-lime-400">
+            <FileText className="w-4 h-4" />
+          </span>
+          <span className="text-base font-extrabold text-white leading-none">{pendingQuotes.length}</span>
+          <span className="text-[10px] font-bold text-zinc-400">Quotes</span>
+          <span className="text-[9px] text-zinc-500 leading-none">waiting</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => {
             haptic.light();
             onNavigateTab('clients');
           }}
-          className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-purple-500/40 transition-all cursor-pointer"
+          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition cursor-pointer text-center min-h-[92px] flex flex-col items-center justify-center gap-1"
         >
-          <div className="flex items-center justify-between text-zinc-400 text-xs">
-            <span className="font-medium">Clients</span>
-            <div className="p-1 rounded-lg bg-purple-500/10 text-purple-400">
-              <Users className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-extrabold text-white mt-1">
-            {metrics.activeClients}
-          </div>
-          <div className="text-[10px] text-zinc-400 mt-0.5">
-            Directory & History
-          </div>
-        </div>
-
-        <div 
-          onClick={() => {
-            haptic.light();
-            onNavigateTab('team');
-          }}
-          className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition-all cursor-pointer"
-        >
-          <div className="flex items-center justify-between text-zinc-400 text-xs">
-            <span className="font-medium">AI Helpers</span>
-            <div className="p-1 rounded-lg bg-lime-500/10 text-lime-400">
-              <Bot className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-extrabold text-lime-400 mt-1">
-            Ready
-          </div>
-          <div className="text-[10px] text-zinc-400 mt-0.5 truncate">
-            Automating jobs
-          </div>
-        </div>
+          <span className="p-1.5 rounded-lg bg-lime-500/10 text-lime-400">
+            <Users className="w-4 h-4" />
+          </span>
+          <span className="text-base font-extrabold text-white leading-none">{clients.length}</span>
+          <span className="text-[10px] font-bold text-zinc-400">Clients</span>
+          <span className="text-[9px] text-zinc-500 leading-none">{activeClientCount} active</span>
+        </button>
       </div>
 
       {/* Quick Action Touch Targets (Optimized for Mobile Field Work) */}
