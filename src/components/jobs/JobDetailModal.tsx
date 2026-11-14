@@ -89,7 +89,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
     if (onTriggerNotification) {
       onTriggerNotification(
         'Job Record Updated',
-        `Task ${job.id} (${title}) status set to ${status.toUpperCase()}.`
+        `Job ${job.id} (${title}) status set to ${status.toUpperCase()}.`
       );
     }
     showToast('Job record saved successfully.');
@@ -309,7 +309,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                   className="p-2.5 rounded-xl bg-lime-500/10 hover:bg-lime-500/20 border border-lime-500/30 text-lime-400 font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  <span>Edit Task</span>
+                  <span>Edit Job</span>
                 </button>
               </div>
 
@@ -380,7 +380,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
-                    Task / Job Title
+                    Job Title
                   </label>
                   <input
                     type="text"
@@ -488,7 +488,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
-                    Task Priority
+                    Job Priority
                   </label>
                   <select
                     value={priority}
@@ -541,7 +541,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (confirm(`Delete task ${job.id}?`)) {
+                if (confirm(`Delete job ${job.id}?`)) {
                   onDeleteJob(job.id);
                   onClose();
                 }

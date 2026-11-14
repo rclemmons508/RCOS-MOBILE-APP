@@ -1,8 +1,8 @@
 import React from 'react';
-import { 
-  Gauge, 
-  Briefcase, 
-  Bot,
+import {
+  Home,
+  Phone,
+  Briefcase,
   MessagesSquare,
   Ellipsis
 } from 'lucide-react';
@@ -13,12 +13,21 @@ interface BottomNavProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   currentUser?: User | null;
-  /** One Inbox badge on Messages: AI Team unread + new requests +
+  /** One Inbox badge: AI Team unread + new requests +
    *  alerts unread + team unread (the team count is folded into
    *  messagesBadge by App.tsx). 0 hides it. */
   messagesBadge?: number;
 }
 
+/**
+ * Bottom bar: Home · Calls · Jobs · Inbox · More.
+ *
+ * Calls is a first-class tab now — the phone line used to sit four
+ * levels deep inside Messages. AI Team and AI Chat live under More
+ * (and on Home), so the bar stays at five plain words a plumber
+ * can read at a glance. Labels are 12px minimum and every button
+ * is 48dp tall so the bar is usable with gloves on.
+ */
 export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   setActiveTab,
@@ -26,11 +35,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   messagesBadge = 0
 }) => {
   const tabs: { id: TabType; label: string; icon: any; activeWhen: TabType[] }[] = [
-    { id: 'dashboard', label: 'Home', icon: Gauge, activeWhen: ['dashboard'] },
-    { id: 'jobs', label: 'Jobs / $', icon: Briefcase, activeWhen: ['jobs', 'approvals', 'clients'] },
-    { id: 'team', label: 'AI Team', icon: Bot, activeWhen: ['team'] },
-    { id: 'inbox', label: 'Messages', icon: MessagesSquare, activeWhen: ['inbox', 'team-chat', 'gmail', 'phone', 'requests'] },
-    { id: 'more', label: 'More', icon: Ellipsis, activeWhen: ['more', 'settings'] },
+    { id: 'dashboard', label: 'Home', icon: Home, activeWhen: ['dashboard'] },
+    { id: 'phone', label: 'Calls', icon: Phone, activeWhen: ['phone'] },
+    { id: 'jobs', label: 'Jobs', icon: Briefcase, activeWhen: ['jobs', 'approvals', 'clients'] },
+    { id: 'inbox', label: 'Inbox', icon: MessagesSquare, activeWhen: ['inbox', 'team-chat', 'gmail', 'requests'] },
+    { id: 'more', label: 'More', icon: Ellipsis, activeWhen: ['more', 'settings', 'team', 'chat'] },
   ];
 
   return (
@@ -48,7 +57,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   haptic.light();
                   setActiveTab(tab.id);
                 }}
-                className={`relative flex flex-col items-center justify-center flex-1 min-w-0 py-1 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer min-h-[44px] ${
+                className={`relative flex flex-col items-center justify-center flex-1 min-w-0 py-1 px-0.5 rounded-xl transition-all active:scale-95 cursor-pointer min-h-[48px] ${
                   isActive
                     ? 'text-lime-400 font-bold bg-lime-500/10 border border-lime-500/30'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
@@ -61,7 +70,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                 aria-current={isActive ? 'page' : undefined}
               >
                 <div className="relative flex items-center justify-center">
-                  <Icon className={`w-4 h-4 sm:w-4.5 sm:h-4.5 transition-transform ${isActive ? 'scale-110 text-lime-400' : ''}`} />
+                  <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110 text-lime-400' : ''}`} />
                   {isActive && (
                     <span className="absolute -bottom-1 w-1 h-1 rounded-full bg-lime-400 animate-pulse" />
                   )}
@@ -71,7 +80,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                     </span>
                   )}
                 </div>
-                <span className={`text-[9px] sm:text-[10px] tracking-tight mt-0.5 truncate max-w-full font-medium ${isActive ? 'text-lime-300 font-bold' : 'text-zinc-400'}`}>
+                <span className={`text-xs tracking-tight mt-0.5 truncate max-w-full font-medium ${isActive ? 'text-lime-300 font-bold' : 'text-zinc-400'}`}>
                   {tab.label}
                 </span>
               </button>

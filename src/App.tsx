@@ -76,6 +76,7 @@ import {
 } from './utils/followups';
 import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automation';
 import { haptic } from './utils/haptics';
+import { tabForDeepLink } from './utils/deepLinks';
 import { withBusinessId, filterToBusiness, uniqueId } from './lib/businessScope';
 import { loadRoutingSeen, saveRoutingSeen, ROUTING_SEEN_CAP } from './lib/routingSeen';
 import {
@@ -1158,6 +1159,69 @@ export default function App() {
   const teamSeenIdsRef = useRef<Set<string>>(new Set());
   const firstTeamPollRef = useRef(true);
 
+  // --- Android back button + deep links ---
+  // Tab history: every tab visit is recorded (consecutive duplicates
+  // dropped), so Back walks back through the tabs actually visited
+  // instead of dropping the user out of the app mid-task.
+  const tabHistoryRef = useRef<TabType[]>(['dashboard']);
+  useEffect(() => {
+    const hist = tabHistoryRef.current;
+    if (hist[hist.length - 1] !== activeTab) {
+      hist.push(activeTab);
+      if (hist.length > 20) hist.splice(0, hist.length - 20);
+    }
+  }, [activeTab]);
+
+  // Native Android only: on the web the browser's own back button applies.
+  // Back closes the top window first, then goes to the previous tab, then
+  // Home; on Home it exits (registering the listener disables the default
+  // exit, so exitApp() is the only way out). Deep links (rcosmobile://)
+  // open the screen they name.
+  useEffect(() => {
+    let cancelled = false;
+    let backHandle: { remove: () => Promise<void> } | null = null;
+    let urlHandle: { remove: () => Promise<void> } | null = null;
+    (async () => {
+      const { Capacitor } = await import('@capacitor/core');
+      if (!Capacitor.isNativePlatform() || cancelled) return;
+      const { App } = await import('@capacitor/app');
+      urlHandle = await App.addListener('appUrlOpen', (data: any) => {
+        const tab = tabForDeepLink(data?.url);
+        if (tab) setActiveTab(tab);
+      });
+      backHandle = await App.addListener('backButton', async () => {
+        // Close the topmost open window first (last rendered = on top).
+        if (isOnboardingOpen) { setIsOnboardingOpen(false); return; }
+        if (isSuggestionModalOpen) { setIsSuggestionModalOpen(false); return; }
+        if (isServiceManagerOpen) { setIsServiceManagerOpen(false); return; }
+        if (isAuthModalOpen) { setIsAuthModalOpen(false); return; }
+        if (isInboxOpen) { setIsInboxOpen(false); return; }
+        if (isNotifPrefsOpen) { setIsNotifPrefsOpen(false); return; }
+        if (isNotifCenterOpen) { setIsNotifCenterOpen(false); return; }
+        // No window open: walk back through the tabs visited.
+        const hist = tabHistoryRef.current;
+        hist.pop(); // drop the current tab
+        const prev = hist[hist.length - 1];
+        if (prev && prev !== activeTabRef.current) {
+          setActiveTab(prev);
+          return;
+        }
+        if (activeTabRef.current !== 'dashboard') {
+          setActiveTab('dashboard');
+          return;
+        }
+        try { await App.exitApp(); } catch { /* already closing */ }
+      });
+    })().catch(() => { /* native listeners unavailable — web behaviour stays */ });
+    return () => {
+      cancelled = true;
+      void backHandle?.remove().catch(() => {});
+      void urlHandle?.remove().catch(() => {});
+    };
+    // Re-register when any window opens or closes so the handler always
+    // sees the current top window.
+  }, [isOnboardingOpen, isSuggestionModalOpen, isServiceManagerOpen, isAuthModalOpen, isInboxOpen, isNotifPrefsOpen, isNotifCenterOpen]);
+
   // Wipe everything that belongs to the signed-in operator / their company
   // (audit High #3). Run on logout, leave-team and before a sign-in, so the
   // next operator never sees the previous one's jobs, clients, approvals,
@@ -2133,7 +2197,7 @@ export default function App() {
               <JobsHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} />
             </div>
           )}
-          {(activeTab === 'inbox' || activeTab === 'team-chat' || activeTab === 'gmail' || activeTab === 'phone' || activeTab === 'requests') && (
+          {(activeTab === 'inbox' || activeTab === 'team-chat' || activeTab === 'gmail' || activeTab === 'requests') && (
             <div className="px-3.5 sm:px-4 pt-2">
               <MessagesHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} unreadTeamCount={teamUnreadCount} />
             </div>
@@ -2143,7 +2207,6 @@ export default function App() {
               calls={calls}
               jobs={jobs}
               actions={actions}
-              metrics={metrics}
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
               unreadInboxCount={agentMessages.filter((m) => m.status === 'unread').length}
@@ -2163,8 +2226,6 @@ export default function App() {
               activeEmployees={activeBusiness.activeEmployees}
               customerRequests={customerRequests}
               clients={clients}
-              automationsOn={automationTasks.filter((t) => t.isAutomated).length}
-              automationsTotal={automationTasks.length}
               proactiveSuggestion={proactiveSuggestion}
               onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
               onDismissSuggestion={handleDismissSuggestion}
@@ -2172,7 +2233,6 @@ export default function App() {
               onNavigateTab={(tab) => setActiveTab(tab)}
               onSimulateCall={handleSimulateInboundCall}
               onTriggerEmergencyJob={handleEmergencyJobTrigger}
-              onOpenAuth={() => setIsAuthModalOpen(true)}
               onOpenNotifications={() => setIsNotifCenterOpen(true)}
               onOpenInbox={() => setIsInboxOpen(true)}
               onApproveQuote={async (actionId) => { await handleApprovalDecision(actionId, 'approved'); }}
@@ -2302,12 +2362,15 @@ export default function App() {
                   firestoreService.saveBusiness(updated).catch(() => {});
                 }
               }}
+              pendingApprovals={actions.filter((x) => x.status === 'awaiting_approval').length}
+              onReviewApprovals={() => setActiveTab('approvals')}
             />
           )}
 
           {activeTab === 'clients' && (
             <ClientsTab
               clients={clients}
+              jobs={jobs}
               onAddClient={handleAddClient}
               onEditClient={handleEditClient}
               onDeleteClient={handleDeleteClient}
@@ -2437,7 +2500,7 @@ export default function App() {
           )}
 
           {activeTab === 'more' && (
-            <MoreMenu onOpenSettings={openSettings} />
+            <MoreMenu onOpenSettings={openSettings} onNavigateTab={(tab) => setActiveTab(tab)} />
           )}
           </Suspense>
         </main>

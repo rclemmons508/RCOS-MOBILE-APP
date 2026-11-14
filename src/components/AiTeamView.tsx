@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Users, 
   ShieldAlert, 
@@ -27,6 +27,7 @@ import {
   Plus,
   Trash2,
   CheckCircle2,
+  ChevronRight,
   Zap,
   ShieldCheck,
   Hand,
@@ -57,11 +58,16 @@ const TALK_PERSONAS: Partial<Record<string, TalkPersona>> = {
 interface AiTeamViewProps {
   business: BusinessAccount;
   onUpdateBusiness: (updated: BusinessAccount) => void;
+  /** Approvals waiting for the owner — shown as a banner (Design 1). */
+  pendingApprovals?: number;
+  onReviewApprovals?: () => void;
 }
 
 export const AiTeamView: React.FC<AiTeamViewProps> = ({
   business,
-  onUpdateBusiness
+  onUpdateBusiness,
+  pendingApprovals = 0,
+  onReviewApprovals
 }) => {
   // activeEmployees may be missing on a stripped/restored business record
   // (e.g. the localStorage copy drops it) - default to all-active
@@ -73,6 +79,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('executive_assistant');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [talkPersona, setTalkPersona] = useState<TalkPersona | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   // Identify the business's detected industry preset
   const activePreset = INDUSTRY_PRESETS.find(p => 
@@ -104,6 +111,10 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       }
       return emp;
     });
+
+  // Design 1 status header counts — live from the roster, not a fixed label.
+  const activeCount = industryEmployees.filter((e) => activeEmployees[e.id] !== false).length;
+  const pausedCount = industryEmployees.length - activeCount;
 
   // Customization Form Local State
   const selectedEmployee = industryEmployees.find(e => e.id === selectedEmployeeId) || industryEmployees[0] || employees[0];
@@ -283,7 +294,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       coreJob: 'Executes specialized client workflows, customized audit checklists, and dedicated routing.',
       escalatesTo: 'Executive Assistant',
       tagline: 'Custom specialist agent',
-      systemPromptRole: 'You are a specialized RCOS AI Operations Consultant. You follow dedicated user guidelines and execute tasks accurately.'
+      systemPromptRole: 'You are a specialized RCOS AI Operations Consultant. You follow dedicated user guidelines and execute jobs accurately.'
     }, business.id);
 
     setEmployees(prev => [...prev, newSpec]);
@@ -324,35 +335,69 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
         </div>
       )}
 
-      {/* Header */}
+      {/* Design 1 status header: how many assistants are working, how many
+          are paused, and a View Details button that jumps to the selected
+          assistant's settings below. */}
       <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-              <Bot className="w-5 h-5 text-lime-400" />
-              <span>AI Assistants for {activePreset.name}</span>
-            </h2>
-            <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-bold">
-              {industryEmployees.filter(e => activeEmployees[e.id] !== false).length} Active
-            </span>
-          </div>
-          <p className="text-xs text-zinc-400 mt-1">
-            Enable or adjust the AI assistants specifically preset for your {activePreset.name} operations.
+          <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+            <Bot className="w-5 h-5 text-lime-400" />
+            <span>AI Team</span>
+          </h2>
+          <p className="text-sm font-bold text-lime-400 mt-1">
+            {activeCount} Active · {pausedCount} Paused
+          </p>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            AI assistants for {activePreset.name} — tap one to see its settings.
           </p>
         </div>
 
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light();
+              detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer border border-zinc-700"
+          >
+            <span>View Details</span>
+            <ChevronRight className="w-4 h-4 text-lime-400" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light();
+              handleCreateCustomSpecialist();
+            }}
+            className="px-3.5 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-lime-500/20"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Custom Specialist</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Approval banner — only when something is actually waiting. */}
+      {pendingApprovals > 0 && onReviewApprovals && (
         <button
           type="button"
           onClick={() => {
             haptic.light();
-            handleCreateCustomSpecialist();
+            onReviewApprovals();
           }}
-          className="px-3.5 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-lime-500/20 shrink-0"
+          className="w-full p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/40 flex items-center gap-3 text-left hover:border-amber-500/60 transition cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
-          <span>Add Custom Specialist</span>
+          <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-bold text-amber-200">
+              {pendingApprovals} Action{pendingApprovals === 1 ? '' : 's'} Require Approval
+            </span>
+            <span className="block text-xs text-amber-300/80">Review Now</span>
+          </span>
+          <ChevronRight className="w-4 h-4 text-amber-400 shrink-0" />
         </button>
-      </div>
+      )}
 
       {/* Main Split View */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -380,15 +425,22 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                     {getEmployeeIcon(emp.avatarIcon)}
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 truncate">
+                    <div className="flex items-center gap-1.5">
                       <h4 className="text-xs sm:text-sm font-bold text-white truncate">{emp.name}</h4>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${
+                        empActive
+                          ? 'bg-lime-500/10 text-lime-400 border-lime-500/30'
+                          : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                      }`}>
+                        {empActive ? 'Active' : 'Paused'}
+                      </span>
                       {emp.isCustom && (
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono">
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono shrink-0">
                           CUSTOM
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-zinc-400 truncate">{emp.roleTitle}</p>
+                    <p className="text-[11px] text-zinc-400 truncate">{emp.tagline}</p>
                   </div>
                 </div>
 
@@ -425,6 +477,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                       <ToggleLeft className="w-6 h-6 text-zinc-600" />
                     )}
                   </button>
+                  <ChevronRight className={`w-4 h-4 shrink-0 ${isSelected ? 'text-lime-400' : 'text-zinc-600'}`} />
                 </div>
               </div>
             );
@@ -432,7 +485,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
         </div>
 
         {/* Right Column: Chat vs Customization View */}
-        <div className="lg:col-span-7 flex flex-col bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl h-[660px]">
+        <div ref={detailRef} className="lg:col-span-7 flex flex-col bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl h-[660px]">
           
           {/* Header Bar with View Switcher */}
           <div className="p-3.5 sm:p-4 border-b border-zinc-800 bg-zinc-900/60 flex items-center justify-between shrink-0">
@@ -501,7 +554,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   value={editCoreJob}
                   onChange={(e) => setEditCoreJob(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
-                  placeholder="Define the primary tasks and responsibilities this AI specialist owns..."
+                  placeholder="Define the primary jobs and responsibilities this AI specialist owns..."
                 />
               </div>
 
@@ -524,7 +577,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   value={editBehaviorProtocol}
                   onChange={(e) => setEditBehaviorProtocol(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
-                  placeholder="How this agent reasons through tasks, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
+                  placeholder="How this agent reasons through jobs, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
                 />
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-[10px] text-zinc-500">

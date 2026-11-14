@@ -62,7 +62,7 @@ const DEFAULT_BIZ: BusinessAccount = {
   name: 'RC Solutions',
   industry: 'Commercial Operations & Automation',
   size: '10-50',
-  services: ['HVAC Emergency', 'Automation SCADA', 'Electrical Systems', 'Multi-Agent Operations'],
+  services: ['HVAC Emergency', 'Automation', 'Electrical Systems', 'Jobs & Follow-ups'],
   pricingApproach: 'value_based',
   brandTone: 'Professional, responsive, precise',
   painPoints: ['Manual dispatch delays', 'Off-hours emergency intake'],
@@ -102,7 +102,7 @@ function welcomeThread(businessName: string): ChatMessageItem[] {
     {
       id: 'msg_welcome',
       role: 'assistant',
-      content: `Hello! I'm Morgan Vance, your Executive Assistant for ${businessName}. I coordinate your operational team, enforce safety boundaries, and assist with any day-to-day task. How can I help direct operations today?`,
+      content: `Hello! I'm Morgan Vance, your Executive Assistant for ${businessName}. I keep your team on track and help with any day-to-day job. How can I help today?`,
       timestamp: timeNow(),
       modelUsed: 'gemini-3.8-flash',
       roleId: 'executive_assistant'
@@ -260,7 +260,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
         {
           id: uniqueId('msg_'),
           role: 'assistant',
-          content: 'Operational task processed. Sub-agents and field dispatch records remain synchronized.',
+          content: 'Done — your jobs and records are up to date.',
           timestamp: timeNow(),
           roleId: selectedRole
         }

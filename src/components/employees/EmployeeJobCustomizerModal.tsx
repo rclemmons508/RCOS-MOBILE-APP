@@ -348,14 +348,14 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
               <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
                 Core Job Scope & Responsibilities
               </label>
-              <span className="text-[10px] text-zinc-500 font-mono">Defines primary execution tasks</span>
+              <span className="text-[10px] text-zinc-500 font-mono">Defines primary execution jobs</span>
             </div>
             <textarea
               rows={3}
               value={coreJob}
               onChange={(e) => setCoreJob(e.target.value)}
               className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
-              placeholder="Describe the primary responsibilities and tasks this AI employee handles..."
+              placeholder="Describe the primary responsibilities and jobs this AI employee handles..."
             />
           </div>
 
@@ -378,7 +378,7 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
               value={behaviorProtocol}
               onChange={(e) => setBehaviorProtocol(e.target.value)}
               className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
-              placeholder="How this agent reasons through tasks, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
+              placeholder="How this agent reasons through jobs, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
             />
             <div className="flex items-center justify-between mt-1">
               <p className="text-[10px] text-zinc-500">
@@ -410,7 +410,7 @@ export const EmployeeJobCustomizerModal: React.FC<EmployeeJobCustomizerModalProp
                   <Zap className="w-3.5 h-3.5 text-lime-400" />
                 </div>
                 <p className="text-[10px] text-zinc-400 leading-tight">
-                  Dispatches, quotes, and resolves tasks without waiting for confirmation.
+                  Dispatches, quotes, and resolves jobs without waiting for confirmation.
                 </p>
               </button>
 
