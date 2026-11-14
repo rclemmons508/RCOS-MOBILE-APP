@@ -107,7 +107,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
     setAddress('');
     setDescription('');
     if (onTriggerNotification) {
-      onTriggerNotification('New Task Created', `Task ${newJob.id} dispatched for ${clientName}.`);
+      onTriggerNotification('New Job Created', `Job ${newJob.id} dispatched for ${clientName}.`);
     }
     setIsCreatingJob(false);
   };
@@ -131,7 +131,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
     }
     if (onTriggerNotification) {
       onTriggerNotification(
-        'Task Status Advanced',
+        'Job Status Advanced',
         `Job ${job.id} changed to ${nextStatus.toUpperCase()}`
       );
     }
@@ -171,7 +171,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-1.5 truncate">
-                RCOS Operations & Tasks
+                RCOS Operations & Jobs
               </h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-lime-400 font-mono font-bold">
                 {jobs.length} Total
@@ -189,7 +189,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
           className="p-2 sm:px-3 sm:py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md shadow-lime-500/20 shrink-0"
         >
           <Plus className="w-4 h-4" />
-          <span>New Task</span>
+          <span>New Job</span>
         </button>
       </div>
 
@@ -201,7 +201,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search tasks by ID, title, client, or technician..."
+            placeholder="Search jobs by ID, title, client, or technician..."
             className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500"
           />
         </div>
@@ -260,7 +260,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
         {filteredJobs.length === 0 ? (
           <div className="p-8 text-center rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
             <Briefcase className="w-8 h-8 text-zinc-600 mx-auto" />
-            <div className="text-sm font-bold text-zinc-300">No tasks match active filters</div>
+            <div className="text-sm font-bold text-zinc-300">No jobs match these filters</div>
             <p className="text-xs text-zinc-500">Try changing status filters or dispatch a new work order.</p>
             <button
               type="button"
@@ -436,14 +436,14 @@ export const JobsTab: React.FC<JobsTabProps> = ({
         )}
       </div>
 
-      {/* Dispatch New Task Modal */}
+      {/* Dispatch New Job Modal */}
       {showCreateModal && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                 <Briefcase className="w-4 h-4 text-amber-400" />
-                <span>Dispatch New RCOS Task</span>
+                <span>Dispatch New Job</span>
               </h3>
               <button aria-label="Close"
                 type="button"
@@ -457,7 +457,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
             <form onSubmit={handleCreateJob} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
-                  Task Title
+                  Job Title
                 </label>
                 <input
                   type="text"

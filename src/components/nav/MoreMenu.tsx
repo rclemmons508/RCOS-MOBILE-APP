@@ -1,20 +1,25 @@
 import React from 'react';
-import { Settings2, Zap, Users, User, Building2, ChevronRight } from 'lucide-react';
+import { Settings2, Zap, Users, User, Building2, Bot, MessageSquare, ChevronRight } from 'lucide-react';
+import { TabType } from '../../types';
 import { haptic } from '../../utils/haptics';
 
 type SettingsSection = 'user' | 'agents';
 
 interface MoreMenuProps {
   onOpenSettings: (section: SettingsSection) => void;
+  /** Navigate straight to a tab (AI Team, AI Chat). */
+  onNavigateTab?: (tab: TabType) => void;
 }
 
 /**
- * More menu screen. Rows open Settings at a section — they never navigate
- * to tabs directly. Automations opens the agents section; everything else
- * opens the user section.
+ * More menu screen. Settings rows open Settings at a section; the
+ * AI Team and AI Chat rows go straight to those screens, since the
+ * bottom bar no longer carries an AI Team tab.
  */
-export const MoreMenu: React.FC<MoreMenuProps> = ({ onOpenSettings }) => {
-  const items: { label: string; subtitle: string; icon: any; section: SettingsSection }[] = [
+export const MoreMenu: React.FC<MoreMenuProps> = ({ onOpenSettings, onNavigateTab }) => {
+  const items: { label: string; subtitle: string; icon: any; section?: SettingsSection; tab?: TabType }[] = [
+    { label: 'AI Team', subtitle: 'Your AI employees', icon: Bot, tab: 'team' },
+    { label: 'AI Chat', subtitle: 'Talk to your AI team', icon: MessageSquare, tab: 'chat' },
     { label: 'Settings', subtitle: 'App settings, profile, team', icon: Settings2, section: 'user' },
     { label: 'Automations', subtitle: 'Automation rules & engine', icon: Zap, section: 'agents' },
     { label: 'Team & Invites', subtitle: 'Members, invites, roles', icon: Users, section: 'user' },
@@ -34,7 +39,8 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({ onOpenSettings }) => {
               type="button"
               onClick={() => {
                 haptic.light();
-                onOpenSettings(item.section);
+                if (item.tab && onNavigateTab) onNavigateTab(item.tab);
+                else if (item.section) onOpenSettings(item.section);
               }}
               className="w-full flex items-center gap-3 p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 active:scale-[0.99] transition-all cursor-pointer text-left min-h-[64px]"
             >

@@ -86,7 +86,7 @@ const PRESET_SCENARIOS = [
     callerNumber: '+1 (555) 902-3310',
     topic: 'Quarterly Maintenance Schedule',
     speech: 'Can you please email me a formal confirmation of our scheduled electrical inspection for tomorrow morning?',
-    expectedAction: 'Dispatches Outbound Email Task'
+    expectedAction: 'Sends a follow-up email'
   }
 ];
 

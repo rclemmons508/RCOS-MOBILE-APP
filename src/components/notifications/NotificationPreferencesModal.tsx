@@ -145,12 +145,12 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                 />
               </div>
 
-              {/* Task Completions */}
+              {/* Job Completions */}
               <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />
                   <div>
-                    <div className="text-xs font-semibold text-white">Task Completions</div>
+                    <div className="text-xs font-semibold text-white">Job Completions</div>
                     <div className="text-[10px] text-zinc-400">Completed jobs, invoices & cloud deployments</div>
                   </div>
                 </div>

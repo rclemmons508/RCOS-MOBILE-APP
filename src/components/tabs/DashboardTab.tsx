@@ -471,7 +471,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             Ready
           </div>
           <div className="text-[10px] text-zinc-400 mt-0.5 truncate">
-            Automating tasks
+            Automating jobs
           </div>
         </div>
       </div>

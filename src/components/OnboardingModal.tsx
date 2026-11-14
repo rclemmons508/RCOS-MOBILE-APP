@@ -341,10 +341,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   // Dynamic detecting animation steps
   const detectingStages = [
-    { title: 'Reading & Parsing Business Information', desc: 'Analyzing uploaded files, service scope, and business terminology...' },
-    { title: 'Deciphering Operational Profile', desc: 'Extracting company identity, technician workflows, and client touchpoints...' },
-    { title: 'Matching Across 40 Industry Presets', desc: 'Cross-referencing trades, compliance codes, and best operational fits...' },
-    { title: 'Calibrating Autonomous Workforce', desc: 'Configuring safety thresholds, reception scripts, and dispatch rules...' }
+    { title: 'Reading your business details', desc: 'Looking at your uploaded files, services, and how you describe your work...' },
+    { title: 'Understanding how you work', desc: 'Picking out your company, your techs, and how jobs flow...' },
+    { title: 'Matching your trade', desc: 'Finding the best fit from 40 trade setups...' },
+    { title: 'Setting up your AI team', desc: 'Setting up call answering, prices, and job rules...' }
   ];
 
   // Quick 1-tap trade chips for manual entry

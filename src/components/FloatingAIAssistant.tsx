@@ -78,7 +78,7 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
           agentId: selectedAgentId,
           agentName: activeAgentObj?.name || 'RCOS Agent',
           role: 'assistant',
-          content: data.reply || 'Task acknowledged and dispatched.',
+          content: data.reply || 'Job acknowledged and dispatched.',
           timestamp: data.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
         setMessages((prev) => [...prev, assistantMsg]);
@@ -203,7 +203,7 @@ export const FloatingAIAssistant: React.FC<FloatingAIAssistantProps> = ({ onOpen
                 }}
                 className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-amber-400 hover:border-amber-500/50 whitespace-nowrap cursor-pointer"
               >
-                Smart Tasks
+                Smart Jobs
               </button>
               <button
                 type="button"

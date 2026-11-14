@@ -283,7 +283,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       coreJob: 'Executes specialized client workflows, customized audit checklists, and dedicated routing.',
       escalatesTo: 'Executive Assistant',
       tagline: 'Custom specialist agent',
-      systemPromptRole: 'You are a specialized RCOS AI Operations Consultant. You follow dedicated user guidelines and execute tasks accurately.'
+      systemPromptRole: 'You are a specialized RCOS AI Operations Consultant. You follow dedicated user guidelines and execute jobs accurately.'
     }, business.id);
 
     setEmployees(prev => [...prev, newSpec]);
@@ -501,7 +501,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   value={editCoreJob}
                   onChange={(e) => setEditCoreJob(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
-                  placeholder="Define the primary tasks and responsibilities this AI specialist owns..."
+                  placeholder="Define the primary jobs and responsibilities this AI specialist owns..."
                 />
               </div>
 
@@ -524,7 +524,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   value={editBehaviorProtocol}
                   onChange={(e) => setEditBehaviorProtocol(e.target.value)}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
-                  placeholder="How this agent reasons through tasks, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
+                  placeholder="How this agent reasons through jobs, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
                 />
                 <div className="flex items-center justify-between mt-1">
                   <p className="text-[10px] text-zinc-500">

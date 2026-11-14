@@ -292,12 +292,7 @@ const [joinPassword, setJoinPassword] = useState('');
           <RCLogo variant="compact" />
           <div className="flex flex-col">
             <span className="text-xs font-bold text-white tracking-tight">RC SOLUTIONS</span>
-            <span className="text-[10px] text-zinc-400 font-mono">Autonomous Field OS</span>
           </div>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-lime-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
-          <span>v8.5.2 • SECURE</span>
         </div>
       </div>
 
@@ -306,10 +301,10 @@ const [joinPassword, setJoinPassword] = useState('');
         {/* Welcome Headline */}
         <div className="text-center space-y-1">
           <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-            Operator Access Portal
+            Sign in
           </h1>
           <p className="text-xs text-zinc-400">
-            Sign in to unlock dispatch, SCADA telemetry, and multi-agent systems
+            Sign in to run your business — jobs, calls, and invoices in one place.
           </p>
         </div>
 

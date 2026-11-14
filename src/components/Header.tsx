@@ -48,19 +48,19 @@ export const Header: React.FC<HeaderProps> = ({
     if (titleOverride) return titleOverride;
     switch (activeTab) {
       case 'dashboard':
-        return 'Operations Dashboard';
+        return 'Home';
       case 'phone':
-        return 'Voice AI Phone';
+        return 'Calls';
       case 'gmail':
-        return 'Gmail Workspace';
+        return 'Email';
       case 'jobs':
-        return 'Jobs & Dispatch';
+        return 'Jobs';
       case 'clients':
-        return 'Clients CRM';
+        return 'Clients';
       case 'chat':
-        return 'AI Ops Chat';
+        return 'AI Chat';
       case 'settings':
-        return 'Settings & Rules';
+        return 'Settings';
       case 'team':
         return 'AI Team';
       case 'approvals':

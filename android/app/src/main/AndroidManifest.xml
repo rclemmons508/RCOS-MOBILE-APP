@@ -34,6 +34,33 @@
                 <data android:scheme="rcosmobile" android:host="gmail-connected" />
             </intent-filter>
 
+            <!-- Deep links into the app's screens (rcosmobile://calls,
+                 rcosmobile://jobs, rcosmobile://inbox, ...). Handled by the
+                 appUrlOpen listener in App.tsx; unknown screens fall back
+                 to Home. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="rcosmobile" android:host="home" />
+                <data android:scheme="rcosmobile" android:host="dashboard" />
+                <data android:scheme="rcosmobile" android:host="calls" />
+                <data android:scheme="rcosmobile" android:host="phone" />
+                <data android:scheme="rcosmobile" android:host="jobs" />
+                <data android:scheme="rcosmobile" android:host="inbox" />
+                <data android:scheme="rcosmobile" android:host="more" />
+                <data android:scheme="rcosmobile" android:host="team" />
+                <data android:scheme="rcosmobile" android:host="chat" />
+                <data android:scheme="rcosmobile" android:host="settings" />
+                <data android:scheme="rcosmobile" android:host="approvals" />
+                <data android:scheme="rcosmobile" android:host="review" />
+                <data android:scheme="rcosmobile" android:host="clients" />
+                <data android:scheme="rcosmobile" android:host="requests" />
+                <data android:scheme="rcosmobile" android:host="team-chat" />
+                <data android:scheme="rcosmobile" android:host="gmail" />
+                <data android:scheme="rcosmobile" android:host="email" />
+            </intent-filter>
+
         </activity>
 
         <provider

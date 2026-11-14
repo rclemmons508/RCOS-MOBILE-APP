@@ -532,7 +532,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
           className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-bold text-blue-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
         >
           <Mail className="w-4 h-4" />
-          <span>Email Task</span>
+          <span>Send Email</span>
         </button>
 
         <button

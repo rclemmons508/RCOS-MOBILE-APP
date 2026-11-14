@@ -18,7 +18,7 @@ const TEMPLATES = [
   {
     name: 'Emergency Dispatch',
     subject: 'URGENT: Emergency Field Technician Dispatched',
-    body: `Hello,\n\nOur senior field technician has been dispatched to your facility. Estimated arrival time is within 45 minutes.\n\nTechnician: Dave Vance (Lead SCADA / Refrigeration Specialist)\nVehicle: Unit 04\nDirect Dispatch Radio: (555) 019-4820\n\nPlease ensure mechanical room access is unlocked.\n\nBest regards,\nRC Solutions Operations`,
+    body: `Hello,\n\nOur senior field technician has been dispatched to your facility. Estimated arrival time is within 45 minutes.\n\nTechnician: Dave Vance (Lead Field Technician)\nVehicle: Unit 04\nDirect Dispatch Radio: (555) 019-4820\n\nPlease ensure mechanical room access is unlocked.\n\nBest regards,\nRC Solutions Operations`,
   },
   {
     name: 'Quote Proposal',
