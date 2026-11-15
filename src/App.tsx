@@ -504,46 +504,60 @@ export default function App() {
 
 
   // Server re-sync: the server store is wiped on redeploy (persistence
-  // unverified). Once per app start, restore the server's copy of this
-  // business — including the members list Team Chat needs — by upserting
-  // the full business the app holds. Only the full copy is synced: the
-  // localStorage copy is stripped of activeEmployees, so wait for the
-  // Firestore listener to deliver the full record. Skips when the server
-  // already has the record; fails silently when offline. Never blocks
-  // login or any screen.
-  const businessSyncRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const biz = businessAccount;
-    if (!biz?.id) return;
-    // Do NOT skip a stripped copy (localStorage drops activeEmployees): the server
-    // fills activeEmployees with defaults on POST, and a restored record beats
-    // an empty server. Employee toggles default to on; the user can re-toggle them.
-    if (businessSyncRef.current.has(biz.id)) return;
-    businessSyncRef.current.add(biz.id);
-    (async () => {
-      try {
-        const businesses = await apiFetch<BusinessAccount[]>('/api/businesses');
-        const serverBiz = Array.isArray(businesses) ? businesses.find((b) => b.id === biz.id) : undefined;
-        if (serverBiz) {
-          // Pull: the server copy wins when it is newer. The app used to
-          // keep its stale localStorage copy forever (e.g. industry
-          // "general_small_business" long after the server said
-          // "it_services"), so the dashboard showed the wrong industry.
-          // Newest-wins by updatedAt — a local edit still in flight
-          // (local newer) is never clobbered by an older server copy.
-          const serverNewer = (serverBiz.updatedAt || '') > (biz.updatedAt || '');
-          if (serverNewer) {
-            setBusinessAccount(serverBiz);
-            setCachedBusiness(authService.getActiveSession(), serverBiz);
-          }
-          return;
+  // unverified). Restore the server's copy of this business — including
+  // the members list Team Chat needs — by upserting the full business
+  // the app holds. Only the full copy is synced: the localStorage copy
+  // is stripped of activeEmployees, so wait for the Firestore listener
+  // to deliver the full record. Skips when the server already has the
+  // record. Runs on app start AND every time the app comes back to the
+  // foreground: a redeploy can wipe the store while the app sits
+  // backgrounded, and until this ran only on start the app then showed
+  // "Business not found" on every server feature until a full restart.
+  // A failed attempt is retried on the next foreground / start instead
+  // of being forgotten for the session. Never blocks login or any screen.
+  const businessSyncInFlight = useRef<Set<string>>(new Set());
+  const restoreBusinessOnServer = useCallback(async (biz: BusinessAccount) => {
+    if (!biz?.id || businessSyncInFlight.current.has(biz.id)) return;
+    businessSyncInFlight.current.add(biz.id);
+    try {
+      const businesses = await apiFetch<BusinessAccount[]>('/api/businesses');
+      const serverBiz = Array.isArray(businesses) ? businesses.find((b) => b.id === biz.id) : undefined;
+      if (serverBiz) {
+        // Pull: the server copy wins when it is newer. The app used to
+        // keep its stale localStorage copy forever (e.g. industry
+        // "general_small_business" long after the server said
+        // "it_services"), so the dashboard showed the wrong industry.
+        // Newest-wins by updatedAt — a local edit still in flight
+        // (local newer) is never clobbered by an older server copy.
+        const serverNewer = (serverBiz.updatedAt || '') > (biz.updatedAt || '');
+        if (serverNewer) {
+          setBusinessAccount(serverBiz);
+          setCachedBusiness(authService.getActiveSession(), serverBiz);
         }
-        await apiFetch('/api/businesses', { method: 'POST', body: JSON.stringify(biz) });
-      } catch {
-        // Offline / server down: fail silently; retry next app start.
+        return;
       }
-    })();
-  }, [businessAccount]);
+      // Do NOT skip a stripped copy (localStorage drops activeEmployees): the server
+      // fills activeEmployees with defaults on POST, and a restored record beats
+      // an empty server. Employee toggles default to on; the user can re-toggle them.
+      await apiFetch('/api/businesses', { method: 'POST', body: JSON.stringify(biz) });
+    } catch (e: any) {
+      // Offline / server down / refused: log it and let the next
+      // foreground (or app start) retry — a swallowed failure used to
+      // leave the business unrestored for the whole session.
+      console.warn('[business-sync] Could not restore business on server:', e?.status ?? e?.message ?? e);
+    } finally {
+      businessSyncInFlight.current.delete(biz.id);
+    }
+  }, []);
+  useEffect(() => {
+    if (!businessAccount?.id) return;
+    restoreBusinessOnServer(businessAccount);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') restoreBusinessOnServer(businessAccount);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [businessAccount, restoreBusinessOnServer]);
 
   // Real-time Firestore synchronization for jobs, clients, and business profile
   useEffect(() => {

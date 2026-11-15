@@ -21,6 +21,9 @@ import { INDUSTRY_PRESETS } from '../src/data/presets';
 // database survives redeploys. Railway's default filesystem is ephemeral.
 const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'rcos_db.json');
+if (!process.env.DATA_DIR) {
+  console.error('[db] DATA_DIR is not set — the database lives in ./data inside the container and is WIPED on every redeploy. Set DATA_DIR to the Railway persistent volume (e.g. /data).');
+}
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* exists */ }
 
 // Calls and voicemails are owned by one business (audit #6). The shared
