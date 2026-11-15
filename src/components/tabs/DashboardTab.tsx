@@ -1,39 +1,29 @@
 import React, { useState } from 'react';
 import { PhoneCall, Job, Client, ActionRecord, TabType, User, IndustryOptimizationSuggestion, CustomerRequest } from '../../types';
-import { 
-  PhoneCall as PhoneIcon, 
-  Briefcase, 
-  Users, 
-  AlertCircle, 
-  CheckCircle2, 
-  ChevronRight, 
-  Bell, 
-  Plus,
-  Bot,
+import {
+  PhoneCall as PhoneIcon,
+  Briefcase,
+  Users,
+  AlertCircle,
+  CheckCircle2,
+  ChevronRight,
+  Bell,
   Calendar,
-  Sparkles,
-  MapPin,
-  Clock,
-  Mail,
   Inbox,
   Share2,
   Link2,
-  MessageSquare,
   DollarSign,
   FileText,
   Info
 } from 'lucide-react';
 import { RCLogoIcon } from '../RCLogo';
 import { dashboardCard, sectionLabel } from '../ui/cards';
-import { QuickLaunchBar } from '../dashboard/QuickLaunchBar';
-import { MorningBriefingCard } from '../dashboard/MorningBriefingCard';
-import { PipelineHealthCard } from '../dashboard/PipelineHealthCard';
+import { WeeklyCard } from '../dashboard/WeeklyCard';
 import { haptic } from '../../utils/haptics';
 import { buildPublicBookingLink } from '../../config/api';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
 import { RequestDetailModal } from '../RequestDetailModal';
 import { GlobalSearchBar } from '../GlobalSearchBar';
-import { GetStartedChecklist } from '../GetStartedChecklist';
 
 interface DashboardTabProps {
   calls: PhoneCall[];
@@ -41,31 +31,19 @@ interface DashboardTabProps {
   actions: ActionRecord[];
   currentUser: User | null;
   unreadNotifCount: number;
-  unreadInboxCount: number;
   businessName?: string;
-  industryName?: string;
   proactiveSuggestion?: IndustryOptimizationSuggestion | null;
   onReviewSuggestion?: () => void;
   onDismissSuggestion?: () => void;
-  onOpenServiceManager?: () => void;
   businessId?: string;
   serverOnline?: boolean | null;
   pendingApprovals?: number;
-  activeEmployees?: Record<string, boolean>;
   customerRequests?: CustomerRequest[];
   clients?: Client[];
+  /** Server-recorded calls — drives the weekly card. See WeeklyCard. */
+  serverCalls?: PhoneCall[];
   onNavigateTab: (tab: TabType) => void;
-  onSimulateCall: () => void;
-  onTriggerEmergencyJob: () => void;
   onOpenNotifications: () => void;
-  onOpenInbox: () => void;
-  /** One-tap dashboard actions — the exact handlers the Approvals screen uses. */
-  onApproveQuote?: (actionId: string) => Promise<void> | void;
-  onScheduleJob?: (action: ActionRecord) => Promise<void> | void;
-  onMarkPaid?: (action: ActionRecord) => Promise<void> | void;
-  industry?: string;
-  industryModifierOn?: boolean;
-  followupsDraftedYesterday?: number;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -74,34 +52,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   actions = [],
   currentUser,
   unreadNotifCount,
-  unreadInboxCount = 0,
   businessName = 'My Business',
-  industryName = 'Field Services',
   proactiveSuggestion,
   onReviewSuggestion,
   onDismissSuggestion,
-  onOpenServiceManager,
   businessId = '',
   serverOnline = null,
   pendingApprovals = 0,
-  activeEmployees = {},
   customerRequests = [],
   clients = [],
+  serverCalls = [],
   onNavigateTab,
-  onSimulateCall,
-  onTriggerEmergencyJob,
   onOpenNotifications,
-  onOpenInbox,
-  onApproveQuote,
-  onScheduleJob,
-  onMarkPaid,
-  industry,
-  industryModifierOn,
-  followupsDraftedYesterday = 0,
 }) => {
   const urgentJobs = jobs.filter(j => j.priority === 'critical' || j.status === 'urgent');
   const upcomingJobs = jobs.filter(j => j.status !== 'completed').slice(0, 3);
-  const recentCalls = calls.slice(0, 3);
 
   // Design 1 "Today's Priorities" + stat tiles — same live data the
   // "What needs you" strip and the counters used, in the Design 1 layout.
@@ -132,18 +97,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const activeClientCount = clients.filter((c) => c.status !== 'inactive').length;
   const firstName = currentUser?.authenticated ? currentUser.fullName.split(' ')[0] : '';
 
-  // Master Dashboard helpers
-  const empOn = (id: string) => activeEmployees[id] !== false;
-  const empBadge = (id: string) =>
-    empOn(id) ? (
-      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20 shrink-0">
-        Active
-      </span>
-    ) : (
-      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500 border border-zinc-700 shrink-0">
-        Paused
-      </span>
-    );
   const slaFor = (req: CustomerRequest) => {
     const urgent = req.urgency === 'urgent' || req.urgency === 'emergency';
     const limitMs = urgent ? 8 * 3600 * 1000 : 24 * 3600 * 1000; // same-day vs 24h
@@ -164,6 +117,23 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     if (h < 24) return `${h}h ago`;
     return `${Math.floor(h / 24)}d ago`;
   };
+  // Grok-style job rows: plain status words, not the raw status keys.
+  const jobStatusLabel = (status: Job['status']) => {
+    if (status === 'in_progress') return 'In Progress';
+    if (status === 'dispatched') return 'Scheduled';
+    if (status === 'urgent') return 'Urgent';
+    if (status === 'completed') return 'Done';
+    return 'New';
+  };
+  const jobStatusClass = (status: Job['status']) => {
+    if (status === 'in_progress') return 'border-blue-500/40 bg-blue-500/15 text-blue-400';
+    if (status === 'dispatched') return 'border-lime-500/40 bg-lime-500/15 text-lime-400';
+    if (status === 'urgent') return 'border-rose-500/40 bg-rose-500/15 text-rose-300';
+    return 'border-zinc-700 bg-zinc-800 text-zinc-300';
+  };
+  // "Today at 2:00 PM" is too long for the time slot — the date part is
+  // already implied by the "Today's Work" heading.
+  const shortTime = (t: string) => t.replace(/^Today at /i, '');
   const [linkCopied, setLinkCopied] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<CustomerRequest | null>(null);
   const bookingLink = buildPublicBookingLink(businessId);
@@ -185,15 +155,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     } catch {
       /* user dismissed the share sheet */
     }
-  };
-
-  const handleQuickAction = async (action: () => void, type: 'light' | 'warning' = 'light') => {
-    if (type === 'warning') {
-      await haptic.warning();
-    } else {
-      await haptic.light();
-    }
-    action();
   };
 
   // "Today's Priorities" — the live situations, in Design 1's card.
@@ -341,33 +302,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         )}
       </div>
 
-      {/* Get started — the Dashboard checklist that replaced the overlay
-          App Guide tour. Inline on the Dashboard, never a dimmed card
-          over the screen, so the user always sees the real app. */}
-      <GetStartedChecklist
-        currentUser={currentUser}
-        businessId={businessId}
-        onNavigateTab={onNavigateTab}
-      />
-
-      {/* Morning Briefing — the team reports in */}
-      <MorningBriefingCard
-        ownerName={currentUser?.fullName || ''}
-        calls={calls}
-        jobs={jobs}
-        actions={actions}
-        customerRequests={customerRequests}
-        unreadInboxCount={unreadInboxCount}
-        followupsDraftedYesterday={followupsDraftedYesterday}
-        onOpenInbox={onOpenInbox}
-        onNavigateTab={onNavigateTab}
-        onApproveQuote={onApproveQuote}
-        onOpenRequest={(req) => setSelectedRequest(req)}
-        industry={industry}
-        industryModifierOn={industryModifierOn}
-      />
-
-      {/* Global search — one box that finds jobs, clients, requests, quotes, invoices */}
+      {/* Global search — one box that finds jobs, clients, requests, quotes, invoices.
+          Kept as Home chrome: it is the only global search in the app. */}
       <GlobalSearchBar
         jobs={jobs}
         clients={clients}
@@ -376,13 +312,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         onNavigateTab={onNavigateTab}
       />
 
-      {/* Pipeline health — stalled quotes, aging invoices, quiet customers */}
-      <PipelineHealthCard
+      {/* This week — what the AI team did. Leads Home. Every number is
+          real app data; see WeeklyCard for the definitions. */}
+      <WeeklyCard
+        serverCalls={serverCalls}
+        jobs={jobs}
         actions={actions}
-        clients={clients}
         onNavigateTab={onNavigateTab}
-        onScheduleJob={onScheduleJob}
-        onMarkPaid={onMarkPaid}
       />
 
       {/* Proactive AI Industry Profile Optimization Banner */}
@@ -464,59 +400,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </button>
       </div>
 
-      {/* Quick Action Touch Targets (Optimized for Mobile Field Work) */}
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => handleQuickAction(() => onNavigateTab('jobs'))}
-          className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-lime-500/40 transition-all flex items-center gap-2.5 text-left active:scale-98 cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-lime-500/20 text-lime-400 flex items-center justify-center shrink-0">
-            <Plus className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs font-bold text-white truncate">New Work Order</div>
-            <div className="text-[10px] text-zinc-400 truncate">Create & dispatch job</div>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleQuickAction(() => onNavigateTab('team-chat'))}
-          className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-lime-500/40 transition-all flex items-center gap-2.5 text-left active:scale-98 cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-lime-500/20 text-lime-400 flex items-center justify-center shrink-0">
-            <MessageSquare className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs font-bold text-white truncate">Team Chat</div>
-            <div className="text-[10px] text-zinc-400 truncate">Message your team</div>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleQuickAction(onTriggerEmergencyJob, 'warning')}
-          className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-rose-500/40 transition-all flex items-center gap-2.5 text-left active:scale-98 cursor-pointer group"
-        >
-          <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
-            <AlertCircle className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs font-bold text-white truncate group-hover:text-rose-300">
-              Emergency Dispatch
-            </div>
-            <div className="text-[10px] text-zinc-400 truncate">Immediate response</div>
-          </div>
-        </button>
-      </div>
-
-      {/* Today's Work Schedule / Active Jobs */}
-      <div className="space-y-2">
+      {/* Today's Work — Grok-style rows: time, client + job, status pill.
+          One tap opens the Jobs tab. */}
+      <div className={`p-3.5 ${dashboardCard} space-y-2`}>
         <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-lime-400" />
-            <span>Today's Work Schedule</span>
+          <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-lime-400" />
+            <span>Today&apos;s Work</span>
           </h3>
           <button
             type="button"
@@ -524,142 +414,56 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               haptic.light();
               onNavigateTab('jobs');
             }}
-            className="text-[11px] font-semibold text-lime-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+            className="text-xs font-bold text-lime-400 hover:underline flex items-center gap-0.5 cursor-pointer"
           >
-            <span>View All ({jobs.length})</span>
+            <span>View All</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
-
         {upcomingJobs.length === 0 ? (
-          <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 text-center text-xs text-zinc-400">
-            No active jobs in the queue. Tap &quot;New Work Order&quot; to add one.
+          <div className="text-center space-y-3 py-2">
+            <p className="text-sm text-zinc-400">No jobs on the schedule today.</p>
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light();
+                onNavigateTab('jobs');
+              }}
+              className="px-4 py-2.5 rounded-full bg-lime-500 hover:bg-lime-400 text-black text-xs font-extrabold transition cursor-pointer"
+            >
+              Add a job
+            </button>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="divide-y divide-zinc-800/80">
             {upcomingJobs.map((job) => (
-              <div
+              <button
                 key={job.id}
+                type="button"
                 onClick={() => {
                   haptic.light();
                   onNavigateTab('jobs');
                 }}
-                className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-zinc-700 transition-all cursor-pointer space-y-2"
+                className="flex w-full items-center gap-3 py-2.5 text-left cursor-pointer"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="space-y-0.5 min-w-0">
-                    <span className="text-[10px] font-mono text-zinc-500 font-bold">{job.id}</span>
-                    <h4 className="text-xs font-bold text-white truncate">{job.title}</h4>
-                    <div className="text-[11px] text-zinc-400 flex items-center gap-1 truncate">
-                      <Users className="w-3 h-3 text-zinc-500 shrink-0" />
-                      <span className="truncate">{job.clientName}</span>
-                    </div>
-                  </div>
-
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wider ${
-                    job.priority === 'critical'
-                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                      : job.priority === 'high'
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      : 'bg-zinc-800 text-zinc-300'
-                  }`}>
-                    {job.priority}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-1.5 border-t border-zinc-900/80">
-                  <div className="flex items-center gap-1 truncate">
-                    <MapPin className="w-3 h-3 text-zinc-500 shrink-0" />
-                    <span className="truncate">{job.address}</span>
-                  </div>
-                  <div className="flex items-center gap-1 font-semibold text-lime-400 shrink-0">
-                    <Clock className="w-3 h-3 shrink-0" />
-                    <span>{job.scheduledTime}</span>
-                  </div>
-                </div>
-              </div>
+                <span className="w-24 shrink-0 text-xs font-extrabold text-white whitespace-nowrap truncate">
+                  {shortTime(job.scheduledTime)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-extrabold text-white">{job.clientName}</span>
+                  <span className="block truncate text-xs text-zinc-400">{job.title}</span>
+                </span>
+                <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold border ${jobStatusClass(job.status)}`}>
+                  {jobStatusLabel(job.status)}
+                </span>
+              </button>
             ))}
           </div>
         )}
       </div>
 
-      {/* Active AI Team for This Industry */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
-            <Bot className="w-3.5 h-3.5 text-lime-400" />
-            <span>AI Team for {industryName}</span>
-          </h3>
-          <button
-            type="button"
-            onClick={() => {
-              haptic.light();
-              onNavigateTab('team');
-            }}
-            className="text-[11px] font-semibold text-lime-400 hover:underline flex items-center gap-0.5 cursor-pointer"
-          >
-            <span>Manage Team</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">
-                <PhoneIcon className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">AI Receptionist</div>
-                <div className="text-[10px] text-zinc-400 truncate">Answers calls 24/7</div>
-              </div>
-            </div>
-            {empBadge('ai_receptionist')}
-          </div>
-
-          <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
-                <Briefcase className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">Operations Assistant</div>
-                <div className="text-[10px] text-zinc-400 truncate">Routes technicians</div>
-              </div>
-            </div>
-            {empBadge('operations')}
-          </div>
-
-          <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">Sales Assistant</div>
-                <div className="text-[10px] text-zinc-400 truncate">Drafts trade proposals</div>
-              </div>
-            </div>
-            {empBadge('sales')}
-          </div>
-
-          <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold text-xs shrink-0">
-                <Users className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold text-white truncate">Support Assistant</div>
-                <div className="text-[10px] text-zinc-400 truncate">SMS updates & reviews</div>
-              </div>
-            </div>
-            {empBadge('customer_service')}
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Launch Bar — RCOS Master Dashboard spec */}
-      <QuickLaunchBar onNavigate={onNavigateTab} />
+      {/* The AI Team preview lived here and duplicated the AI Team tab.
+          Removed: the tab is the one list now. */}
 
       {/* Customer Requests with SLA badges */}
       <div className="space-y-2">
@@ -734,80 +538,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             })}
           </div>
         )}
-      </div>
-
-      {/* Recent Inbound Inquiries */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
-            <PhoneIcon className="w-3.5 h-3.5 text-blue-400" />
-            <span>Recent Phone Calls</span>
-          </h3>
-          <button
-            type="button"
-            onClick={() => {
-              haptic.light();
-              onNavigateTab('phone');
-            }}
-            className="text-[11px] font-semibold text-lime-400 hover:underline flex items-center gap-0.5 cursor-pointer"
-          >
-            <span>View All</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="space-y-2">
-          {recentCalls.map((call) => (
-            <div
-              key={call.id}
-              onClick={() => {
-                haptic.light();
-                onNavigateTab('phone');
-              }}
-              className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-zinc-700 transition-all cursor-pointer space-y-1"
-            >
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-white flex items-center gap-1.5 truncate">
-                  <PhoneIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <span className="truncate">{call.callerName}</span>
-                </span>
-                <span className="text-[10px] text-zinc-500 font-mono">{call.timestamp}</span>
-              </div>
-              <p className="text-zinc-300 text-xs leading-relaxed line-clamp-2">
-                {call.summary}
-              </p>
-              {call.actionRequired && (
-                <div className="pt-1 text-[10px] text-lime-400 flex items-center gap-1 font-mono">
-                  <CheckCircle2 className="w-3 h-3 shrink-0" />
-                  <span className="truncate">{call.actionRequired}</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Gmail Workspace Quick Card */}
-      <div 
-        onClick={() => {
-          haptic.light();
-          onNavigateTab('gmail');
-        }}
-        className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 hover:border-red-500/40 flex items-center justify-between gap-3 shadow-lg transition-all cursor-pointer"
-      >
-        <div className="space-y-0.5 min-w-0">
-          <div className="text-xs font-bold text-white flex items-center gap-1.5">
-            <Mail className="w-4 h-4 text-red-400" />
-            <span>Connected Email & Work Orders</span>
-          </div>
-          <p className="text-[11px] text-zinc-400 truncate">
-            Review client emails, dispatch requests, and service receipts
-          </p>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-red-400 font-semibold shrink-0">
-          <span>Open</span>
-          <ChevronRight className="w-3.5 h-3.5" />
-        </div>
       </div>
 
       <RequestDetailModal request={selectedRequest} onClose={() => setSelectedRequest(null)} />

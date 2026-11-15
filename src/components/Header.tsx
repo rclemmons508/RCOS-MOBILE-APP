@@ -44,6 +44,13 @@ export const Header: React.FC<HeaderProps> = ({
     return () => clearInterval(interval);
   }, []);
 
+  // A broken avatar URL used to render a broken-image icon. Track the
+  // failure and show the icon tile instead; reset when the URL changes.
+  const [avatarBroken, setAvatarBroken] = useState(false);
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [currentUser?.avatar]);
+
   const getTitle = () => {
     if (titleOverride) return titleOverride;
     switch (activeTab) {
@@ -185,11 +192,12 @@ export const Header: React.FC<HeaderProps> = ({
             title={currentUser?.authenticated ? `Authenticated as ${currentUser.fullName}` : 'Login / Register Operator'}
             aria-label="User Profile"
           >
-            {currentUser?.authenticated ? (
+            {currentUser?.authenticated && currentUser.avatar && !avatarBroken ? (
               <div className="relative w-full h-full flex items-center justify-center">
                 <img
                   src={currentUser.avatar}
                   alt={currentUser.fullName}
+                  onError={() => setAvatarBroken(true)}
                   className="w-full h-full rounded-lg object-cover border border-lime-500/60"
                 />
                 <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-lime-500 border border-black" />
