@@ -212,6 +212,10 @@ export default function App() {
 
   // Application Core Data - starts fresh from scratch
   const [calls, setCalls] = useState<PhoneCall[]>([]);
+  // Server-recorded calls — the weekly card's "calls answered" number.
+  // The session-local `calls` list resets on sign-in, so it cannot count
+  // a week. See refetchServerCalls + WeeklyCard.
+  const [serverCalls, setServerCalls] = useState<PhoneCall[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [actions, setActions] = useState<ActionRecord[]>([]);
@@ -612,6 +616,20 @@ export default function App() {
       if (Array.isArray(reqs)) setCustomerRequests(reqs);
     } catch {
       /* offline */
+    }
+  }, [businessAccount?.id]);
+
+  // Server-recorded calls for the weekly card. Same endpoint the
+  // follow-up engine polls, but kept as state so Home can count calls
+  // answered in the last 7 days across sign-ins.
+  const refetchServerCalls = useCallback(async () => {
+    const bizId = businessAccount?.id;
+    if (!bizId) return;
+    try {
+      const list = await apiFetch<PhoneCall[]>(withBusinessId('/api/phone/calls', bizId));
+      if (Array.isArray(list)) setServerCalls(filterToBusiness(list, bizId));
+    } catch {
+      /* offline — keep the last count */
     }
   }, [businessAccount?.id]);
 
@@ -1233,6 +1251,7 @@ export default function App() {
     setActions([]);
     setCustomerRequests([]);
     setCalls([]);
+    setServerCalls([]);
     setMessages([]);
     setNotifications([]);
     setActivePushToast(null);
@@ -1305,8 +1324,8 @@ export default function App() {
       // useSyncEngine loop already skips hidden ticks; this is a
       // belt-and-braces guard on the callback itself.
       if (document.hidden) return;
-      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), pollVoiceRouting(), pollProactive(), pollFollowups(), refreshTeamUnread()]);
-    }, [pingHealth, refetchActions, refetchRequests, pollVoiceRouting, pollProactive, pollFollowups, refreshTeamUnread]),
+      await Promise.allSettled([pingHealth(), refetchActions(), refetchRequests(), refetchServerCalls(), pollVoiceRouting(), pollProactive(), pollFollowups(), refreshTeamUnread()]);
+    }, [pingHealth, refetchActions, refetchRequests, refetchServerCalls, pollVoiceRouting, pollProactive, pollFollowups, refreshTeamUnread]),
     30000
   );
 
@@ -1460,9 +1479,12 @@ export default function App() {
   );
 
   const handleAddJob = (newJob: Job) => {
-    setJobs((prev) => [newJob, ...prev]);
+    // Stamp the creation time: the weekly card counts jobs booked in
+    // the last 7 days from this. Never backfilled for older jobs.
+    const stamped: Job = { ...newJob, createdAt: newJob.createdAt ?? new Date().toISOString() };
+    setJobs((prev) => [stamped, ...prev]);
     if (businessAccount?.id) {
-      firestoreService.saveJob(businessAccount.id, newJob).catch((err) => {
+      firestoreService.saveJob(businessAccount.id, stamped).catch((err) => {
         console.warn('Firestore saveJob error:', err);
       });
     }
@@ -1804,36 +1826,6 @@ export default function App() {
         actionTaken: 'Transcript Saved',
       });
       setActiveTab('phone');
-    }
-  };
-
-  const handleEmergencyJobTrigger = async () => {
-    // Demo data injection: development builds only. Wrapped in a
-    // compile-time DEV check so the demo strings are dropped from
-    // production bundles entirely.
-    if (!import.meta.env.DEV) {
-      console.warn('[demo] disabled');
-      return;
-    }
-    {
-      await haptic.warning();
-      const emergencyJob: Job = {
-        id: 'RC-' + Math.floor(9000 + Math.random() * 900),
-        title: 'Emergency Service & Urgent System Diagnostic',
-        clientName: 'Priority Client Call',
-        clientPhone: '+1 (555) 392-8811',
-        address: '450 Tech Parkway, Suite 100',
-        status: 'urgent',
-        priority: 'critical',
-        assignedTechnician: 'Marcus Vance (Lead Specialist)',
-        estimatedValue: 2400,
-        scheduledTime: 'Immediate Response',
-        description: 'Emergency service request captured and auto-routed for prompt arrival.',
-        aiNotes: 'Auto-routed based on urgent priority and nearest technician proximity.',
-        category: 'HVAC',
-      };
-      handleAddJob(emergencyJob);
-      setActiveTab('jobs');
     }
   };
 
@@ -2209,37 +2201,18 @@ export default function App() {
               actions={actions}
               currentUser={currentUser}
               unreadNotifCount={unreadNotifCount}
-              unreadInboxCount={agentMessages.filter((m) => m.status === 'unread').length}
-              followupsDraftedYesterday={(() => {
-                const y = new Date();
-                y.setDate(y.getDate() - 1);
-                const yStr = y.toDateString();
-                return agentMessages.filter(
-                  (m) => m.dedupeKey?.startsWith('followup:') && new Date(m.createdAt).toDateString() === yStr
-                ).length;
-              })()}
               businessId={activeBusiness.id}
               businessName={activeBusiness.name || 'Setup Company'}
-              industryName={industryLabel(activeBusiness.industry)}
               serverOnline={serverOnline}
               pendingApprovals={actions.filter((x) => x.status === 'awaiting_approval').length}
-              activeEmployees={activeBusiness.activeEmployees}
               customerRequests={customerRequests}
               clients={clients}
+              serverCalls={serverCalls}
               proactiveSuggestion={proactiveSuggestion}
               onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
               onDismissSuggestion={handleDismissSuggestion}
-              onOpenServiceManager={() => setIsServiceManagerOpen(true)}
               onNavigateTab={(tab) => setActiveTab(tab)}
-              onSimulateCall={handleSimulateInboundCall}
-              onTriggerEmergencyJob={handleEmergencyJobTrigger}
               onOpenNotifications={() => setIsNotifCenterOpen(true)}
-              onOpenInbox={() => setIsInboxOpen(true)}
-              onApproveQuote={async (actionId) => { await handleApprovalDecision(actionId, 'approved'); }}
-              onScheduleJob={handleScheduleJob}
-              onMarkPaid={handleMarkPaid}
-              industry={businessAccount?.industry || industryProfile}
-              industryModifierOn={industryModifierOn}
             />
           )}
 
@@ -2319,6 +2292,9 @@ export default function App() {
                   scheduledTime: 'Immediate Response',
                   estimatedValue: 850,
                   category: 'HVAC',
+                  // Creation stamp — see handleAddJob; the weekly card
+                  // counts jobs booked in the last 7 days from this.
+                  createdAt: new Date().toISOString(),
                 };
                 setJobs(prev => [newJob, ...prev]);
                 setActivePushToast({

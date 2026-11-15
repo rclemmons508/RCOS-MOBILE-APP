@@ -775,6 +775,13 @@ export interface Job {
   estimatedValue: number;
   scheduledTime: string;
   description: string;
+  /**
+   * When the job was booked (ISO date, stamped when the job is created).
+   * Jobs created before this field existed have none — they do not count
+   * toward weekly figures, which grow as new jobs are booked. Never
+   * backfilled or guessed.
+   */
+  createdAt?: string;
   aiNotes?: string;
   category: 'HVAC' | 'Electrical' | 'Automation' | 'Security' | 'Maintenance' | 'Software AI';
   quoteId?: string;
