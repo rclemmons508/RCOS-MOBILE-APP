@@ -2386,6 +2386,7 @@ export default function App() {
             <ClientsTab
               clients={clients}
               jobs={jobs}
+              actions={actions}
               onAddClient={handleAddClient}
               onEditClient={handleEditClient}
               onDeleteClient={handleDeleteClient}

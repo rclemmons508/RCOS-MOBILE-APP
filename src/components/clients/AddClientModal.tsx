@@ -275,7 +275,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
         {/* Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-lime-500/10 text-lime-400 border border-lime-500/20">
+            <div className="p-2 rounded-xl bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/20">
               <UserPlus className="w-4 h-4" />
             </div>
             <h3 className="text-sm font-bold text-white">{initialClient ? 'Edit Client Account' : 'Onboard New Client'}</h3>
@@ -293,10 +293,10 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
         <div className="p-4 overflow-y-auto flex-1">
           <form id="add-client-form" onSubmit={handleSubmit} className="space-y-3.5">
             {/* Fill from a file or pasted text */}
-            <div className="rounded-2xl border border-lime-500/20 bg-lime-500/5 p-3 space-y-2.5">
+            <div className="rounded-2xl border border-[#22ec72]/20 bg-[#22ec72]/5 p-3 space-y-2.5">
               <div className="flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-lime-400" />
-                <span className="text-xs font-bold text-lime-300">Fill from a file or pasted text</span>
+                <Sparkles className="w-4 h-4 text-[#22ec72]" />
+                <span className="text-xs font-bold text-[#22ec72]">Fill from a file or pasted text</span>
               </div>
               <p className="text-[11px] leading-relaxed text-zinc-400">
                 Upload a client file or paste their details — the app fills in the form below. Check everything before saving.
@@ -305,14 +305,14 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setFillMode('upload')}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${fillMode === 'upload' ? 'bg-lime-500 text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
+                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${fillMode === 'upload' ? 'bg-[#22ec72] text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
                 >
                   Upload a file
                 </button>
                 <button
                   type="button"
                   onClick={() => setFillMode('paste')}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${fillMode === 'paste' ? 'bg-lime-500 text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
+                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${fillMode === 'paste' ? 'bg-[#22ec72] text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
                 >
                   Paste text
                 </button>
@@ -332,7 +332,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-200 hover:border-lime-500/50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-200 hover:border-[#22ec72]/50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Upload className="w-4 h-4 text-zinc-500" />
                     {stagedFile ? 'Choose a different file' : 'Choose a client file (.txt, .pdf, .docx, image)'}
@@ -357,7 +357,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
                   rows={4}
-                  className="w-full p-2.5 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors resize-none placeholder:text-zinc-600 font-sans"
+                  className="w-full p-2.5 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors resize-none placeholder:text-zinc-600 font-sans"
                   placeholder="Paste the client's business info — company, contact, phone, email, anything else..."
                 />
               )}
@@ -365,7 +365,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                 type="button"
                 onClick={handleAutoFill}
                 disabled={analyzing || (fillMode === 'paste' ? !pastedText.trim() : !stagedFile)}
-                className="w-full px-3 py-2 rounded-xl bg-lime-500 text-black font-bold text-xs hover:bg-lime-400 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-3 py-2 rounded-xl bg-[#22ec72] text-black font-bold text-xs hover:brightness-110 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {analyzing ? (
                   <>
@@ -386,7 +386,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                       ? 'text-red-400'
                       : fillNote.kind === 'partial'
                         ? 'text-amber-300'
-                        : 'text-lime-300'
+                        : 'text-[#22ec72]'
                   }`}
                 >
                   {fillNote.text}
@@ -405,7 +405,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors placeholder:text-zinc-600"
+                  className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors placeholder:text-zinc-600"
                   placeholder="e.g. Sarah Jenkins"
                 />
               </div>
@@ -422,7 +422,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                   required
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors placeholder:text-zinc-600"
+                  className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors placeholder:text-zinc-600"
                   placeholder="e.g. Apex Tower Facilities"
                 />
               </div>
@@ -440,7 +440,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors placeholder:text-zinc-600"
+                    className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors placeholder:text-zinc-600"
                     placeholder="(555) 000-0000"
                   />
                 </div>
@@ -456,7 +456,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors placeholder:text-zinc-600"
+                    className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors placeholder:text-zinc-600"
                     placeholder="contact@company.com"
                   />
                 </div>
@@ -469,7 +469,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                className="w-full p-2.5 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-lime-500/50 transition-colors resize-none placeholder:text-zinc-600 font-sans"
+                className="w-full p-2.5 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors resize-none placeholder:text-zinc-600 font-sans"
                 placeholder="Add service tier, requirements, or SLA notes..."
               />
             </div>
@@ -488,7 +488,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
           <button
             type="submit"
             form="add-client-form"
-            className="px-4 py-2 rounded-xl bg-lime-500 text-black font-bold text-xs hover:bg-lime-400 transition-colors flex items-center gap-1.5 cursor-pointer shadow-md shadow-lime-500/20"
+            className="px-4 py-2 rounded-xl bg-[#22ec72] text-black font-bold text-xs hover:brightness-110 transition-colors flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#22ec72]/20"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>{initialClient ? 'Save Changes' : 'Complete Onboarding'}</span>
