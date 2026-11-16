@@ -27,6 +27,9 @@ interface SidebarDrawerProps {
   settingsSection?: SettingsSection;
   currentUser?: User | null;
   businessName: string;
+  /** The single Operations badge count — the same number as the
+   *  bottom-nav Operations badge. 0 hides it. */
+  operationsBadge?: number;
   onNavigateTab: (tab: TabType) => void;
   onOpenSettings: (section: SettingsSection) => void;
 }
@@ -50,6 +53,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   settingsSection = 'user',
   currentUser,
   businessName,
+  operationsBadge = 0,
   onNavigateTab,
   onOpenSettings,
 }) => {
@@ -156,6 +160,11 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               >
                 <Icon className="w-5 h-5 shrink-0" />
                 <span className="flex-1 text-sm">{item.label}</span>
+                {item.id === 'operations' && operationsBadge > 0 && (
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border border-black shrink-0">
+                    {operationsBadge > 99 ? '99+' : operationsBadge}
+                  </span>
+                )}
                 {isActive && <span className="w-1.5 h-1.5 rounded-full bg-[#22ec72] shrink-0" />}
               </button>
             );

@@ -7,8 +7,6 @@ import { useBiometrics } from '../context/BiometricContext';
 interface HeaderProps {
   activeTab: TabType;
   titleOverride?: string;
-  unreadCount?: number;
-  unreadInboxCount?: number;
   currentUser?: User | null;
   onOpenNotifications?: () => void;
   onOpenInbox?: () => void;
@@ -22,8 +20,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   titleOverride,
-  unreadCount = 0,
-  unreadInboxCount = 0,
   currentUser,
   onOpenNotifications,
   onOpenInbox,
@@ -166,36 +162,30 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Agent Inbox with Unread Badge */}
+          {/* Agent Inbox — opens the Operations feed at the AI Team
+              section. No badge here: the single Operations badge on the
+              bottom nav is the one count for these items. */}
           <button
             type="button"
             onClick={onOpenInbox}
             className="relative w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-lime-500/50 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
-            aria-label="Open Agent Inbox"
-            title="Agent Inbox"
+            aria-label="Open AI Team in Operations"
+            title="AI Team"
           >
             <Inbox className="w-3.5 h-3.5 text-lime-400" />
-            {unreadInboxCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-3.5 h-3.5 px-0.5 rounded-full bg-red-500 text-white font-black text-[8px] flex items-center justify-center border border-black">
-                {unreadInboxCount > 9 ? '9+' : unreadInboxCount}
-              </span>
-            )}
           </button>
 
-          {/* Notification Center Bell with Unread Badge */}
+          {/* Notification bell — opens the Operations feed at the Alerts
+              section. No badge here: the single Operations badge on the
+              bottom nav is the one count for these items. */}
           <button
             type="button"
             onClick={onOpenNotifications}
             className="relative w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
-            aria-label="Open Notifications Center"
-            title="Notifications"
+            aria-label="Open alerts in Operations"
+            title="Alerts"
           >
             <Bell className="w-3.5 h-3.5 text-zinc-300" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-3.5 h-3.5 px-0.5 rounded-full bg-lime-500 text-black font-black text-[8px] flex items-center justify-center border border-black">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
           </button>
 
           {/* User Auth Profile Button */}

@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { RCLogoIcon } from '../RCLogo';
 import { dashboardCard, sectionLabel } from '../ui/cards';
-import { WeeklyCard } from '../dashboard/WeeklyCard';
 import { haptic } from '../../utils/haptics';
 import { buildPublicBookingLink } from '../../config/api';
 import { ProactiveSuggestionBanner } from '../ProactiveSuggestionBanner';
@@ -30,7 +29,6 @@ interface DashboardTabProps {
   jobs: Job[];
   actions: ActionRecord[];
   currentUser: User | null;
-  unreadNotifCount: number;
   businessName?: string;
   proactiveSuggestion?: IndustryOptimizationSuggestion | null;
   onReviewSuggestion?: () => void;
@@ -40,10 +38,11 @@ interface DashboardTabProps {
   pendingApprovals?: number;
   customerRequests?: CustomerRequest[];
   clients?: Client[];
-  /** Server-recorded calls — drives the weekly card. See WeeklyCard. */
+  /** Server-recorded calls — drives the stat tiles. */
   serverCalls?: PhoneCall[];
   onNavigateTab: (tab: TabType) => void;
-  onOpenNotifications: () => void;
+  /** Opens the Operations feed at the Alerts section. */
+  onOpenAlerts: () => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -51,7 +50,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   jobs,
   actions = [],
   currentUser,
-  unreadNotifCount,
   businessName = 'My Business',
   proactiveSuggestion,
   onReviewSuggestion,
@@ -63,7 +61,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   clients = [],
   serverCalls = [],
   onNavigateTab,
-  onOpenNotifications,
+  onOpenAlerts,
 }) => {
   const urgentJobs = jobs.filter(j => j.priority === 'critical' || j.status === 'urgent');
   const upcomingJobs = jobs.filter(j => j.status !== 'completed').slice(0, 3);
@@ -267,18 +265,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           type="button"
           onClick={() => {
             haptic.light();
-            onOpenNotifications();
+            onOpenAlerts();
           }}
           className="relative w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-lime-500/40 flex items-center justify-center transition shrink-0 cursor-pointer"
-          aria-label="Open Notifications Center"
-          title="Notifications"
+          aria-label="Open alerts in Operations"
+          title="Alerts"
         >
           <Bell className="w-4 h-4" />
-          {unreadNotifCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-lime-500 text-black text-[10px] font-bold flex items-center justify-center border border-black">
-              {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
-            </span>
-          )}
         </button>
       </div>
 
@@ -447,14 +440,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         onNavigateTab={onNavigateTab}
       />
 
-      {/* This week — what the AI team did. Leads Home. Every number is
-          real app data; see WeeklyCard for the definitions. */}
-      <WeeklyCard
-        serverCalls={serverCalls}
-        jobs={jobs}
-        actions={actions}
-        onNavigateTab={onNavigateTab}
-      />
+      {/* The weekly card moved to the top of the Operations feed in
+          Stage 2 (same component, same real data). Home now matches the
+          reference more closely. */}
 
       {/* Proactive AI Industry Profile Optimization Banner */}
       {proactiveSuggestion && onReviewSuggestion && onDismissSuggestion && (
