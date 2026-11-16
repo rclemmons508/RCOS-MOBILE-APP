@@ -14,7 +14,7 @@ export interface DefaultProfilePicture {
 }
 
 export const DEFAULT_PROFILE_PICTURES: DefaultProfilePicture[] = [
-  { id: 'lime', label: 'Green', bg: '#84CC16' },
+  { id: 'lime', label: 'Green', bg: '#22EC72' },
   { id: 'blue', label: 'Blue', bg: '#3B82F6' },
   { id: 'purple', label: 'Purple', bg: '#8B5CF6' },
   { id: 'orange', label: 'Orange', bg: '#F97316' },

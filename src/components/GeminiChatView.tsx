@@ -426,9 +426,9 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                 type="button"
                 onClick={() => setSelectedRole(emp.id)}
                 title={`${emp.name} — ${emp.roleTitle}`}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs whitespace-nowrap transition cursor-pointer shrink-0 ${
+                className={`min-h-[48px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs whitespace-nowrap transition cursor-pointer shrink-0 ${
                   selected
-                    ? 'bg-lime-500 text-black font-bold border-lime-500'
+                    ? 'bg-[#22ec72] text-black font-bold border-[#22ec72]'
                     : `bg-zinc-900 text-zinc-200 border-zinc-800 hover:border-zinc-600`
                 }`}
               >
@@ -448,8 +448,8 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
           <button
             type="button"
             onClick={() => setModelTier('fast')}
-            className={`px-2 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1 ${
-              modelTier === 'fast' ? 'bg-lime-500 text-black font-bold' : 'text-zinc-400 hover:text-white'
+            className={`min-h-[48px] px-2 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1 ${
+              modelTier === 'fast' ? 'bg-[#22ec72] text-black font-bold' : 'text-zinc-400 hover:text-white'
             }`}
             title="Fast operational responses"
           >
@@ -459,8 +459,8 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
           <button
             type="button"
             onClick={() => setModelTier('general')}
-            className={`px-2 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1 ${
-              modelTier === 'general' ? 'bg-lime-500 text-black font-bold' : 'text-zinc-400 hover:text-white'
+            className={`min-h-[48px] px-2 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1 ${
+              modelTier === 'general' ? 'bg-[#22ec72] text-black font-bold' : 'text-zinc-400 hover:text-white'
             }`}
             title="General operational management"
           >
@@ -470,8 +470,8 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
           <button
             type="button"
             onClick={() => setModelTier('complex')}
-            className={`px-2 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1 ${
-              modelTier === 'complex' ? 'bg-lime-500 text-black font-bold' : 'text-zinc-400 hover:text-white'
+            className={`min-h-[48px] px-2 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1 ${
+              modelTier === 'complex' ? 'bg-[#22ec72] text-black font-bold' : 'text-zinc-400 hover:text-white'
             }`}
             title="Complex strategic analysis"
           >
@@ -483,7 +483,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
         <button
           type="button"
           onClick={handleRefreshThread}
-          className="px-2.5 py-1.5 rounded-xl bg-black hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 hover:text-white transition cursor-pointer flex items-center gap-1.5"
+          className="min-h-[48px] px-2.5 py-1.5 rounded-xl bg-black hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 hover:text-white transition cursor-pointer flex items-center gap-1.5"
           title="Re-read the saved thread (never deletes anything)"
         >
           <RefreshCw className="w-3.5 h-3.5" />
@@ -494,7 +494,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
           type="button"
           onClick={handleRefreshAppData}
           disabled={appRefreshBusy}
-          className="px-2.5 py-1.5 rounded-xl bg-black hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 hover:text-white transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40"
+          className="min-h-[48px] px-2.5 py-1.5 rounded-xl bg-black hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 hover:text-white transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40"
           title={onBusinessRefresh ? 'Re-fetch this business from the server' : 'Return to the Dashboard for fresh data'}
         >
           {appRefreshBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -504,7 +504,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
         <button
           type="button"
           onClick={handleClearHistory}
-          className="p-1.5 rounded-xl bg-black hover:bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+          className="min-h-[48px] p-1.5 rounded-xl bg-black hover:bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
           title="Clear chat history (deletes this thread)"
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -514,7 +514,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
           <button aria-label="Close"
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+            className="min-h-[48px] p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
             title="Return to Dashboard"
           >
             <X className="w-3.5 h-3.5" />
@@ -522,7 +522,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
         )}
 
         {refreshNotice && (
-          <span className="text-xs font-bold text-lime-400 flex items-center gap-1 ml-1">
+          <span className="text-xs font-bold text-[#22ec72] flex items-center gap-1 ml-1">
             <CheckCircle2 className="w-3.5 h-3.5" />
             {refreshNotice}
           </span>
@@ -565,7 +565,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                 <div
                   className={`max-w-[85%] sm:max-w-[80%] rounded-2xl p-3 space-y-1 ${
                     isUser
-                      ? 'bg-lime-500 text-black font-semibold rounded-tr-none'
+                      ? 'bg-[#22ec72] text-black font-semibold rounded-tr-none'
                       : 'bg-zinc-900 text-zinc-200 border border-zinc-800/80 rounded-tl-none'
                   }`}
                 >
@@ -573,7 +573,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                     <span className={`font-bold ${isUser ? '' : msgColors.label}`}>
                       {isUser ? 'You' : displayAgentName(msgEmployee)}
                     </span>
-                    <span className="text-[11px]">{msg.timestamp}</span>
+                    <span className="text-xs">{msg.timestamp}</span>
                   </div>
 
                   <div className={`text-sm leading-relaxed whitespace-pre-wrap font-sans ${isUser ? 'text-black' : 'text-zinc-200'}`}>
@@ -581,7 +581,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                   </div>
 
                   {!isUser && msg.modelUsed && (
-                    <div className="text-[11px] text-zinc-500 flex items-center gap-1 pt-0.5">
+                    <div className="text-xs text-zinc-500 flex items-center gap-1 pt-0.5">
                       <Sparkles className="w-3 h-3" />
                       <span>Engine: {msg.modelUsed}</span>
                     </div>
@@ -590,7 +590,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
               </div>
 
               {msg.actionCard && (
-                <div className="rounded-2xl border border-lime-500/40 bg-zinc-900 p-3 space-y-2 ml-11">
+                <div className="rounded-2xl border border-[#22ec72]/40 bg-zinc-900 p-3 space-y-2 ml-11">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold text-white text-sm">{msg.actionCard.draft.title}</span>
                     <span className="text-xs font-bold text-zinc-400">{msg.actionCard.status === 'pending' ? 'Waiting for your confirm' : msg.actionCard.status}</span>
@@ -607,7 +607,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                             disabled={msg.actionCard!.status !== 'pending'}
                             onChange={(e) => setCardValues(prev => ({ ...prev, [msg.id]: { ...vals, [f.key]: e.target.value } }))}
                             rows={2}
-                            className="mt-1 w-full bg-black border border-zinc-800 rounded-xl px-2.5 py-2 text-sm text-white focus:outline-none focus:border-lime-500 disabled:opacity-60"
+                            className="mt-1 w-full bg-black border border-zinc-800 rounded-xl px-2.5 py-2 text-sm text-white focus:outline-none focus:border-[#22ec72] disabled:opacity-60"
                           />
                         ) : (
                           <input
@@ -615,7 +615,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                             value={vals[f.key] || ''}
                             disabled={msg.actionCard!.status !== 'pending'}
                             onChange={(e) => setCardValues(prev => ({ ...prev, [msg.id]: { ...vals, [f.key]: e.target.value } }))}
-                            className="mt-1 w-full bg-black border border-zinc-800 rounded-xl px-2.5 py-2 text-sm text-white focus:outline-none focus:border-lime-500 disabled:opacity-60"
+                            className="mt-1 w-full bg-black border border-zinc-800 rounded-xl px-2.5 py-2 text-sm text-white focus:outline-none focus:border-[#22ec72] disabled:opacity-60"
                           />
                         )}
                       </label>
@@ -627,7 +627,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                         type="button"
                         onClick={() => handleConfirmCard(msg)}
                         disabled={!!cardBusy[msg.id]}
-                        className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40"
+                        className="min-h-[48px] px-4 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40"
                       >
                         {cardBusy[msg.id] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                         Confirm — do it
@@ -635,7 +635,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleCancelCard(msg)}
-                        className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                        className="min-h-[48px] px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         Cancel
@@ -643,7 +643,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                     </div>
                   )}
                   {msg.actionCard.result && (
-                    <p className={`text-xs font-bold ${msg.actionCard.status === 'done' ? 'text-lime-400' : 'text-red-400'}`}>
+                    <p className={`text-xs font-bold ${msg.actionCard.status === 'done' ? 'text-[#22ec72]' : 'text-red-400'}`}>
                       {msg.actionCard.result}
                       {msg.actionCard.recordId ? ` (Record: ${msg.actionCard.recordId})` : ''}
                     </p>
@@ -660,7 +660,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
               {getEmployeeIcon(activeEmployee.avatarIcon, 'w-4 h-4')}
             </div>
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl rounded-tl-none p-3 flex items-center gap-2 text-xs text-zinc-400">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-lime-400" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#22ec72]" />
               <span>{activeEmployee.name} is formulating operational response...</span>
             </div>
           </div>
@@ -677,7 +677,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
             key={idx}
             type="button"
             onClick={() => handleSend(p.text)}
-            className="px-2.5 py-1 rounded-full bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-white whitespace-nowrap transition cursor-pointer"
+            className="min-h-[48px] px-2.5 py-1 rounded-full bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-white whitespace-nowrap transition cursor-pointer"
           >
             {p.label}
           </button>
@@ -703,7 +703,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
           type="button"
           disabled={!input.trim() || loading}
           onClick={() => handleSend()}
-          className="px-4 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 shadow-md shadow-lime-500/20 shrink-0"
+          className="min-h-[48px] px-4 py-2.5 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 shadow-md shadow-[#22ec72]/20 shrink-0"
         >
           {loading ? (
             <Loader2 className="w-4 h-4 animate-spin" />

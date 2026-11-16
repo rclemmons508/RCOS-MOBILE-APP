@@ -109,18 +109,18 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
           {/* Header */}
           <div className="px-5 py-4 border-b border-zinc-800/80 bg-zinc-900/60 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-lime-500/10 text-lime-400 border border-lime-500/20">
+              <div className="p-2 rounded-xl bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/20">
                 <Send className="w-4 h-4" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white">Compose Gmail Message</h3>
-                <p className="text-[11px] text-zinc-400">Authenticated via Google Workspace</p>
+                <p className="text-xs text-zinc-400">Authenticated via Google Workspace</p>
               </div>
             </div>
             <button aria-label="Close"
               type="button"
               onClick={onClose}
-              className="p-1 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+              className="min-h-[48px] p-1 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -130,8 +130,8 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5">
             {/* Template Shortcuts */}
             <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-lime-400" />
+              <span className="text-xs uppercase font-mono tracking-wider text-zinc-500 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-[#22ec72]" />
                 <span>Quick Operations Templates</span>
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -140,7 +140,7 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
                     key={tpl.name}
                     type="button"
                     onClick={() => handleApplyTemplate(tpl)}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] text-zinc-300 hover:text-white transition cursor-pointer"
+                    className="min-h-[48px] px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 hover:text-white transition cursor-pointer"
                   >
                     + {tpl.name}
                   </button>
@@ -151,11 +151,11 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
             {/* Recipient Field */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] font-semibold text-zinc-400">To:</label>
+                <label className="text-xs font-semibold text-zinc-400">To:</label>
                 <button
                   type="button"
                   onClick={() => setShowCcBcc(!showCcBcc)}
-                  className="text-[10px] text-lime-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  className="min-h-[48px] text-xs text-[#22ec72] hover:underline flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{showCcBcc ? 'Hide Cc/Bcc' : 'Add Cc/Bcc'}</span>
                   {showCcBcc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -166,7 +166,7 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 placeholder="client@company.com or technician@rcsolutions.com"
-                className="w-full px-3.5 py-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 transition"
+                className="w-full px-3.5 py-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72] transition"
               />
             </div>
 
@@ -174,23 +174,23 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
             {showCcBcc && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 animate-in fade-in duration-100">
                 <div>
-                  <label className="text-[11px] font-semibold text-zinc-400 block mb-1">Cc:</label>
+                  <label className="text-xs font-semibold text-zinc-400 block mb-1">Cc:</label>
                   <input
                     type="email"
                     value={cc}
                     onChange={(e) => setCc(e.target.value)}
                     placeholder="manager@company.com"
-                    className="w-full px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500"
+                    className="w-full px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-zinc-400 block mb-1">Bcc:</label>
+                  <label className="text-xs font-semibold text-zinc-400 block mb-1">Bcc:</label>
                   <input
                     type="email"
                     value={bcc}
                     onChange={(e) => setBcc(e.target.value)}
                     placeholder="audit@rcsolutions.com"
-                    className="w-full px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500"
+                    className="w-full px-3 py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
               </div>
@@ -198,25 +198,25 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
 
             {/* Subject */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-zinc-400">Subject:</label>
+              <label className="text-xs font-semibold text-zinc-400">Subject:</label>
               <input
                 type="text"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Email Subject..."
-                className="w-full px-3.5 py-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 transition font-medium"
+                className="w-full px-3.5 py-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72] transition font-medium"
               />
             </div>
 
             {/* Message Body */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-zinc-400">Message Body:</label>
+              <label className="text-xs font-semibold text-zinc-400">Message Body:</label>
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={8}
                 placeholder="Write your email message here..."
-                className="w-full p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 transition leading-relaxed resize-none font-sans"
+                className="w-full p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72] transition leading-relaxed resize-none font-sans"
               />
             </div>
           </div>
@@ -226,7 +226,7 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
             <button
               type="button"
               onClick={handleRequestDraft}
-              className="px-3.5 py-2 rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-xs text-zinc-300 hover:text-white flex items-center gap-1.5 cursor-pointer transition"
+              className="min-h-[48px] px-3.5 py-2 rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-xs text-zinc-300 hover:text-white flex items-center gap-1.5 cursor-pointer transition"
             >
               <FileEdit className="w-3.5 h-3.5" />
               <span>Save Draft</span>
@@ -236,7 +236,7 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-2 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                className="min-h-[48px] px-3 py-2 text-xs text-zinc-400 hover:text-white cursor-pointer"
               >
                 Cancel
               </button>
@@ -244,7 +244,7 @@ export const GmailComposeModal: React.FC<GmailComposeModalProps> = ({
                 type="button"
                 onClick={handleRequestSend}
                 disabled={!to.trim() || !subject.trim()}
-                className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shadow-md shadow-lime-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="min-h-[48px] px-4 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shadow-md shadow-[#22ec72]/10 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Review & Send</span>

@@ -292,7 +292,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           <div>
             <div className="text-xs font-bold text-zinc-400">Revenue</div>
             <div className="text-2xl font-extrabold text-white leading-tight">{money(stats.revenue)}</div>
-            <div className="text-[11px] text-zinc-500">{periodLabel} · invoices actually paid</div>
+            <div className="text-xs text-zinc-500">{periodLabel} · invoices actually paid</div>
           </div>
           <span className="p-2 rounded-xl bg-[#22ec72]/10 text-[#22ec72] shrink-0">
             <BarChart3 className="w-4 h-4" />
@@ -315,7 +315,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
               <circle key={i} cx={p.x} cy={p.y} r="2.5" fill={sidebarAccentHex} />
             ))}
           </svg>
-          <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1">
+          <div className="flex items-center justify-between text-xs text-zinc-500 mt-1">
             <span>{firstLabel}</span>
             <span>{maxBucket > 0 ? `Peak ${money(maxBucket)}` : 'No paid revenue in this period'}</span>
             <span>{lastLabel}</span>
@@ -335,7 +335,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <span className="p-1.5 rounded-lg bg-[#22ec72]/10 text-[#22ec72] self-start">{t.icon}</span>
             <span className="text-2xl font-extrabold text-white leading-none">{t.value}</span>
             <span className="text-xs font-bold text-zinc-400">{t.label}</span>
-            <span className="text-[10px] text-zinc-500">{t.sub}</span>
+            <span className="text-xs text-zinc-500">{t.sub}</span>
           </button>
         ))}
       </div>
@@ -345,40 +345,40 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
           the window" cannot be computed honestly; Total Customers is
           the all-time count instead. */}
       <div className={`p-3.5 ${sidebarCard}`}>
-        <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">All time</div>
+        <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider">All time</div>
         <div className="grid grid-cols-3 gap-2 mt-2">
           <button
             type="button"
             onClick={() => go('clients')}
-            className="rounded-xl bg-[#05090a]/60 border border-[#1d2b26] px-2 py-3 text-center hover:border-[#22ec72]/40 transition cursor-pointer"
+            className="min-h-[48px] rounded-xl bg-[#05090a]/60 border border-[#1d2b26] px-2 py-3 text-center hover:border-[#22ec72]/40 transition cursor-pointer"
           >
             <span className="flex justify-center mb-1 text-[#22ec72]">
               <Users className="w-4 h-4" />
             </span>
             <span className="block text-lg font-extrabold text-white leading-none">{stats.totalCustomers}</span>
-            <span className="block text-[11px] text-zinc-400 mt-1">Total Customers</span>
+            <span className="block text-xs text-zinc-400 mt-1">Total Customers</span>
           </button>
           <button
             type="button"
             onClick={() => go('jobs')}
-            className="rounded-xl bg-[#05090a]/60 border border-[#1d2b26] px-2 py-3 text-center hover:border-[#22ec72]/40 transition cursor-pointer"
+            className="min-h-[48px] rounded-xl bg-[#05090a]/60 border border-[#1d2b26] px-2 py-3 text-center hover:border-[#22ec72]/40 transition cursor-pointer"
           >
             <span className="flex justify-center mb-1 text-[#22ec72]">
               <Briefcase className="w-4 h-4" />
             </span>
             <span className="block text-lg font-extrabold text-white leading-none">{stats.totalJobs}</span>
-            <span className="block text-[11px] text-zinc-400 mt-1">Total Jobs</span>
+            <span className="block text-xs text-zinc-400 mt-1">Total Jobs</span>
           </button>
           <button
             type="button"
             onClick={() => go('approvals')}
-            className="rounded-xl bg-[#05090a]/60 border border-[#1d2b26] px-2 py-3 text-center hover:border-[#22ec72]/40 transition cursor-pointer"
+            className="min-h-[48px] rounded-xl bg-[#05090a]/60 border border-[#1d2b26] px-2 py-3 text-center hover:border-[#22ec72]/40 transition cursor-pointer"
           >
             <span className="flex justify-center mb-1 text-[#22ec72]">
               <DollarSign className="w-4 h-4" />
             </span>
             <span className="block text-lg font-extrabold text-white leading-none">{money(stats.totalRevenue)}</span>
-            <span className="block text-[11px] text-zinc-400 mt-1">Total Revenue</span>
+            <span className="block text-xs text-zinc-400 mt-1">Total Revenue</span>
           </button>
         </div>
       </div>
@@ -389,14 +389,14 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
         </p>
       )}
 
-      <p className="text-[10px] text-zinc-600 text-center px-4">
+      <p className="text-xs text-zinc-600 text-center px-4">
         Period totals count only records with a date — jobs booked before dates were recorded aren&apos;t included.
       </p>
 
       <button
         type="button"
         onClick={() => go('approvals')}
-        className="w-full flex items-center justify-between gap-2 px-3.5 py-3 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left"
+        className="min-h-[48px] w-full flex items-center justify-between gap-2 px-3.5 py-3 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left"
       >
         <span className="text-sm font-bold text-white">See invoices &amp; money loop</span>
         <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />

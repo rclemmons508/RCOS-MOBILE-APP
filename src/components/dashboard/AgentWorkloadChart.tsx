@@ -12,7 +12,7 @@ export const AgentWorkloadChart: React.FC<AgentWorkloadChartProps> = ({ agents }
     return (
       <div className="rounded-2xl bg-zinc-950 border border-zinc-800/80 p-3.5 sm:p-4 space-y-2 shadow-xl text-center">
         <div className="flex items-center gap-2 justify-center text-xs font-extrabold text-white uppercase tracking-wider">
-          <Cpu className="w-4 h-4 text-lime-400" />
+          <Cpu className="w-4 h-4 text-[#22ec72]" />
           <span>Agent Workload Distribution</span>
         </div>
         <p className="text-xs text-zinc-500 py-3">No active agents initialized. Manage your fleet in the More tab.</p>
@@ -31,12 +31,12 @@ export const AgentWorkloadChart: React.FC<AgentWorkloadChartProps> = ({ agents }
     <div className="rounded-2xl bg-zinc-950 border border-zinc-800/80 p-3.5 sm:p-4 space-y-3 shadow-xl overflow-hidden">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Cpu className="w-4 h-4 text-lime-400" />
+          <Cpu className="w-4 h-4 text-[#22ec72]" />
           <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">
             Agent Workload Distribution
           </h3>
         </div>
-        <span className="text-[10px] text-zinc-400 font-mono">Tasks Completed Today</span>
+        <span className="text-xs text-zinc-400 font-mono">Tasks Completed Today</span>
       </div>
 
       <div className="h-32 w-full pt-1 overflow-hidden">
@@ -75,7 +75,7 @@ export const AgentWorkloadChart: React.FC<AgentWorkloadChartProps> = ({ agents }
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-[10px] text-zinc-400 font-mono pt-2 border-t border-zinc-900">
+      <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400 font-mono pt-2 border-t border-zinc-900">
         {agents.map((ag) => (
           <div key={ag.id} className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 truncate max-w-[120px]">

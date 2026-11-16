@@ -55,7 +55,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
           title: j.title || 'Untitled job',
           subtitle: `${j.clientName}${j.status ? ` · ${statusLabel(j.status)}` : ''}`,
           tab: 'jobs',
-          icon: <Wrench className="w-4 h-4 text-lime-400" />,
+          icon: <Wrench className="w-4 h-4 text-[#22ec72]" />,
         });
       }
     }
@@ -100,7 +100,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
           a.status ? statusLabel(a.status) : '',
         ].filter(Boolean).join(' · ') || (isQuote ? 'Quote' : 'Invoice'),
         tab: 'approvals',
-        icon: isQuote ? <FileText className="w-4 h-4 text-violet-400" /> : <Receipt className="w-4 h-4 text-emerald-400" />,
+        icon: isQuote ? <FileText className="w-4 h-4 text-violet-400" /> : <Receipt className="w-4 h-4 text-[#22ec72]" />,
       });
     }
 
@@ -132,7 +132,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   return (
     <div className="relative">
       {/* Search box */}
-      <div className="flex items-center gap-2 rounded-2xl bg-zinc-900/90 border border-zinc-800 px-3 py-2.5 focus-within:border-lime-500/60 transition-colors">
+      <div className="flex items-center gap-2 rounded-2xl bg-zinc-900/90 border border-zinc-800 px-3 py-2.5 focus-within:border-[#22ec72]/60 transition-colors">
         <Search className="w-4 h-4 text-zinc-500 shrink-0" />
         <input
           type="text"
@@ -155,7 +155,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setQuery('')}
-            className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white shrink-0"
+            className="min-h-[48px] min-w-[48px] w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white shrink-0"
             aria-label="Clear search"
           >
             <X className="w-3.5 h-3.5" />
@@ -173,7 +173,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
           ) : (
             grouped.map(([group, list]) => (
               <div key={group}>
-                <div className="sticky top-0 bg-zinc-950 px-4 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                <div className="sticky top-0 bg-zinc-950 px-4 pt-2.5 pb-1 text-xs font-bold uppercase tracking-wider text-zinc-500">
                   {group} ({list.length})
                 </div>
                 {list.map((hit) => (
@@ -182,14 +182,14 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => go(hit)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-zinc-900 active:bg-zinc-900 transition-colors"
+                    className="min-h-[48px] w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-zinc-900 active:bg-zinc-900 transition-colors"
                   >
                     <span className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
                       {hit.icon}
                     </span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-semibold text-white truncate">{hit.title}</span>
-                      <span className="block text-[11px] text-zinc-500 truncate">{hit.subtitle}</span>
+                      <span className="block text-xs text-zinc-500 truncate">{hit.subtitle}</span>
                     </span>
                     <ChevronRight className="w-4 h-4 text-zinc-600 shrink-0" />
                   </button>

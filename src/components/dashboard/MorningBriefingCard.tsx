@@ -171,28 +171,28 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   ];
 
   return (
-    <div className="rounded-3xl border border-lime-500/25 bg-gradient-to-b from-lime-500/10 to-transparent p-4">
+    <div className="rounded-3xl border border-[#22ec72]/25 bg-gradient-to-b from-[#22ec72]/10 to-transparent p-4">
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-2xl bg-lime-500/20 border border-lime-500/30 flex items-center justify-center shrink-0">
-          <Sunrise className="w-5 h-5 text-lime-400" />
+        <div className="w-10 h-10 rounded-2xl bg-[#22ec72]/20 border border-[#22ec72]/30 flex items-center justify-center shrink-0">
+          <Sunrise className="w-5 h-5 text-[#22ec72]" />
         </div>
         <div className="min-w-0">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-lime-400/80">
+          <div className="text-xs font-bold uppercase tracking-widest text-[#22ec72]/80">
             Daily briefing
           </div>
           <div className="text-base font-extrabold text-white leading-tight">
             {greeting}{ownerName ? `, ${ownerName.split(' ')[0]}` : ''}
           </div>
-          <div className="text-[11px] text-zinc-500">{dateStr}</div>
+          <div className="text-xs text-zinc-500">{dateStr}</div>
         </div>
         <button
           onClick={onOpenInbox}
-          className="ml-auto relative flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-bold text-white active:scale-98 shrink-0"
+          className="min-h-[48px] ml-auto relative flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-xs font-bold text-white active:scale-98 shrink-0"
         >
-          <Inbox className="w-4 h-4 text-lime-400" />
+          <Inbox className="w-4 h-4 text-[#22ec72]" />
           Inbox
           {unreadInboxCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center">
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-xs font-extrabold flex items-center justify-center">
               {unreadInboxCount > 9 ? '9+' : unreadInboxCount}
             </span>
           )}
@@ -204,7 +204,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
           <div key={s.label} className="rounded-2xl bg-zinc-950/70 border border-zinc-800 px-2 py-2.5 text-center">
             <s.icon className="w-4 h-4 text-zinc-500 mx-auto mb-1" />
             <div className="text-sm font-extrabold text-white leading-none">{s.value}</div>
-            <div className="text-[9px] text-zinc-500 mt-1 leading-tight">{s.label}</div>
+            <div className="text-xs text-zinc-500 mt-1 leading-tight">{s.label}</div>
           </div>
         ))}
       </div>
@@ -216,7 +216,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
             return (
               <div key={i} className="rounded-2xl bg-zinc-950/70 border border-zinc-800 p-3">
                 <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${meta.bg}`}>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${meta.bg}`}>
                     <span className={meta.color}>{meta.name}</span>
                   </span>
                 </div>
@@ -234,7 +234,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
                           setBusySuggestion(null);
                         }
                       }}
-                      className="px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-black text-[11px] font-extrabold cursor-pointer"
+                      className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:opacity-50 text-black text-xs font-extrabold cursor-pointer"
                     >
                       {busySuggestion === i ? 'Working…' : s.inlineLabel}
                     </button>
@@ -242,7 +242,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
                   {s.actionLabel && s.actionTab && (
                     <button
                       onClick={() => onNavigateTab(s.actionTab!)}
-                      className="text-[11px] font-extrabold text-lime-400 flex items-center gap-0.5"
+                      className="min-h-[48px] text-xs font-extrabold text-[#22ec72] flex items-center gap-0.5"
                     >
                       {s.actionLabel} <ChevronRight className="w-3.5 h-3.5" />
                     </button>

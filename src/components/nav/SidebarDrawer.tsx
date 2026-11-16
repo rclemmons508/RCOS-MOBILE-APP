@@ -111,7 +111,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         type="button"
         aria-label="Close menu"
         onClick={onClose}
-        className="absolute inset-0 w-full h-full bg-black/70 cursor-pointer"
+        className="min-h-[48px] absolute inset-0 w-full h-full bg-black/70 cursor-pointer"
       />
       <div className="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] bg-[#05090a] border-r border-[#1d2b26] flex flex-col">
         {/* Logo + close, as in the reference. */}
@@ -122,7 +122,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               <div className="text-base font-extrabold text-white tracking-tight leading-none truncate">
                 RC SOLUTIONS
               </div>
-              <div className="text-[9px] font-bold text-zinc-500 tracking-[0.2em] mt-1">
+              <div className="text-xs font-bold text-zinc-500 tracking-[0.2em] mt-1">
                 PEOPLE · PROPERTY · PROGRESS
               </div>
             </div>
@@ -133,7 +133,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               haptic.light();
               onClose();
             }}
-            className="w-10 h-10 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-zinc-300 hover:text-white flex items-center justify-center shrink-0 cursor-pointer"
+            className="min-h-[48px] w-10 h-10 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-zinc-300 hover:text-white flex items-center justify-center shrink-0 cursor-pointer"
             aria-label="Close menu"
           >
             <X className="w-5 h-5" />
@@ -160,7 +160,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                 <Icon className="w-5 h-5 shrink-0" />
                 <span className="flex-1 text-sm">{item.label}</span>
                 {item.id === 'operations' && operationsBadge > 0 && (
-                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border border-black shrink-0">
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center border border-black shrink-0">
                     {operationsBadge > 99 ? '99+' : operationsBadge}
                   </span>
                 )}
@@ -175,7 +175,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           <button
             type="button"
             onClick={() => goSettings('user')}
-            className="w-full flex items-center gap-3 p-2 rounded-2xl hover:bg-[#0c1211] transition text-left cursor-pointer"
+            className="min-h-[48px] w-full flex items-center gap-3 p-2 rounded-2xl hover:bg-[#0c1211] transition text-left cursor-pointer"
           >
             {currentUser?.authenticated && currentUser.avatar && !avatarBroken ? (
               <img

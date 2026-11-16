@@ -283,7 +283,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
           <button aria-label="Close"
             type="button"
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            className="min-h-[48px] p-1 text-zinc-400 hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -298,21 +298,21 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                 <Sparkles className="w-4 h-4 text-[#22ec72]" />
                 <span className="text-xs font-bold text-[#22ec72]">Fill from a file or pasted text</span>
               </div>
-              <p className="text-[11px] leading-relaxed text-zinc-400">
+              <p className="text-xs leading-relaxed text-zinc-400">
                 Upload a client file or paste their details — the app fills in the form below. Check everything before saving.
               </p>
               <div className="flex gap-1.5">
                 <button
                   type="button"
                   onClick={() => setFillMode('upload')}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${fillMode === 'upload' ? 'bg-[#22ec72] text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
+                  className={`min-h-[48px] flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${fillMode === 'upload' ? 'bg-[#22ec72] text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
                 >
                   Upload a file
                 </button>
                 <button
                   type="button"
                   onClick={() => setFillMode('paste')}
-                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${fillMode === 'paste' ? 'bg-[#22ec72] text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
+                  className={`min-h-[48px] flex-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${fillMode === 'paste' ? 'bg-[#22ec72] text-black' : 'bg-zinc-900 text-zinc-400 hover:text-white'}`}
                 >
                   Paste text
                 </button>
@@ -332,19 +332,19 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-200 hover:border-[#22ec72]/50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="min-h-[48px] w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-bold text-zinc-200 hover:border-[#22ec72]/50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Upload className="w-4 h-4 text-zinc-500" />
                     {stagedFile ? 'Choose a different file' : 'Choose a client file (.txt, .pdf, .docx, image)'}
                   </button>
                   {stagedFile && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-zinc-300">
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-300">
                       <FileText className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                       <span className="truncate">{stagedFile.name}</span>
                       <button
                         type="button"
                         onClick={() => setStagedFile(null)}
-                        className="text-zinc-500 hover:text-white shrink-0 cursor-pointer"
+                        className="min-h-[48px] text-zinc-500 hover:text-white shrink-0 cursor-pointer"
                         aria-label="Remove file"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -365,7 +365,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                 type="button"
                 onClick={handleAutoFill}
                 disabled={analyzing || (fillMode === 'paste' ? !pastedText.trim() : !stagedFile)}
-                className="w-full px-3 py-2 rounded-xl bg-[#22ec72] text-black font-bold text-xs hover:brightness-110 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-h-[48px] w-full px-3 py-2 rounded-xl bg-[#22ec72] text-black font-bold text-xs hover:brightness-110 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {analyzing ? (
                   <>
@@ -381,7 +381,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
               </button>
               {fillNote && (
                 <p
-                  className={`text-[11px] leading-relaxed ${
+                  className={`text-xs leading-relaxed ${
                     fillNote.kind === 'error'
                       ? 'text-red-400'
                       : fillNote.kind === 'partial'
@@ -481,14 +481,14 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+            className="min-h-[48px] px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             form="add-client-form"
-            className="px-4 py-2 rounded-xl bg-[#22ec72] text-black font-bold text-xs hover:brightness-110 transition-colors flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#22ec72]/20"
+            className="min-h-[48px] px-4 py-2 rounded-xl bg-[#22ec72] text-black font-bold text-xs hover:brightness-110 transition-colors flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#22ec72]/20"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>{initialClient ? 'Save Changes' : 'Complete Onboarding'}</span>

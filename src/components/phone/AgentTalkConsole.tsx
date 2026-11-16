@@ -67,13 +67,13 @@ export const TALK_PERSONA_INFO: Record<
 };
 
 const PERSONA_ICONS: Record<TalkPersona, React.ReactNode> = {
-  sales: <TrendingUp className="w-5 h-5 text-lime-400" />,
+  sales: <TrendingUp className="w-5 h-5 text-[#22ec72]" />,
   operations: <Kanban className="w-5 h-5 text-purple-400" />,
   marketing: <Megaphone className="w-5 h-5 text-yellow-400" />,
   support: <HeartHandshake className="w-5 h-5 text-pink-400" />,
   executive: <ShieldAlert className="w-5 h-5 text-red-400" />,
   technician: <Wrench className="w-5 h-5 text-orange-400" />,
-  finance: <Receipt className="w-5 h-5 text-emerald-400" />,
+  finance: <Receipt className="w-5 h-5 text-[#22ec72]" />,
 };
 
 interface VoiceTokenResponse {
@@ -335,14 +335,14 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
             <div className="text-base font-bold text-white truncate">
               {agentName} · {info.name}
             </div>
-            <div className="text-[11px] text-zinc-400 truncate">{agentRole}</div>
+            <div className="text-xs text-zinc-400 truncate">{agentRole}</div>
           </div>
         </div>
         <button
           type="button"
           onClick={endCall}
           aria-label="Close"
-          className="p-2 rounded-xl bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 cursor-pointer shrink-0"
+          className="min-h-[48px] p-2 rounded-xl bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 cursor-pointer shrink-0"
         >
           <X className="w-5 h-5" />
         </button>
@@ -352,21 +352,21 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4 min-h-0">
         <div className="relative flex items-center justify-center">
           {agentSpeaking && phase === 'connected' && (
-            <span className="animate-ping absolute inline-flex h-32 w-32 rounded-full bg-lime-400 opacity-20" />
+            <span className="animate-ping absolute inline-flex h-32 w-32 rounded-full bg-[#22ec72] opacity-20" />
           )}
           <div
             className={`w-28 h-28 rounded-full border-2 flex items-center justify-center transition ${
               agentSpeaking && phase === 'connected'
-                ? 'border-lime-400 bg-lime-500/10'
+                ? 'border-[#22ec72] bg-[#22ec72]/10'
                 : talking
                   ? 'border-red-400 bg-red-500/10'
                   : 'border-zinc-700 bg-zinc-900'
             }`}
           >
             {phase === 'connecting' ? (
-              <Loader2 className="w-10 h-10 text-lime-400 animate-spin" />
+              <Loader2 className="w-10 h-10 text-[#22ec72] animate-spin" />
             ) : agentSpeaking && phase === 'connected' ? (
-              <Volume2 className="w-10 h-10 text-lime-400" />
+              <Volume2 className="w-10 h-10 text-[#22ec72]" />
             ) : talking ? (
               <Mic className="w-10 h-10 text-red-400" />
             ) : (
@@ -380,12 +380,12 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
             <div className="text-xs text-zinc-400 font-mono mt-1">{mm}:{ss}</div>
           )}
           {phase === 'connected' && (
-            <div className="text-[11px] text-zinc-500 mt-2 max-w-xs">{info.hint}</div>
+            <div className="text-xs text-zinc-500 mt-2 max-w-xs">{info.hint}</div>
           )}
         </div>
 
         {phase === 'error' && error && (
-          <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 max-w-sm text-center">
+          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 max-w-sm text-center">
             {error}
           </p>
         )}
@@ -407,13 +407,13 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
               className={`w-24 h-24 rounded-full border-4 font-bold text-xs flex flex-col items-center justify-center gap-1 transition select-none touch-none cursor-pointer active:scale-95 disabled:opacity-50 ${
                 talking
                   ? 'bg-red-500 border-red-300 text-white'
-                  : 'bg-lime-500 border-lime-300 text-black'
+                  : 'bg-[#22ec72] border-[#22ec72] text-black'
               }`}
             >
               {talking ? <Mic className="w-8 h-8" /> : <MicOff className="w-8 h-8" />}
               <span>{talking ? 'Talking…' : 'Hold to talk'}</span>
             </button>
-            <div className="text-[11px] text-zinc-500 text-center">
+            <div className="text-xs text-zinc-500 text-center">
               Hold the button to talk, release to listen.
               <br />
               On desktop, click once to talk, click again to stop.
@@ -423,7 +423,7 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
           <button
             type="button"
             onClick={endCall}
-            className="px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm border border-zinc-700 cursor-pointer"
+            className="min-h-[48px] px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-sm border border-zinc-700 cursor-pointer"
           >
             Close
           </button>
@@ -435,9 +435,9 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
             onClick={toggleSpeaker}
             aria-pressed={speakerOn}
             title={speakerOn ? 'Switch to earpiece' : 'Switch to speakerphone'}
-            className={`p-3 rounded-xl border flex items-center transition cursor-pointer active:scale-95 ${
+            className={`min-h-[48px] p-3 rounded-xl border flex items-center transition cursor-pointer active:scale-95 ${
               speakerOn
-                ? 'bg-lime-500 text-black border-lime-500'
+                ? 'bg-[#22ec72] text-black border-[#22ec72]'
                 : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
             }`}
           >
@@ -446,7 +446,7 @@ export const AgentTalkConsole: React.FC<AgentTalkConsoleProps> = ({
           <button
             type="button"
             onClick={endCall}
-            className="px-5 py-3 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-sm flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            className="min-h-[48px] px-5 py-3 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-sm flex items-center gap-1.5 transition cursor-pointer active:scale-95"
           >
             <PhoneOff className="w-5 h-5" />
             <span>End</span>

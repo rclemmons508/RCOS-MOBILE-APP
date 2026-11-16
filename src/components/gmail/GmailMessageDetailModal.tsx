@@ -121,7 +121,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+                className="min-h-[48px] p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
                 title="Back to Inbox"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -134,7 +134,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               <button
                 type="button"
                 onClick={() => onToggleStar(message.id, message.isStarred)}
-                className={`p-1.5 rounded-xl transition cursor-pointer ${
+                className={`min-h-[48px] p-1.5 rounded-xl transition cursor-pointer ${
                   message.isStarred
                     ? 'text-amber-400 bg-amber-500/10'
                     : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800'
@@ -151,7 +151,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
                   await onMarkUnread(message.id);
                   onClose();
                 }}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+                className="min-h-[48px] p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
                 title="Mark as unread"
               >
                 <Mail className="w-4 h-4" />
@@ -161,7 +161,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               <button
                 type="button"
                 onClick={handleRequestTrash}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition cursor-pointer"
+                className="min-h-[48px] p-1.5 rounded-xl text-zinc-400 hover:text-red-400 hover:bg-zinc-800 transition cursor-pointer"
                 title="Move to trash"
               >
                 <Trash2 className="w-4 h-4" />
@@ -171,7 +171,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               <button aria-label="Close"
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer ml-1"
+                className="min-h-[48px] p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer ml-1"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -186,7 +186,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
                 {message.labelIds.map((lbl) => (
                   <span
                     key={lbl}
-                    className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400"
+                    className="text-xs font-mono px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400"
                   >
                     {lbl}
                   </span>
@@ -201,24 +201,24 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
             <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 space-y-2 text-xs">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-lime-400 shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-[#22ec72] shrink-0">
                     {message.from.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">
                     <div className="font-semibold text-white truncate">{message.from}</div>
-                    <div className="text-[11px] text-zinc-400 font-mono truncate">
+                    <div className="text-xs text-zinc-400 font-mono truncate">
                       To: {message.to}
                     </div>
                   </div>
                 </div>
 
-                <div className="text-[11px] text-zinc-500 font-mono shrink-0">
+                <div className="text-xs text-zinc-500 font-mono shrink-0">
                   {message.date}
                 </div>
               </div>
 
               {message.cc && (
-                <div className="text-[11px] text-zinc-400 font-mono">
+                <div className="text-xs text-zinc-400 font-mono">
                   <span className="text-zinc-500 font-medium">Cc:</span> {message.cc}
                 </div>
               )}
@@ -226,13 +226,13 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
 
             {/* Quick Dispatch Workflow Action */}
             {onCreateJobFromEmail && (
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-lime-950/20 border border-lime-800/40 text-xs">
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-[#22ec72]/5 border border-[#22ec72]/25 text-xs">
                 <div className="space-y-0.5">
-                  <div className="font-semibold text-lime-300 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-lime-400" />
+                  <div className="font-semibold text-[#22ec72] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#22ec72]" />
                     <span>RCOS Operations Dispatch</span>
                   </div>
-                  <div className="text-[11px] text-zinc-400">
+                  <div className="text-xs text-zinc-400">
                     Automatically convert this email into an active field job or service dispatch
                   </div>
                 </div>
@@ -242,7 +242,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
                     onCreateJobFromEmail(message);
                     onClose();
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-lime-950/50 transition shrink-0"
+                  className="min-h-[48px] px-3 py-1.5 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#22ec72]/15 transition shrink-0"
                 >
                   <Briefcase className="w-3.5 h-3.5" />
                   <span>Create Job</span>
@@ -252,7 +252,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
 
             {/* Remote images blocked notice */}
             {!isPlainTextFallback && (sanitized.blockedImages > 0 || loadImages) && (
-              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-[11px] text-zinc-400">
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400">
                 <span>
                   {loadImages
                     ? 'Images from the sender are shown.'
@@ -262,7 +262,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
                   type="button"
                   onClick={() => setLoadImages((v) => !v)}
                   aria-pressed={loadImages}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold cursor-pointer shrink-0"
+                  className="min-h-[48px] px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold cursor-pointer shrink-0"
                 >
                   {loadImages ? 'Hide images' : 'Load images'}
                 </button>
@@ -290,7 +290,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
             <button
               type="button"
               onClick={handleRequestPermanentDelete}
-              className="text-[11px] text-red-400/80 hover:text-red-300 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-red-950/20 cursor-pointer transition"
+              className="min-h-[48px] text-xs text-red-400/80 hover:text-red-300 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-red-950/20 cursor-pointer transition"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Delete Permanently</span>
@@ -300,7 +300,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3.5 py-2 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                className="min-h-[48px] px-3.5 py-2 text-xs text-zinc-400 hover:text-white cursor-pointer"
               >
                 Close
               </button>
@@ -310,7 +310,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
                   onReply(message);
                   onClose();
                 }}
-                className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 cursor-pointer transition shadow-md shadow-lime-950/50"
+                className="min-h-[48px] px-4 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-bold text-xs flex items-center gap-1.5 cursor-pointer transition shadow-md shadow-[#22ec72]/15"
               >
                 <Reply className="w-3.5 h-3.5" />
                 <span>Reply</span>

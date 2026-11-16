@@ -41,14 +41,14 @@ export function getEmployeeIcon(iconName: string, className = 'w-4 h-4'): React.
  * ones added later — gets a color deterministically.
  */
 const AGENT_PALETTE: Array<{ avatar: string; label: string }> = [
-  { avatar: 'bg-lime-500/15 text-lime-400 border-lime-500/30', label: 'text-lime-400' },
+  { avatar: 'bg-[#22ec72]/15 text-[#22ec72] border-[#22ec72]/30', label: 'text-[#22ec72]' },
   { avatar: 'bg-blue-500/15 text-blue-400 border-blue-500/30', label: 'text-blue-400' },
   { avatar: 'bg-amber-500/15 text-amber-400 border-amber-500/30', label: 'text-amber-400' },
   { avatar: 'bg-pink-500/15 text-pink-400 border-pink-500/30', label: 'text-pink-400' },
   { avatar: 'bg-purple-500/15 text-purple-400 border-purple-500/30', label: 'text-purple-400' },
   { avatar: 'bg-orange-500/15 text-orange-400 border-orange-500/30', label: 'text-orange-400' },
   { avatar: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30', label: 'text-cyan-400' },
-  { avatar: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', label: 'text-emerald-400' },
+  { avatar: 'bg-[#22ec72]/15 text-[#22ec72] border-[#22ec72]/30', label: 'text-[#22ec72]' },
 ];
 
 export function agentColorSet(employeeId: string): { avatar: string; label: string } {

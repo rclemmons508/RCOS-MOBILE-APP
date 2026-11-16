@@ -1491,21 +1491,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div>
               <h1 className="text-xs font-bold text-white tracking-tight uppercase flex items-center gap-1.5">
                 <span>RCOS Intelligent Onboarding</span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-400 font-mono">40 PRESETS</span>
+                <span className="text-xs px-1.5 py-0.2 rounded bg-[#22ec72]/20 text-[#22ec72] font-mono">40 PRESETS</span>
               </h1>
-              <p className="text-[10px] text-zinc-400 font-mono">AI Business Intake & Preset Calibrator</p>
+              <p className="text-xs text-zinc-400 font-mono">AI Business Intake & Preset Calibrator</p>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20 font-bold">
+            <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/20 font-bold">
               {step === 'input' ? 'Step 1: Intake' : step === 'detecting' ? 'Analyzing...' : 'Step 2: User Approval'}
             </span>
             {onCancel && (
               <button aria-label="Close"
                 type="button"
                 onClick={onCancel}
-                className="w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition"
+                className="min-h-[48px] min-w-[48px] w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition"
                 title="Close setup"
               >
                 <X className="w-3.5 h-3.5" />
@@ -1541,9 +1541,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   haptic.selection();
                   setInputMode('upload');
                 }}
-                className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                className={`min-h-[48px] py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
                   inputMode === 'upload'
-                    ? 'bg-lime-500 text-black shadow-md'
+                    ? 'bg-[#22ec72] text-black shadow-md'
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
@@ -1556,9 +1556,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   haptic.selection();
                   setInputMode('manual');
                 }}
-                className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                className={`min-h-[48px] py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
                   inputMode === 'manual'
-                    ? 'bg-lime-500 text-black shadow-md'
+                    ? 'bg-[#22ec72] text-black shadow-md'
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
@@ -1578,9 +1578,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   onClick={openFilePicker}
                   className={`p-5 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center cursor-pointer ${
                     isDragging
-                      ? 'border-lime-400 bg-lime-500/10'
+                      ? 'border-[#22ec72] bg-[#22ec72]/10'
                       : uploadedFile
-                      ? 'border-lime-500/50 bg-zinc-900/80'
+                      ? 'border-[#22ec72]/50 bg-zinc-900/80'
                       : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900/70'
                   }`}
                 >
@@ -1595,12 +1595,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   {uploadedFile ? (
                     <div className="w-full flex items-center justify-between gap-3 p-1">
                       <div className="flex items-center gap-3 min-w-0 text-left">
-                        <div className="w-10 h-10 rounded-xl bg-lime-500/20 text-lime-400 flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 rounded-xl bg-[#22ec72]/20 text-[#22ec72] flex items-center justify-center shrink-0">
                           <FileText className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
                           <div className="text-xs font-bold text-white truncate">{uploadedFile.name}</div>
-                          <div className="text-[10px] text-zinc-400 font-mono">
+                          <div className="text-xs text-zinc-400 font-mono">
                             {(uploadedFile.size / 1024).toFixed(1)} KB • Ready for AI Onboarding Agent
                           </div>
                         </div>
@@ -1611,20 +1611,20 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                           e.stopPropagation();
                           clearUploadedFile();
                         }}
-                        className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-mono shrink-0"
+                        className="min-h-[48px] px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono shrink-0"
                       >
                         Change File
                       </button>
                     </div>
                   ) : (
                     <>
-                      <div className="w-10 h-10 rounded-2xl bg-zinc-800/80 text-lime-400 flex items-center justify-center mb-2">
+                      <div className="w-10 h-10 rounded-2xl bg-zinc-800/80 text-[#22ec72] flex items-center justify-center mb-2">
                         <Upload className="w-5 h-5" />
                       </div>
                       <h3 className="text-xs font-bold text-white">
-                        Drop your business file here, or <span className="text-lime-400 underline">browse</span>
+                        Drop your business file here, or <span className="text-[#22ec72] underline">browse</span>
                       </h3>
-                      <p className="text-[10px] text-zinc-400 mt-1 max-w-xs font-mono">
+                      <p className="text-xs text-zinc-400 mt-1 max-w-xs font-mono">
                         Accepts invoices, proposals, service rate cards, price lists, or company overviews (.PDF, .TXT, .DOCX, .CSV)
                       </p>
                     </>
@@ -1634,7 +1634,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 {/* Instant Sample Business File Test Chips */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono">
+                    <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono">
                       Or tap a sample document to test the AI Agent:
                     </span>
                   </div>
@@ -1646,17 +1646,17 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                           key={sample.name}
                           type="button"
                           onClick={() => handleLoadSampleFile(sample)}
-                          className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          className={`min-h-[48px] p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                             isSelected
-                              ? 'bg-lime-500/20 border-lime-500/60 text-lime-300 font-bold'
+                              ? 'bg-[#22ec72]/20 border-[#22ec72]/60 text-[#22ec72] font-bold'
                               : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
                           }`}
                         >
-                          <div className="text-[11px] font-bold truncate flex items-center gap-1">
-                            <FileText className="w-3 h-3 shrink-0 text-lime-400" />
+                          <div className="text-xs font-bold truncate flex items-center gap-1">
+                            <FileText className="w-3 h-3 shrink-0 text-[#22ec72]" />
                             <span className="truncate">{sample.trade}</span>
                           </div>
-                          <span className="text-[9px] text-zinc-400 truncate mt-0.5">{sample.title}</span>
+                          <span className="text-xs text-zinc-400 truncate mt-0.5">{sample.title}</span>
                         </button>
                       );
                     })}
@@ -1669,7 +1669,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             {inputMode === 'manual' && (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Business / Company Name
                   </label>
                   <input
@@ -1677,12 +1677,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     placeholder="e.g. Apex Mechanical & Electrical Solutions"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     What does your business do? (Services & Operations)
                   </label>
                   <textarea
@@ -1690,13 +1690,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     value={businessDescription}
                     onChange={(e) => setBusinessDescription(e.target.value)}
                     placeholder="Describe your primary services, customer calls, dispatch needs, or operational scope..."
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 resize-none"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72] resize-none"
                   />
                 </div>
 
                 {/* 1-Tap Trade Inspiration Chips */}
                 <div>
-                  <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 font-mono">
+                  <span className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1.5 font-mono">
                     Quick-fill by trade:
                   </span>
                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
@@ -1709,9 +1709,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                           if (!businessName) setBusinessName(`${chip.label.split('&')[0].trim()} Pros`);
                           setBusinessDescription(chip.query);
                         }}
-                        className={`text-[10px] px-2.5 py-1.2 rounded-xl border transition-all cursor-pointer ${
+                        className={`min-h-[48px] text-xs px-2.5 py-1.2 rounded-xl border transition-all cursor-pointer ${
                           businessDescription === chip.query
-                            ? 'bg-lime-500/20 text-lime-300 border-lime-500/50 font-bold'
+                            ? 'bg-[#22ec72]/20 text-[#22ec72] border-[#22ec72]/50 font-bold'
                             : 'bg-zinc-900/90 text-zinc-300 border-zinc-800 hover:border-zinc-700'
                         }`}
                       >
@@ -1728,7 +1728,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               type="button"
               onClick={handleStartAnalysis}
               disabled={loading}
-              className="w-full mt-3 py-3.5 px-4 rounded-xl bg-lime-500 hover:bg-lime-400 active:scale-98 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-lime-500/20 transition cursor-pointer disabled:opacity-50"
+              className="min-h-[48px] w-full mt-3 py-3.5 px-4 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] active:scale-98 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#22ec72]/20 transition cursor-pointer disabled:opacity-50"
             >
               <Sparkles className="w-4 h-4 fill-black" />
               <span>
@@ -1745,11 +1745,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         {step === 'detecting' && (
           <div className="py-8 flex flex-col items-center justify-center text-center space-y-5">
             <div className="relative">
-              <div className="w-16 h-16 rounded-3xl bg-lime-500/20 border border-lime-500/40 text-lime-400 flex items-center justify-center animate-pulse shadow-xl shadow-lime-500/10">
+              <div className="w-16 h-16 rounded-3xl bg-[#22ec72]/20 border border-[#22ec72]/40 text-[#22ec72] flex items-center justify-center animate-pulse shadow-xl shadow-[#22ec72]/10">
                 <Bot className="w-8 h-8" />
               </div>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-zinc-900 border border-lime-500/40 flex items-center justify-center">
-                <Loader2 className="w-3.5 h-3.5 text-lime-400 animate-spin" />
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-zinc-900 border border-[#22ec72]/40 flex items-center justify-center">
+                <Loader2 className="w-3.5 h-3.5 text-[#22ec72] animate-spin" />
               </div>
             </div>
 
@@ -1766,11 +1766,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div className="w-full max-w-xs space-y-2">
               <div className="h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
                 <div 
-                  className="h-full bg-lime-500 transition-all duration-500"
+                  className="h-full bg-[#22ec72] transition-all duration-500"
                   style={{ width: `${((detectingStageIndex + 1) / detectingStages.length) * 100}%` }}
                 />
               </div>
-              <div className="flex justify-between text-[10px] text-zinc-500 font-mono">
+              <div className="flex justify-between text-xs text-zinc-500 font-mono">
                 <span>Intake</span>
                 <span>Decipher</span>
                 <span>Preset Match</span>
@@ -1785,26 +1785,26 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           <div className="space-y-4 text-left">
             
             {/* MANDATORY USER APPROVAL NOTICE BANNER */}
-            <div className="p-3 rounded-2xl bg-lime-500/10 border border-lime-500/30 flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-lime-400 shrink-0 mt-0.5" />
+            <div className="p-3 rounded-2xl bg-[#22ec72]/10 border border-[#22ec72]/30 flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-[#22ec72] shrink-0 mt-0.5" />
               <div className="space-y-0.5 text-left">
                 <div className="text-xs font-extrabold text-white flex items-center gap-2">
                   <span>AI Agent Recommendation Awaiting Your Approval</span>
                   {resultSource === 'fallback' ? (
-                    <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
+                    <span className="text-xs font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
                       Low confidence — offline match, please confirm
                     </span>
                   ) : isUncertain ? (
-                    <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
+                    <span className="text-xs font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">
                       Low confidence — please confirm this AI match
                     </span>
                   ) : (
-                    <span className="text-[9.5px] font-mono px-1.5 py-0.2 rounded bg-lime-500/20 text-lime-300 font-bold">
+                    <span className="text-xs font-mono px-1.5 py-0.2 rounded bg-[#22ec72]/20 text-[#22ec72] font-bold">
                       {(confidenceScore * 100).toFixed(0)}% Confidence
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-zinc-300">
+                <p className="text-xs text-zinc-300">
                   The AI Onboarding Agent analyzed your inputs and selected the preset below. You have full control to approve it or switch to any other preset before proceeding.
                 </p>
               </div>
@@ -1814,7 +1814,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div className="p-4 rounded-2xl bg-zinc-900/90 border border-zinc-800 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/20">
+                  <span className="text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/20">
                     Recommended Industry Preset
                   </span>
                   <h3 className="text-base font-extrabold text-white mt-1">
@@ -1829,16 +1829,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     haptic.selection();
                     setIsChangingPreset(true);
                   }}
-                  className="px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-[10.5px] font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  className="min-h-[48px] px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                 >
-                  <RefreshCw className="w-3 h-3 text-lime-400" />
+                  <RefreshCw className="w-3 h-3 text-[#22ec72]" />
                   <span>Change Preset</span>
                 </button>
               </div>
 
               {/* Agent Reasoning Box */}
-              <div className="p-2.5 rounded-xl bg-black/60 border border-zinc-800/80 text-[11px] text-zinc-300 space-y-1">
-                <div className="flex items-center gap-1.5 text-lime-400 font-bold text-[10px] font-mono uppercase tracking-wider">
+              <div className="p-2.5 rounded-xl bg-black/60 border border-zinc-800/80 text-xs text-zinc-300 space-y-1">
+                <div className="flex items-center gap-1.5 text-[#22ec72] font-bold text-xs font-mono uppercase tracking-wider">
                   <Bot className="w-3 h-3" />
                   <span>Agent Reasoning & Clues:</span>
                 </div>
@@ -1850,11 +1850,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               {/* Key Insights (if available) */}
               {keyInsights.length > 0 && (
                 <div className="space-y-1 pt-1">
-                  <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Key Operational Insights:</span>
+                  <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">Key Operational Insights:</span>
                   <div className="space-y-1">
                     {keyInsights.slice(0, 3).map((insight, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5 text-[10.5px] text-zinc-300 font-mono">
-                        <Check className="w-3 h-3 text-lime-400 shrink-0" />
+                      <div key={idx} className="flex items-center gap-1.5 text-xs text-zinc-300 font-mono">
+                        <Check className="w-3 h-3 text-[#22ec72] shrink-0" />
                         <span className="truncate">{insight}</span>
                       </div>
                     ))}
@@ -1867,13 +1867,13 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 Conflicts are flagged, never blocking: every field below
                 stays editable and the user can proceed. */}
             <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
-              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+              <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
                 What we checked — typed vs document
               </span>
               <div className="space-y-1.5">
                 {buildVerificationFindings().map((f, idx) => (
-                  <div key={idx} className="flex items-start gap-2 text-[11px] leading-snug">
-                    {f.status === 'confirmed' && <CheckCircle2 className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />}
+                  <div key={idx} className="flex items-start gap-2 text-xs leading-snug">
+                    {f.status === 'confirmed' && <CheckCircle2 className="w-3.5 h-3.5 text-[#22ec72] shrink-0 mt-0.5" />}
                     {f.status === 'conflict' && <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />}
                     {f.status === 'guessed' && <Info className="w-3.5 h-3.5 text-amber-300 shrink-0 mt-0.5" />}
                     {f.status === 'missing' && <Info className="w-3.5 h-3.5 text-zinc-500 shrink-0 mt-0.5" />}
@@ -1885,7 +1885,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 ))}
               </div>
               {buildVerificationFindings().some((f) => f.status === 'conflict') && (
-                <p className="text-[11px] text-amber-300">
+                <p className="text-xs text-amber-300">
                   Something does not match — check the company name below and fix whichever side is wrong. Nothing is blocked; you can still continue.
                 </p>
               )}
@@ -1893,7 +1893,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
             {/* DEEPER FACTS FOUND — service area, hours, prices, contact */}
             <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-              <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+              <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
                 More about your business
               </span>
               {/* The "offline match" note is for a TRUE fallback only —
@@ -1902,14 +1902,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   the empty form; `!detectedProfile` keeps the local
                   fallback (no server result at all) covered too. */}
               {resultSource === 'fallback' || !detectedProfile ? (
-                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                <p className="text-xs text-zinc-400 leading-relaxed">
                   No extra facts were pulled out — the offline match only picked the industry. You can add these after launch in Settings.
                 </p>
               ) : (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
                         Service area
                       </label>
                       <input
@@ -1917,11 +1917,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         value={detectedProfile.serviceArea}
                         onChange={(e) => setDetectedProfile({ ...detectedProfile, serviceArea: e.target.value })}
                         placeholder="Not found in the document"
-                        className="w-full bg-zinc-950 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                        className="w-full bg-zinc-950 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
                         Business hours
                       </label>
                       <input
@@ -1929,43 +1929,43 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         value={detectedProfile.businessHours}
                         onChange={(e) => setDetectedProfile({ ...detectedProfile, businessHours: e.target.value })}
                         placeholder="Not found in the document"
-                        className="w-full bg-zinc-950 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                        className="w-full bg-zinc-950 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                       />
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {detectedProfile.emergencyAvailable && (
-                      <span className="text-[10px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold">Emergency service</span>
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold">Emergency service</span>
                     )}
                     {detectedProfile.teamSize && (
-                      <span className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Team: {detectedProfile.teamSize}</span>
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Team: {detectedProfile.teamSize}</span>
                     )}
                     {detectedProfile.servesResidential && (
-                      <span className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Serves homes</span>
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Serves homes</span>
                     )}
                     {detectedProfile.servesCommercial && (
-                      <span className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Serves businesses</span>
+                      <span className="text-xs px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold">Serves businesses</span>
                     )}
                   </div>
                   {detectedProfile.priceHints.length > 0 && (
                     <div className="space-y-1">
-                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Prices found in the document:</span>
+                      <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">Prices found in the document:</span>
                       {detectedProfile.priceHints.map((h, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-[11px] text-zinc-300">
+                        <div key={idx} className="flex items-center justify-between text-xs text-zinc-300">
                           <span>{h.service}</span>
-                          <span className="font-mono font-bold text-lime-400">{h.price}</span>
+                          <span className="font-mono font-bold text-[#22ec72]">{h.price}</span>
                         </div>
                       ))}
-                      <p className="text-[10px] text-zinc-500">Only prices printed in the document are shown — nothing here was guessed.</p>
+                      <p className="text-xs text-zinc-500">Only prices printed in the document are shown — nothing here was guessed.</p>
                     </div>
                   )}
                   {(detectedProfile.contactInfo.phone || detectedProfile.contactInfo.email || detectedProfile.contactInfo.website || detectedProfile.contactInfo.address) && (
                     <div className="space-y-1">
-                      <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Contact details found:</span>
-                      {detectedProfile.contactInfo.phone && <p className="text-[11px] text-zinc-300">Phone: {detectedProfile.contactInfo.phone}</p>}
-                      {detectedProfile.contactInfo.email && <p className="text-[11px] text-zinc-300">Email: {detectedProfile.contactInfo.email}</p>}
-                      {detectedProfile.contactInfo.website && <p className="text-[11px] text-zinc-300">Website: {detectedProfile.contactInfo.website}</p>}
-                      {detectedProfile.contactInfo.address && <p className="text-[11px] text-zinc-300">Address: {detectedProfile.contactInfo.address}</p>}
+                      <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">Contact details found:</span>
+                      {detectedProfile.contactInfo.phone && <p className="text-xs text-zinc-300">Phone: {detectedProfile.contactInfo.phone}</p>}
+                      {detectedProfile.contactInfo.email && <p className="text-xs text-zinc-300">Email: {detectedProfile.contactInfo.email}</p>}
+                      {detectedProfile.contactInfo.website && <p className="text-xs text-zinc-300">Website: {detectedProfile.contactInfo.website}</p>}
+                      {detectedProfile.contactInfo.address && <p className="text-xs text-zinc-300">Address: {detectedProfile.contactInfo.address}</p>}
                     </div>
                   )}
                 </>
@@ -1975,12 +1975,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             {/* SUGGESTED NEXT SETUPS — suggestions only, nothing switched on */}
             {buildSetupSuggestions().length > 0 && (
               <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
-                <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
                   Suggested next setups (not switched on yet)
                 </span>
                 {buildSetupSuggestions().map((s, idx) => (
-                  <div key={idx} className="flex items-start gap-2 text-[11px] text-zinc-300 leading-snug">
-                    <Sparkles className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />
+                  <div key={idx} className="flex items-start gap-2 text-xs text-zinc-300 leading-snug">
+                    <Sparkles className="w-3.5 h-3.5 text-[#22ec72] shrink-0 mt-0.5" />
                     <span>{s}</span>
                   </div>
                 ))}
@@ -1990,7 +1990,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             {/* ALTERNATIVE MATCHES (2nd/3rd choices) */}
             {alternativeIndustries.length > 0 && (
               <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
-                <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
+                <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
                   Not quite right? Try one of these instead:
                 </span>
                 <div className="flex flex-wrap gap-1.5">
@@ -1999,11 +1999,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       key={alt.preset.id}
                       type="button"
                       onClick={() => handleSelectAlternativePreset(alt.preset)}
-                      className="text-[11px] px-2.5 py-1.5 rounded-xl border border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-lime-500/50 hover:text-lime-300 font-bold transition cursor-pointer"
+                      className="min-h-[48px] text-xs px-2.5 py-1.5 rounded-xl border border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-[#22ec72]/50 hover:text-[#22ec72] font-bold transition cursor-pointer"
                     >
                       {alt.preset.name}
                       {typeof alt.score === 'number' && (
-                        <span className="ml-1.5 text-[10px] font-mono text-zinc-400">
+                        <span className="ml-1.5 text-xs font-mono text-zinc-400">
                           {alt.score <= 1 ? `${(alt.score * 100).toFixed(0)}%` : `Score ${alt.score}`}
                         </span>
                       )}
@@ -2017,7 +2017,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
                     Company Name
                   </label>
                   <input
@@ -2025,12 +2025,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     placeholder="Enter business name"
-                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
+                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1">
                     Front-Line Role Title
                   </label>
                   <input
@@ -2038,27 +2038,27 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     value={technicianRoleName}
                     onChange={(e) => setTechnicianRoleName(e.target.value)}
                     placeholder="e.g. Journeyman Plumber"
-                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                   />
                 </div>
               </div>
 
               {/* Services Tags */}
               <div>
-                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1.5">
+                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono mb-1.5">
                   Standard Services ({detectedServices.length})
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {detectedServices.map((service, idx) => (
                     <span 
                       key={idx} 
-                      className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700/80 flex items-center gap-1.5"
+                      className="text-xs px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-200 border border-zinc-700/80 flex items-center gap-1.5"
                     >
                       <span>{asText(service)}</span>
                       <button aria-label="Remove service"
                         type="button"
                         onClick={() => handleRemoveService(idx)}
-                        className="text-zinc-400 hover:text-red-400"
+                        className="min-h-[48px] text-zinc-400 hover:text-red-400"
                       >
                         <X className="w-2.5 h-2.5" />
                       </button>
@@ -2072,12 +2072,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     onChange={(e) => setNewServiceTag(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddService())}
                     placeholder="Add custom service (press Enter)..."
-                    className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
                   />
                   <button
                     type="button"
                     onClick={handleAddService}
-                    className="px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold transition"
+                    className="min-h-[48px] px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold transition"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -2087,10 +2087,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               {/* Safety Dollar Limit Slider */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider font-mono">
+                  <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono">
                     Autonomous Dollar Approval Limit:
                   </label>
-                  <span className="text-xs font-bold text-lime-400 font-mono">${dollarThreshold}</span>
+                  <span className="text-xs font-bold text-[#22ec72] font-mono">${dollarThreshold}</span>
                 </div>
                 <input
                   type="range"
@@ -2099,9 +2099,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                   step="50"
                   value={dollarThreshold}
                   onChange={(e) => setDollarThreshold(Number(e.target.value))}
-                  className="w-full accent-lime-400 cursor-pointer"
+                  className="w-full accent-[#22ec72] cursor-pointer"
                 />
-                <span className="text-[9px] text-zinc-500 block font-mono">
+                <span className="text-xs text-zinc-500 block font-mono">
                   Expenses & quotes above ${dollarThreshold} require explicit human operator approval.
                 </span>
               </div>
@@ -2111,20 +2111,20 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between px-1">
                 <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                  <Bot className="w-3.5 h-3.5 text-lime-400" />
+                  <Bot className="w-3.5 h-3.5 text-[#22ec72]" />
                   <span>Preset Autonomous AI Team</span>
                 </h4>
-                <span className="text-[10px] text-zinc-400 font-mono">Toggle assistants</span>
+                <span className="text-xs text-zinc-400 font-mono">Toggle assistants</span>
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
                 {[
                   { key: 'customer_service', label: '24/7 Voice Receptionist', icon: Phone, color: 'text-blue-400' },
                   { key: 'operations', label: 'Smart Job Dispatcher', icon: Briefcase, color: 'text-amber-400' },
-                  { key: 'sales', label: 'Trade Estimator & Quotes', icon: Sparkles, color: 'text-emerald-400' },
+                  { key: 'sales', label: 'Trade Estimator & Quotes', icon: Sparkles, color: 'text-[#22ec72]' },
                   { key: 'technician', label: technicianRoleName, icon: Wrench, color: 'text-orange-400' },
                   { key: 'finance', label: 'Invoicing & Ledger Auditor', icon: Sliders, color: 'text-purple-400' },
-                  { key: 'executive_assistant', label: 'Operations & Safety Chief', icon: ShieldCheck, color: 'text-lime-400' }
+                  { key: 'executive_assistant', label: 'Operations & Safety Chief', icon: ShieldCheck, color: 'text-[#22ec72]' }
                 ].map((emp) => {
                   const isEnabled = !!activeEmployees[emp.key];
                   const Icon = emp.icon;
@@ -2134,16 +2134,16 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       onClick={() => toggleEmployee(emp.key)}
                       className={`p-2 rounded-xl border flex items-center justify-between gap-2 transition-all cursor-pointer ${
                         isEnabled
-                          ? 'bg-zinc-900 border-lime-500/40 text-white'
+                          ? 'bg-zinc-900 border-[#22ec72]/40 text-white'
                           : 'bg-zinc-950 border-zinc-800 text-zinc-500'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <Icon className={`w-3.5 h-3.5 shrink-0 ${emp.color}`} />
-                        <span className="text-[11px] font-bold truncate">{emp.label}</span>
+                        <span className="text-xs font-bold truncate">{emp.label}</span>
                       </div>
                       <div className={`w-4 h-4 rounded-full flex items-center justify-center border shrink-0 ${
-                        isEnabled ? 'bg-lime-500 border-lime-400 text-black' : 'border-zinc-700'
+                        isEnabled ? 'bg-[#22ec72] border-[#22ec72] text-black' : 'border-zinc-700'
                       }`}>
                         {isEnabled && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                       </div>
@@ -2159,7 +2159,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 type="button"
                 onClick={handleApproveAndLaunch}
                 disabled={loading}
-                className="w-full py-3.5 px-4 rounded-xl bg-lime-500 hover:bg-lime-400 active:scale-98 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-lime-500/20 transition cursor-pointer disabled:opacity-50"
+                className="min-h-[48px] w-full py-3.5 px-4 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] active:scale-98 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#22ec72]/20 transition cursor-pointer disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Approve Preset & Launch {businessName || 'Workspace'}</span>
@@ -2169,14 +2169,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setStep('input')}
-                  className="text-zinc-400 hover:text-white transition font-mono text-[11px] cursor-pointer"
+                  className="min-h-[48px] text-zinc-400 hover:text-white transition font-mono text-xs cursor-pointer"
                 >
                   ← Back to Upload / Input
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsChangingPreset(true)}
-                  className="text-lime-400 hover:underline transition font-mono text-[11px] cursor-pointer flex items-center gap-1"
+                  className="min-h-[48px] text-[#22ec72] hover:underline transition font-mono text-xs cursor-pointer flex items-center gap-1"
                 >
                   <span>Select different preset ({INDUSTRY_PRESETS.length} available)</span>
                 </button>
@@ -2193,12 +2193,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <div className="flex items-center justify-between border-b border-zinc-800 pb-2.5">
                 <div>
                   <h3 className="text-sm font-extrabold text-white">Select Business Industry Preset</h3>
-                  <p className="text-[10px] text-zinc-400 font-mono">Choose from 40 tailored operational configurations</p>
+                  <p className="text-xs text-zinc-400 font-mono">Choose from 40 tailored operational configurations</p>
                 </div>
                 <button aria-label="Close"
                   type="button"
                   onClick={() => setIsChangingPreset(false)}
-                  className="w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center"
+                  className="min-h-[48px] min-w-[48px] w-6 h-6 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -2213,7 +2213,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     value={presetSearch}
                     onChange={(e) => setPresetSearch(e.target.value)}
                     placeholder="Search trade, service, or industry keyword..."
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none"
                   />
                 </div>
 
@@ -2224,9 +2224,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       key={cat.id}
                       type="button"
                       onClick={() => setSelectedCategory(cat.id)}
-                      className={`text-[10px] px-2.5 py-1 rounded-lg whitespace-nowrap transition cursor-pointer border ${
+                      className={`min-h-[48px] text-xs px-2.5 py-1 rounded-lg whitespace-nowrap transition cursor-pointer border ${
                         selectedCategory === cat.id
-                          ? 'bg-lime-500/20 text-lime-400 border-lime-500/40 font-bold'
+                          ? 'bg-[#22ec72]/20 text-[#22ec72] border-[#22ec72]/40 font-bold'
                           : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
                       }`}
                     >
@@ -2246,7 +2246,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                       onClick={() => handleSelectDifferentPreset(preset)}
                       className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         isCurrent
-                          ? 'bg-lime-500/10 border-lime-500/50 text-white'
+                          ? 'bg-[#22ec72]/10 border-[#22ec72]/50 text-white'
                           : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900'
                       }`}
                     >
@@ -2254,21 +2254,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         <div className="text-xs font-extrabold text-white flex items-center gap-2">
                           <span>{preset.name}</span>
                           {isCurrent && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-lime-500 text-black font-extrabold">
+                            <span className="text-xs px-1.5 py-0.2 rounded bg-[#22ec72] text-black font-extrabold">
                               CURRENT
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-zinc-400 font-mono">
+                        <span className="text-xs text-zinc-400 font-mono">
                           {preset.technicianRoleName || 'Specialist'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-zinc-400 line-clamp-1 mb-2">
+                      <p className="text-xs text-zinc-400 line-clamp-1 mb-2">
                         {preset.description}
                       </p>
                       <div className="flex flex-wrap gap-1">
                         {preset.defaultServices.slice(0, 3).map((s, idx) => (
-                          <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
+                          <span key={idx} className="text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
                             {s}
                           </span>
                         ))}
@@ -2282,7 +2282,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsChangingPreset(false)}
-                  className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold"
+                  className="min-h-[48px] px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold"
                 >
                   Close
                 </button>

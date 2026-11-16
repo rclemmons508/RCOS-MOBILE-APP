@@ -40,7 +40,7 @@ export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ active
               haptic.light();
               onNavigate(item.id);
             }}
-            className={`relative ${hubSwitcherButton(isActive)}`}
+            className={`min-h-[48px] relative ${hubSwitcherButton(isActive)}`}
           >
             <Icon className="w-4 h-4" />
             <span>{item.label}</span>

@@ -356,24 +356,24 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
   return (
     <div className="flex flex-col h-full bg-black text-white p-3 sm:p-4 rounded-3xl border border-zinc-800 shadow-2xl relative overflow-hidden">
       {/* Simulation notice — this console is a demo, not a live call. */}
-      <div className="mb-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/40 text-[11px] text-amber-300 font-bold text-center shrink-0">
+      <div className="mb-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/40 text-xs text-amber-300 font-bold text-center shrink-0">
         Simulation — practice console only. No real call is connected and transfers do not move a live caller.
       </div>
       {/* Top Call Status Bar */}
       <div className="flex items-center justify-between pb-3 border-b border-zinc-900 shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="relative">
-            <div className="w-3 h-3 rounded-full bg-lime-500 animate-ping absolute inset-0" />
-            <div className="w-3 h-3 rounded-full bg-lime-500 relative" />
+            <div className="w-3 h-3 rounded-full bg-[#22ec72] animate-ping absolute inset-0" />
+            <div className="w-3 h-3 rounded-full bg-[#22ec72] relative" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-white">{activeCall.callerName}</span>
-              <span className="text-[10px] px-2 py-0.2 rounded-full font-mono bg-zinc-900 text-lime-400 border border-zinc-800 font-bold">
+              <span className="text-xs px-2 py-0.2 rounded-full font-mono bg-zinc-900 text-[#22ec72] border border-zinc-800 font-bold">
                 {formatTimer(callDurationSeconds)}
               </span>
             </div>
-            <div className="text-[10.5px] text-zinc-400 font-mono">
+            <div className="text-xs text-zinc-400 font-mono">
               {activeCall.callerNumber} {activeDepartment ? `• 🔀 ${activeDepartment}` : ''}
             </div>
           </div>
@@ -384,7 +384,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
           <button
             type="button"
             onClick={handleToggleAnsweringMode}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+            className={`min-h-[48px] px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
               answeredBy === 'ai_receptionist'
                 ? 'bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/30'
                 : 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30'
@@ -394,13 +394,13 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
               <>
                 <Sparkles className="w-3.5 h-3.5 text-purple-400" />
                 <span className="hidden sm:inline">AI Kore:</span>
-                <span className="text-[11px] underline">Take Over Call</span>
+                <span className="text-xs underline">Take Over Call</span>
               </>
             ) : (
               <>
                 <User className="w-3.5 h-3.5 text-blue-400" />
                 <span className="hidden sm:inline">Human:</span>
-                <span className="text-[11px] underline">Hand Off to AI</span>
+                <span className="text-xs underline">Hand Off to AI</span>
               </>
             )}
           </button>
@@ -409,10 +409,10 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
             type="button"
             onClick={() => setIsMuted(!isMuted)}
             title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
-            className={`p-2 rounded-xl border transition cursor-pointer ${
+            className={`min-h-[48px] p-2 rounded-xl border transition cursor-pointer ${
               isMuted 
                 ? 'bg-zinc-900 text-zinc-500 border-zinc-800' 
-                : 'bg-zinc-900 text-lime-400 border-lime-500/30'
+                : 'bg-zinc-900 text-[#22ec72] border-[#22ec72]/30'
             }`}
           >
             {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -424,12 +424,12 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
       <div className="py-2 px-3 bg-zinc-950/80 rounded-2xl border border-zinc-900 my-2 flex items-center justify-between shrink-0 font-mono">
         <div className="flex items-center gap-2">
           {answeredBy === 'ai_receptionist' ? (
-            <span className="flex items-center gap-1 text-[11px] text-purple-400">
+            <span className="flex items-center gap-1 text-xs text-purple-400">
               <Sparkles className="w-3.5 h-3.5" />
               <span>Voice AI Receptionist Active</span>
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[11px] text-blue-400">
+            <span className="flex items-center gap-1 text-xs text-blue-400">
               <User className="w-3.5 h-3.5" />
               <span>Operator Audio Channel Active</span>
             </span>
@@ -443,7 +443,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
               key={bar}
               className={`w-1 rounded-full transition-all duration-150 ${
                 isSpeaking 
-                  ? 'bg-lime-400 animate-pulse' 
+                  ? 'bg-[#22ec72] animate-pulse' 
                   : isProcessing 
                   ? 'bg-purple-500 animate-bounce' 
                   : 'bg-zinc-700 h-1.5'
@@ -465,8 +465,8 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
 
           if (isSystem) {
             return (
-              <div key={idx} className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-[11px] text-zinc-400 font-mono text-center flex items-center justify-center gap-1.5">
-                <ArrowRightLeft className="w-3 h-3 text-lime-400 shrink-0" />
+              <div key={idx} className="p-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-400 font-mono text-center flex items-center justify-center gap-1.5">
+                <ArrowRightLeft className="w-3 h-3 text-[#22ec72] shrink-0" />
                 <span>{entry.text}</span>
               </div>
             );
@@ -477,7 +477,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
               key={idx}
               className={`flex flex-col ${isCaller ? 'items-end' : 'items-start'}`}
             >
-              <div className="flex items-center gap-1.5 mb-0.5 text-[10px] text-zinc-400 font-mono px-1">
+              <div className="flex items-center gap-1.5 mb-0.5 text-xs text-zinc-400 font-mono px-1">
                 <span>{entry.speaker}</span>
                 <span>•</span>
                 <span>{entry.time}</span>
@@ -496,7 +496,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSynthesizeAndSpeak(entry.text)}
-                    className="mt-1 text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer font-mono"
+                    className="min-h-[48px] mt-1 text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer font-mono"
                   >
                     <Volume2 className="w-3 h-3" />
                     <span>Replay Voice</span>
@@ -520,7 +520,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
         <button
           type="button"
           onClick={() => setIsTransferModalOpen(true)}
-          className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-bold text-lime-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
+          className="min-h-[48px] p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-[#22ec72] flex flex-col items-center justify-center gap-1 transition cursor-pointer"
         >
           <PhoneForwarded className="w-4 h-4" />
           <span>Simulate Transfer</span>
@@ -529,7 +529,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
         <button
           type="button"
           onClick={() => setIsEmailModalOpen(true)}
-          className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-bold text-blue-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
+          className="min-h-[48px] p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-blue-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
         >
           <Mail className="w-4 h-4" />
           <span>Send Email</span>
@@ -538,7 +538,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
         <button
           type="button"
           onClick={() => setIsQuoteModalOpen(true)}
-          className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-bold text-amber-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
+          className="min-h-[48px] p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-amber-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
         >
           <FileText className="w-4 h-4" />
           <span>Quote Req</span>
@@ -547,7 +547,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
         <button
           type="button"
           onClick={handleHangUp}
-          className="p-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-[11px] font-bold text-red-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
+          className="min-h-[48px] p-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-xs font-bold text-red-400 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
         >
           <PhoneOff className="w-4 h-4" />
           <span>End Call</span>
@@ -560,7 +560,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
           type="button"
           onClick={toggleSpeechRecognition}
           title={isListening ? 'Stop Mic' : 'Speak into Microphone'}
-          className={`p-2.5 rounded-2xl border transition cursor-pointer shrink-0 ${
+          className={`min-h-[48px] p-2.5 rounded-2xl border transition cursor-pointer shrink-0 ${
             isListening 
               ? 'bg-red-500 text-white border-red-600 animate-pulse' 
               : 'bg-zinc-900 hover:bg-zinc-800 text-blue-400 border-zinc-800'
@@ -588,7 +588,7 @@ export const LiveCallConsole: React.FC<LiveCallConsoleProps> = ({
           type="button"
           onClick={() => handleSendCallerTurn()}
           disabled={!callerInput.trim() || isProcessing}
-          className="p-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition cursor-pointer shrink-0 shadow-md"
+          className="min-h-[48px] p-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition cursor-pointer shrink-0 shadow-md"
         >
           <Send className="w-4 h-4" />
         </button>

@@ -45,7 +45,7 @@ const MemberAvatar: React.FC<{ member?: BusinessMember | null; name: string; ema
   size = 'md'
 }) => {
   const [broken, setBroken] = useState(false);
-  const dims = size === 'sm' ? 'w-6 h-6 text-[10px]' : 'w-8 h-8 text-xs';
+  const dims = size === 'sm' ? 'w-6 h-6 text-xs' : 'w-8 h-8 text-xs';
   const src = member?.avatar ? resolveProfilePicture(member.avatar, '') : '';
   if (src && !broken) {
     return (
@@ -59,7 +59,7 @@ const MemberAvatar: React.FC<{ member?: BusinessMember | null; name: string; ema
   }
   const initial = (name || email || '?').trim().charAt(0).toUpperCase() || '?';
   return (
-    <div className={`${dims} rounded-full bg-lime-500/20 text-lime-300 border border-lime-500/30 flex items-center justify-center font-bold shrink-0`}>
+    <div className={`${dims} rounded-full bg-[#22ec72]/20 text-[#22ec72] border border-[#22ec72]/30 flex items-center justify-center font-bold shrink-0`}>
       {initial}
     </div>
   );
@@ -310,7 +310,7 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
           <button
             type="button"
             onClick={onBack}
-            className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white transition cursor-pointer"
+            className="min-h-[48px] p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white transition cursor-pointer"
             aria-label="Back to dashboard"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -318,7 +318,7 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
         )}
         <div className="min-w-0">
           <div className="text-sm font-bold text-white truncate">Team Chat</div>
-          <div className="text-[11px] text-zinc-400 truncate flex items-center gap-1">
+          <div className="text-xs text-zinc-400 truncate flex items-center gap-1">
             <Users className="w-3 h-3 shrink-0" />
             <span>{business?.name || 'Your company'} · {members.length} {members.length === 1 ? 'person' : 'people'}</span>
           </div>
@@ -333,13 +333,13 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
             return (
               <div
                 key={m.email.toLowerCase()}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-[11px] whitespace-nowrap ${
-                  isMe ? 'border-lime-500/40 bg-lime-500/10 text-lime-200' : 'border-zinc-800 bg-zinc-900/60 text-zinc-300'
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs whitespace-nowrap ${
+                  isMe ? 'border-[#22ec72]/40 bg-[#22ec72]/10 text-[#22ec72]' : 'border-zinc-800 bg-zinc-900/60 text-zinc-300'
                 }`}
               >
                 <MemberAvatar member={m} name={m.name} email={m.email} size="sm" />
                 <span className="font-semibold max-w-[90px] truncate">{m.name}</span>
-                {isMe && <span className="text-lime-400 font-bold">(You)</span>}
+                {isMe && <span className="text-[#22ec72] font-bold">(You)</span>}
                 {m.role === 'owner' && <span className="text-amber-400 font-bold">Owner</span>}
               </div>
             );
@@ -366,14 +366,14 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
             <div key={msg.id} className={`flex gap-2 ${mine ? 'flex-row-reverse' : 'flex-row'}`}>
               <MemberAvatar member={member} name={msg.senderName} email={msg.senderEmail} />
               <div className={`max-w-[78%] space-y-0.5 ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
-                <div className={`text-[10px] font-semibold ${mine ? 'text-lime-300' : 'text-zinc-400'}`}>
+                <div className={`text-xs font-semibold ${mine ? 'text-[#22ec72]' : 'text-zinc-400'}`}>
                   {mine ? 'You' : msg.senderName}
                   <span className="text-zinc-500 font-normal"> · {formatTime(msg.timestamp)}</span>
                 </div>
                 <div
                   className={`px-3 py-2 rounded-2xl text-sm leading-snug break-words whitespace-pre-wrap ${
                     mine
-                      ? 'bg-lime-500 text-black rounded-tr-md'
+                      ? 'bg-[#22ec72] text-black rounded-tr-md'
                       : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-tl-md'
                   }`}
                 >
@@ -390,15 +390,15 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
           <div key={item.queueId} className="flex gap-2 flex-row-reverse">
             <MemberAvatar member={null} name={item.senderName} email={item.senderEmail} />
             <div className="max-w-[78%] space-y-0.5 items-end flex flex-col">
-              <div className="text-[10px] font-semibold text-lime-300">
+              <div className="text-xs font-semibold text-[#22ec72]">
                 You
                 <span className="text-zinc-500 font-normal"> · {formatTime(item.createdAt)}</span>
               </div>
-              <div className="px-3 py-2 rounded-2xl rounded-tr-md text-sm leading-snug break-words whitespace-pre-wrap bg-lime-500/40 text-lime-100 border border-dashed border-lime-500/60 opacity-90">
+              <div className="px-3 py-2 rounded-2xl rounded-tr-md text-sm leading-snug break-words whitespace-pre-wrap bg-[#22ec72]/40 text-black border border-dashed border-[#22ec72]/60 opacity-90">
                 {item.text}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold text-amber-300">
+                <span className="text-xs font-semibold text-amber-300">
                   {item.status === 'offline'
                     ? 'Still sending…'
                     : 'Still sending — tap to retry'}
@@ -406,14 +406,14 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
                 <button
                   type="button"
                   onClick={() => retryQueued(item)}
-                  className="text-[11px] font-bold text-lime-300 underline underline-offset-2 cursor-pointer"
+                  className="min-h-[48px] text-xs font-bold text-[#22ec72] underline underline-offset-2 cursor-pointer"
                 >
                   Retry
                 </button>
                 <button
                   type="button"
                   onClick={() => removeQueued(item)}
-                  className="text-[11px] text-zinc-400 underline underline-offset-2 cursor-pointer"
+                  className="min-h-[48px] text-xs text-zinc-400 underline underline-offset-2 cursor-pointer"
                   aria-label="Remove unsent message"
                 >
                   Remove
@@ -429,16 +429,16 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
       {!loading && (
         <div className="shrink-0 px-3 pt-2">
           {queued.length > 0 ? (
-            <p className="text-[11px] text-amber-300">
+            <p className="text-xs text-amber-300">
               Still sending — {queued.length} {queued.length === 1 ? 'message is' : 'messages are'} waiting to send.
               {queued.some(i => i.status === 'offline')
                 ? ' They will send on their own when you are back online.'
                 : ' Tap Retry on the message to send it.'}
             </p>
           ) : syncState === 'saved' ? (
-            <p className="text-[11px] text-zinc-500">✓ Saved — all team messages are sent.</p>
+            <p className="text-xs text-zinc-500">✓ Saved — all team messages are sent.</p>
           ) : (
-            <p className="text-[11px] text-zinc-500">Connection unclear — new messages could not be checked just now.</p>
+            <p className="text-xs text-zinc-500">Connection unclear — new messages could not be checked just now.</p>
           )}
         </div>
       )}
@@ -454,12 +454,12 @@ export const TeamChatView: React.FC<TeamChatViewProps> = ({ businessId, business
           placeholder="Message your team…"
           autoComplete="off"
           maxLength={2000}
-          className="flex-1 min-w-0 px-3 py-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-lime-500"
+          className="flex-1 min-w-0 px-3 py-2.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-sm text-white placeholder:text-zinc-500 outline-none focus:border-[#22ec72]"
         />
         <button
           type="submit"
           disabled={!draft.trim() || sending}
-          className="px-4 py-2.5 rounded-2xl bg-lime-500 hover:bg-lime-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black text-sm font-bold flex items-center gap-1.5 transition cursor-pointer"
+          className="min-h-[48px] px-4 py-2.5 rounded-2xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-black text-sm font-bold flex items-center gap-1.5 transition cursor-pointer"
         >
           <Send className="w-4 h-4" />
           <span>{sending ? 'Sending…' : 'Send'}</span>

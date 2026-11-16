@@ -442,17 +442,17 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               <div className="flex items-center gap-1.5">
                 <h2 className="text-xs sm:text-sm font-bold text-white truncate">Gmail Workspace</h2>
                 {isLiveConnected ? (
-                  <span className="text-[9px] font-mono text-lime-400 bg-lime-500/10 px-2 py-0.5 rounded-full border border-lime-500/30 flex items-center gap-1 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-lime-400 animate-pulse" />
+                  <span className="text-xs font-mono text-[#22ec72] bg-[#22ec72]/10 px-2 py-0.5 rounded-full border border-[#22ec72]/30 flex items-center gap-1 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#22ec72] animate-pulse" />
                     <span>Live</span>
                   </span>
                 ) : (
-                  <span className="text-[9px] font-mono text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800 shrink-0">
+                  <span className="text-xs font-mono text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800 shrink-0">
                     Not connected
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-zinc-400 truncate">
+              <p className="text-xs text-zinc-400 truncate">
                 {isLiveConnected 
                   ? `Authenticated: ${currentUser?.email || 'your Google account'}`
                   : 'Connect Google account to sync live mail'}
@@ -467,17 +467,17 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                 type="button"
                 onClick={() => token && loadLiveMailbox(token)}
                 disabled={isLoading}
-                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer disabled:opacity-40"
+                className="min-h-[48px] p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer disabled:opacity-40"
                 title="Refresh Mailbox"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-lime-400' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#22ec72]' : ''}`} />
               </button>
             )}
 
             <button
               type="button"
               onClick={handleOpenNewCompose}
-              className="px-3 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-lime-950/40 transition active:scale-95"
+              className="min-h-[48px] px-3 py-1.5 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#22ec72]/10 transition active:scale-95"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Compose</span>
@@ -495,7 +495,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               </div>
             </div>
 
-            <p className="text-[11px] text-zinc-300 leading-relaxed">
+            <p className="text-xs text-zinc-300 leading-relaxed">
               Sign in with Google to view live emails, compose official operations dispatches, manage drafts, and sync your Gmail inbox.
             </p>
 
@@ -505,7 +505,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                 type="button"
                 disabled={isAuthenticating}
                 onClick={handleSignInGoogle}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-white hover:bg-zinc-100 text-zinc-900 font-bold text-xs flex items-center justify-center gap-3 transition shadow-md cursor-pointer disabled:opacity-50"
+                className="min-h-[48px] flex-1 py-2.5 px-4 rounded-xl bg-white hover:bg-zinc-100 text-zinc-900 font-bold text-xs flex items-center justify-center gap-3 transition shadow-md cursor-pointer disabled:opacity-50"
               >
                 {isAuthenticating ? (
                   <>
@@ -529,10 +529,10 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               <button
                 type="button"
                 onClick={handleActivateSandboxMode}
-                className="py-2.5 px-3 rounded-xl bg-lime-500/10 hover:bg-lime-500/20 text-lime-400 border border-lime-500/30 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                className="min-h-[48px] py-2.5 px-3 rounded-xl bg-[#22ec72]/10 hover:bg-[#22ec72]/20 text-[#22ec72] border border-[#22ec72]/30 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
                 title="Fast Mobile Connect - instant sync with rcsoulutions@gmail.com"
               >
-                <Sparkles className="w-3.5 h-3.5 text-lime-400" />
+                <Sparkles className="w-3.5 h-3.5 text-[#22ec72]" />
                 <span>Fast Mobile Connect</span>
               </button>
             </div>
@@ -543,18 +543,18 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>Google Authentication Diagnostic</span>
                 </div>
-                <p className="text-[11px] text-zinc-300 leading-relaxed">
+                <p className="text-xs text-zinc-300 leading-relaxed">
                   {authError.message}
                 </p>
 
                 {authError.domain && (
                   <div className="space-y-2 pt-1 border-t border-amber-900/50">
-                    <div className="flex items-center justify-between p-2 rounded-lg bg-black/60 border border-zinc-800 text-[11px]">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-black/60 border border-zinc-800 text-xs">
                       <span className="font-mono text-zinc-300 truncate max-w-[220px] sm:max-w-xs">{authError.domain}</span>
                       <button
                         type="button"
                         onClick={handleCopyCurrentDomain}
-                        className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-lime-400 font-medium flex items-center gap-1 cursor-pointer shrink-0"
+                        className="min-h-[48px] px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-[#22ec72] font-medium flex items-center gap-1 cursor-pointer shrink-0"
                       >
                         {copiedDomain ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                         <span>{copiedDomain ? 'Copied' : 'Copy Domain'}</span>
@@ -567,7 +567,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                           href={safeHref(authError.helpUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-cyan-400 border border-zinc-700 font-medium text-[11px] flex items-center gap-1 transition"
+                          className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-cyan-400 border border-zinc-700 font-medium text-xs flex items-center gap-1 transition"
                         >
                           <span>Firebase Console Settings</span>
                           <ExternalLink className="w-3 h-3" />
@@ -576,7 +576,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                       <button
                         type="button"
                         onClick={handleActivateSandboxMode}
-                        className="px-2.5 py-1 rounded-lg bg-lime-500 text-black font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+                        className="min-h-[48px] px-2.5 py-1 rounded-lg bg-[#22ec72] text-black font-bold text-xs flex items-center gap-1 transition cursor-pointer"
                       >
                         <Sparkles className="w-3 h-3" />
                         <span>Activate Sandbox Mailbox Mode</span>
@@ -591,15 +591,15 @@ export const GmailTab: React.FC<GmailTabProps> = ({
 
         {/* Temporary Notification Banner */}
         {statusNotice && (
-          <div className="p-2.5 rounded-xl bg-lime-950/40 border border-lime-800/60 text-xs text-lime-300 flex items-center justify-between gap-2 animate-in fade-in duration-100">
+          <div className="p-2.5 rounded-xl bg-[#22ec72]/10 border border-[#22ec72]/30 text-xs text-[#22ec72] flex items-center justify-between gap-2 animate-in fade-in duration-100">
             <div className="flex items-center gap-2 truncate">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-lime-400" />
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-[#22ec72]" />
               <span className="truncate">{statusNotice}</span>
             </div>
             <button aria-label="Dismiss notice"
               type="button"
               onClick={() => setStatusNotice(null)}
-              className="text-zinc-500 hover:text-white"
+              className="min-h-[48px] text-zinc-500 hover:text-white"
             >
               <X className="w-3 h-3" />
             </button>
@@ -614,13 +614,13 @@ export const GmailTab: React.FC<GmailTabProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search emails, subjects, or clients..."
-            className="w-full pl-8 pr-8 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500 transition"
+            className="w-full pl-8 pr-8 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72] transition"
           />
           {searchQuery && (
             <button aria-label="Clear search"
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+              className="min-h-[48px] absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
             >
               <X className="w-3 h-3" />
             </button>
@@ -632,9 +632,9 @@ export const GmailTab: React.FC<GmailTabProps> = ({
           <button
             type="button"
             onClick={() => setActiveFolder('INBOX')}
-            className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
+            className={`min-h-[48px] px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
               activeFolder === 'INBOX'
-                ? 'bg-lime-500/20 text-lime-400 border border-lime-500/40'
+                ? 'bg-[#22ec72]/20 text-[#22ec72] border border-[#22ec72]/40'
                 : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800/80'
             }`}
           >
@@ -645,7 +645,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
           <button
             type="button"
             onClick={() => setActiveFolder('STARRED')}
-            className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
+            className={`min-h-[48px] px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
               activeFolder === 'STARRED'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                 : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800/80'
@@ -658,7 +658,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
           <button
             type="button"
             onClick={() => setActiveFolder('SENT')}
-            className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
+            className={`min-h-[48px] px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
               activeFolder === 'SENT'
                 ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
                 : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800/80'
@@ -671,7 +671,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
           <button
             type="button"
             onClick={() => setActiveFolder('DRAFT')}
-            className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
+            className={`min-h-[48px] px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
               activeFolder === 'DRAFT'
                 ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
                 : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800/80'
@@ -684,7 +684,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
           <button
             type="button"
             onClick={() => setActiveFolder('TRASH')}
-            className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
+            className={`min-h-[48px] px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 ${
               activeFolder === 'TRASH'
                 ? 'bg-red-500/20 text-red-300 border border-red-500/40'
                 : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800/80'
@@ -700,7 +700,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-2">
         {isLoading && (
           <div className="flex items-center justify-center py-8 text-zinc-400 text-xs gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-lime-400" />
+            <Loader2 className="w-4 h-4 animate-spin text-[#22ec72]" />
             <span>Loading emails from Gmail...</span>
           </div>
         )}
@@ -728,7 +728,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-white cursor-pointer"
+                className="min-h-[48px] px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-white cursor-pointer"
               >
                 Clear Search
               </button>
@@ -756,13 +756,13 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               <div className="flex items-center gap-2 min-w-0">
                 {/* Unread indicator */}
                 {msg.isUnread ? (
-                  <span className="w-2 h-2 rounded-full bg-lime-400 shrink-0" title="Unread" />
+                  <span className="w-2 h-2 rounded-full bg-[#22ec72] shrink-0" title="Unread" />
                 ) : (
                   <span className="w-2 h-2 rounded-full bg-transparent shrink-0" />
                 )}
 
                 {/* Sender Avatar Initial */}
-                <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[11px] font-bold text-zinc-300 shrink-0">
+                <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-300 shrink-0">
                   {msg.from.charAt(0).toUpperCase()}
                 </div>
 
@@ -775,7 +775,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
 
               {/* Timestamp & Star & Quick Trash */}
               <div className="flex items-center gap-1 shrink-0">
-                <span className="text-[10px] text-zinc-500 font-mono">
+                <span className="text-xs text-zinc-500 font-mono">
                   {msg.date}
                 </span>
 
@@ -785,7 +785,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                     e.stopPropagation();
                     handleToggleStar(msg.id, msg.isStarred);
                   }}
-                  className={`p-1 rounded-lg transition cursor-pointer ${
+                  className={`min-h-[48px] p-1 rounded-lg transition cursor-pointer ${
                     msg.isStarred
                       ? 'text-amber-400 hover:text-amber-300'
                       : 'text-zinc-600 hover:text-zinc-400'
@@ -798,7 +798,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                 <button
                   type="button"
                   onClick={(e) => handleRequestTrashFromList(e, msg)}
-                  className="p-1 rounded-lg text-zinc-600 hover:text-red-400 transition cursor-pointer"
+                  className="min-h-[48px] p-1 rounded-lg text-zinc-600 hover:text-red-400 transition cursor-pointer"
                   title="Move to Trash"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -811,7 +811,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               <h4 className={`text-xs truncate ${msg.isUnread ? 'font-bold text-zinc-100' : 'text-zinc-300'}`}>
                 {msg.subject || '(No Subject)'}
               </h4>
-              <p className="text-[11px] text-zinc-500 line-clamp-2 mt-0.5 leading-relaxed">
+              <p className="text-xs text-zinc-500 line-clamp-2 mt-0.5 leading-relaxed">
                 {msg.snippet}
               </p>
             </div>
@@ -822,7 +822,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                 {msg.labelIds.slice(0, 3).map((lbl) => (
                   <span
                     key={lbl}
-                    className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400"
+                    className="text-xs font-mono px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400"
                   >
                     {lbl}
                   </span>
@@ -837,7 +837,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                     e.stopPropagation();
                     handleCreateJobFromEmail(msg);
                   }}
-                  className="text-[10px] text-lime-400/80 hover:text-lime-300 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-lime-950/30 transition cursor-pointer"
+                  className="min-h-[48px] text-xs text-[#22ec72]/80 hover:text-[#22ec72] flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[#22ec72]/10 transition cursor-pointer"
                 >
                   <Briefcase className="w-3 h-3" />
                   <span>Job Dispatch</span>

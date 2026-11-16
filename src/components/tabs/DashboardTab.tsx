@@ -161,7 +161,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   };
   const jobStatusClass = (status: Job['status']) => {
     if (status === 'in_progress') return 'border-blue-500/40 bg-blue-500/15 text-blue-400';
-    if (status === 'dispatched') return 'border-lime-500/40 bg-lime-500/15 text-lime-400';
+    if (status === 'dispatched') return 'border-[#22ec72]/40 bg-[#22ec72]/15 text-[#22ec72]';
     if (status === 'urgent') return 'border-rose-500/40 bg-rose-500/15 text-rose-300';
     return 'border-zinc-700 bg-zinc-800 text-zinc-300';
   };
@@ -208,7 +208,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   if (todaysJobs.length > 0) {
     priorities.push({
       key: 'jobs',
-      icon: <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />,
+      icon: <CheckCircle2 className="w-4 h-4 text-[#22ec72] shrink-0" />,
       title: `${todaysJobs.length} Job${todaysJobs.length === 1 ? '' : 's'} Scheduled`,
       tab: 'jobs',
     });
@@ -254,7 +254,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               {businessName}
             </h2>
             <p className="text-xs text-zinc-400 truncate">Business Operating System</p>
-            <span className={`mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+            <span className={`mt-1 inline-flex items-center gap-1.5 text-xs font-bold px-2 py-0.5 rounded-full border ${
               serverOnline === true
                 ? 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30'
                 : serverOnline === false
@@ -272,7 +272,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             haptic.light();
             onOpenAlerts();
           }}
-          className="relative w-10 h-10 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-zinc-300 hover:text-white hover:border-[#22ec72]/40 flex items-center justify-center transition shrink-0 cursor-pointer"
+          className="min-h-[48px] relative w-10 h-10 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-zinc-300 hover:text-white hover:border-[#22ec72]/40 flex items-center justify-center transition shrink-0 cursor-pointer"
           aria-label="Open alerts in Operations"
           title="Alerts"
         >
@@ -363,7 +363,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           if (onOpenReceptionist) onOpenReceptionist();
           else onNavigateTab('team');
         }}
-        className="w-full p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left"
+        className="min-h-[48px] w-full p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left"
       >
         <div className="flex items-center gap-3">
           <span className="p-3 rounded-full border-2 border-[#22ec72] text-[#22ec72] shrink-0">
@@ -372,7 +372,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
               <span className="text-sm font-extrabold text-white">AI Receptionist</span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                 serverOnline === true
                   ? 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30'
                   : serverOnline === false
@@ -404,7 +404,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               haptic.light();
               onNavigateTab('approvals');
             }}
-            className="text-[11px] font-semibold text-lime-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+            className="min-h-[48px] text-xs font-semibold text-[#22ec72] hover:underline flex items-center gap-0.5 cursor-pointer"
           >
             <span>View All</span>
             <ChevronRight className="w-3.5 h-3.5" />
@@ -412,7 +412,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </div>
         {priorities.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-zinc-300">
-            <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-[#22ec72] shrink-0" />
             <span>You're all caught up — nothing needs you right now.</span>
           </div>
         ) : (
@@ -464,7 +464,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <div className={`p-3.5 ${dashboardCard} space-y-2`}>
         <div className="flex items-center justify-between px-1">
           <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-lime-400" />
+            <Calendar className="w-4 h-4 text-[#22ec72]" />
             <span>Today&apos;s Work</span>
           </h3>
           <button
@@ -473,7 +473,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               haptic.light();
               onNavigateTab('jobs');
             }}
-            className="text-xs font-bold text-lime-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+            className="min-h-[48px] text-xs font-bold text-[#22ec72] hover:underline flex items-center gap-0.5 cursor-pointer"
           >
             <span>View All</span>
             <ChevronRight className="w-3.5 h-3.5" />
@@ -488,7 +488,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 haptic.light();
                 onNavigateTab('jobs');
               }}
-              className="px-4 py-2.5 rounded-full bg-lime-500 hover:bg-lime-400 text-black text-xs font-extrabold transition cursor-pointer"
+              className="min-h-[48px] px-4 py-2.5 rounded-full bg-[#22ec72] hover:bg-[#22ec72] text-black text-xs font-extrabold transition cursor-pointer"
             >
               Add a job
             </button>
@@ -503,7 +503,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   haptic.light();
                   onNavigateTab('jobs');
                 }}
-                className="flex w-full items-center gap-3 py-2.5 text-left cursor-pointer"
+                className="min-h-[48px] flex w-full items-center gap-3 py-2.5 text-left cursor-pointer"
               >
                 <span className="w-24 shrink-0 text-xs font-extrabold text-white whitespace-nowrap truncate">
                   {shortTime(job.scheduledTime)}
@@ -528,16 +528,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <div className="space-y-2">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
-            <Inbox className="w-3.5 h-3.5 text-lime-400" />
+            <Inbox className="w-3.5 h-3.5 text-[#22ec72]" />
             <span>Customer Requests</span>
           </h3>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-zinc-500 font-mono">{customerRequests.length} open</span>
+            <span className="text-xs text-zinc-500 font-mono">{customerRequests.length} open</span>
             {bookingLink && (
               <button
                 type="button"
                 onClick={shareBookingLink}
-                className="text-[11px] font-bold text-lime-400 hover:underline flex items-center gap-1 cursor-pointer"
+                className="min-h-[48px] text-xs font-bold text-[#22ec72] hover:underline flex items-center gap-1 cursor-pointer"
               >
                 {linkCopied ? <Link2 className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
                 <span>{linkCopied ? 'Copied!' : 'Share booking link'}</span>
@@ -552,7 +552,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <button
                 type="button"
                 onClick={shareBookingLink}
-                className="px-3.5 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black text-xs font-extrabold transition cursor-pointer"
+                className="min-h-[48px] px-3.5 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black text-xs font-extrabold transition cursor-pointer"
               >
                 {linkCopied ? 'Link copied!' : 'Share your booking link'}
               </button>
@@ -569,12 +569,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     haptic.light();
                     setSelectedRequest(req);
                   }}
-                  className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-1.5 cursor-pointer hover:border-lime-500/40 active:scale-[0.99] transition-all"
+                  className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-1.5 cursor-pointer hover:border-[#22ec72]/40 active:scale-[0.99] transition-all"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-white truncate">{req.customerName}</span>
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
                         sla.breached
                           ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
                           : sla.urgent
@@ -586,10 +586,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
                     </div>
                   </div>
-                  <p className="text-[11px] text-zinc-400 truncate">
+                  <p className="text-xs text-zinc-400 truncate">
                     {req.serviceType || 'General Service'} — {req.description}
                   </p>
-                  <div className="text-[10px] text-zinc-500 font-mono">
+                  <div className="text-xs text-zinc-500 font-mono">
                     {timeAgo(req.createdAt)} · {req.stage || 'Intake'}
                   </div>
                 </div>

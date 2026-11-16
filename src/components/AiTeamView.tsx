@@ -304,13 +304,13 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
 
   const getEmployeeIcon = (iconName: string) => {
     switch (iconName) {
-      case 'ShieldAlert': return <ShieldAlert className="w-4 h-4 text-emerald-400" />;
+      case 'ShieldAlert': return <ShieldAlert className="w-4 h-4 text-[#22ec72]" />;
       case 'Cpu': return <Cpu className="w-4 h-4 text-cyan-400" />;
       case 'Kanban': return <Kanban className="w-4 h-4 text-purple-400" />;
       case 'CircleDollarSign': return <CircleDollarSign className="w-4 h-4 text-amber-400" />;
       case 'Users': return <Users className="w-4 h-4 text-blue-400" />;
-      case 'CalendarClock': return <CalendarClock className="w-4 h-4 text-emerald-400" />;
-      case 'TrendingUp': return <TrendingUp className="w-4 h-4 text-lime-400" />;
+      case 'CalendarClock': return <CalendarClock className="w-4 h-4 text-[#22ec72]" />;
+      case 'TrendingUp': return <TrendingUp className="w-4 h-4 text-[#22ec72]" />;
       case 'HeartHandshake': return <HeartHandshake className="w-4 h-4 text-pink-400" />;
       case 'Wrench': return <Wrench className="w-4 h-4 text-orange-400" />;
       case 'Megaphone': return <Megaphone className="w-4 h-4 text-yellow-400" />;
@@ -318,10 +318,10 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       case 'BarChart3': return <BarChart3 className="w-4 h-4 text-indigo-400" />;
       case 'Phone': return <Phone className="w-4 h-4 text-blue-400" />;
       case 'Mail': return <Mail className="w-4 h-4 text-indigo-400" />;
-      case 'FileCheck': return <FileCheck className="w-4 h-4 text-emerald-400" />;
+      case 'FileCheck': return <FileCheck className="w-4 h-4 text-[#22ec72]" />;
       case 'Share2': return <Share2 className="w-4 h-4 text-purple-400" />;
-      case 'Sparkles': return <Sparkles className="w-4 h-4 text-lime-400" />;
-      default: return <Bot className="w-4 h-4 text-lime-400" />;
+      case 'Sparkles': return <Sparkles className="w-4 h-4 text-[#22ec72]" />;
+      default: return <Bot className="w-4 h-4 text-[#22ec72]" />;
     }
   };
 
@@ -329,7 +329,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
     <div className="space-y-4 pb-6">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-lime-500 text-black px-4 py-2 rounded-full font-bold text-xs shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-[#22ec72] text-black px-4 py-2 rounded-full font-bold text-xs shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
           <CheckCircle2 className="w-4 h-4" />
           <span>{toastMessage}</span>
         </div>
@@ -341,10 +341,10 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
       <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
         <div>
           <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-            <Bot className="w-5 h-5 text-lime-400" />
+            <Bot className="w-5 h-5 text-[#22ec72]" />
             <span>AI Team</span>
           </h2>
-          <p className="text-sm font-bold text-lime-400 mt-1">
+          <p className="text-sm font-bold text-[#22ec72] mt-1">
             {activeCount} Active · {pausedCount} Paused
           </p>
           <p className="text-xs text-zinc-400 mt-0.5">
@@ -359,10 +359,10 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               haptic.light();
               detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
-            className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer border border-zinc-700"
+            className="min-h-[48px] px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer border border-zinc-700"
           >
             <span>View Details</span>
-            <ChevronRight className="w-4 h-4 text-lime-400" />
+            <ChevronRight className="w-4 h-4 text-[#22ec72]" />
           </button>
           <button
             type="button"
@@ -370,7 +370,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               haptic.light();
               handleCreateCustomSpecialist();
             }}
-            className="px-3.5 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-lime-500/20"
+            className="min-h-[48px] px-3.5 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-[#22ec72]/20"
           >
             <Plus className="w-4 h-4" />
             <span>Add Custom Specialist</span>
@@ -386,7 +386,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
             haptic.light();
             onReviewApprovals();
           }}
-          className="w-full p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/40 flex items-center gap-3 text-left hover:border-amber-500/60 transition cursor-pointer"
+          className="min-h-[48px] w-full p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/40 flex items-center gap-3 text-left hover:border-amber-500/60 transition cursor-pointer"
         >
           <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
           <span className="flex-1 min-w-0">
@@ -416,7 +416,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                 }}
                 className={`p-3 rounded-2xl border transition cursor-pointer text-left flex items-center justify-between gap-3 ${
                   isSelected
-                    ? 'bg-zinc-900 border-lime-500/60 shadow-lg shadow-lime-500/10'
+                    ? 'bg-zinc-900 border-[#22ec72]/60 shadow-lg shadow-[#22ec72]/10'
                     : 'bg-zinc-950 border-zinc-800/80 hover:border-zinc-700'
                 }`}
               >
@@ -427,20 +427,20 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h4 className="text-xs sm:text-sm font-bold text-white truncate">{emp.name}</h4>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${
                         empActive
-                          ? 'bg-lime-500/10 text-lime-400 border-lime-500/30'
+                          ? 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30'
                           : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                       }`}>
                         {empActive ? 'Active' : 'Paused'}
                       </span>
                       {emp.isCustom && (
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono shrink-0">
+                        <span className="text-xs px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono shrink-0">
                           CUSTOM
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-zinc-400 truncate">{emp.tagline}</p>
+                    <p className="text-xs text-zinc-400 truncate">{emp.tagline}</p>
                   </div>
                 </div>
 
@@ -456,7 +456,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                           setTalkPersona(talkTarget);
                         }}
                         title={`Talk to ${emp.name} by voice`}
-                        className="p-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-lime-400 hover:bg-zinc-700 cursor-pointer"
+                        className="min-h-[48px] p-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-[#22ec72] hover:bg-zinc-700 cursor-pointer"
                       >
                         <Mic className="w-4 h-4" />
                       </button>
@@ -469,15 +469,15 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                       handleToggleEmployee(emp.id);
                     }}
                     title={empActive ? 'Pause employee' : 'Activate employee'}
-                    className="cursor-pointer"
+                    className="min-h-[48px] cursor-pointer"
                   >
                     {empActive ? (
-                      <ToggleRight className="w-6 h-6 text-lime-400" />
+                      <ToggleRight className="w-6 h-6 text-[#22ec72]" />
                     ) : (
                       <ToggleLeft className="w-6 h-6 text-zinc-600" />
                     )}
                   </button>
-                  <ChevronRight className={`w-4 h-4 shrink-0 ${isSelected ? 'text-lime-400' : 'text-zinc-600'}`} />
+                  <ChevronRight className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#22ec72]' : 'text-zinc-600'}`} />
                 </div>
               </div>
             );
@@ -496,9 +496,9 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               <div className="min-w-0">
                 <div className="flex items-center gap-2 truncate">
                   <h3 className="text-sm font-bold text-white truncate">{selectedEmployee.name}</h3>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono shrink-0 ${
+                  <span className={`px-2 py-0.5 rounded text-xs font-mono shrink-0 ${
                     isActive 
-                      ? 'bg-lime-500/10 text-lime-400 border border-lime-500/30' 
+                      ? 'bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30' 
                       : 'bg-zinc-800 text-zinc-500'
                   }`}>
                     {isActive ? 'Active' : 'Paused'}
@@ -520,40 +520,40 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               {/* Identity & Role Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Employee Name
                   </label>
                   <input
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Role Title
                   </label>
                   <input
                     type="text"
                     value={editRoleTitle}
                     onChange={(e) => setEditRoleTitle(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
               </div>
 
               {/* Core Job Scope */}
               <div>
-                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                   Core Job Scope & Responsibilities
                 </label>
                 <textarea
                   rows={3}
                   value={editCoreJob}
                   onChange={(e) => setEditCoreJob(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#22ec72] leading-relaxed font-sans"
                   placeholder="Define the primary jobs and responsibilities this AI specialist owns..."
                 />
               </div>
@@ -561,13 +561,13 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               {/* Agent Behavior & Decision Protocol */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
                     Agent Behavior & Decision Protocol
                   </label>
                   <button
                     type="button"
                     onClick={() => setEditBehaviorProtocol(DEFAULT_BEHAVIOR_PROTOCOL)}
-                    className="text-[10px] text-lime-400 hover:text-lime-300 font-semibold cursor-pointer"
+                    className="min-h-[48px] text-xs text-[#22ec72] hover:text-[#22ec72] font-semibold cursor-pointer"
                   >
                     Restore standard protocol
                   </button>
@@ -576,14 +576,14 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   rows={6}
                   value={editBehaviorProtocol}
                   onChange={(e) => setEditBehaviorProtocol(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500 leading-relaxed font-sans"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#22ec72] leading-relaxed font-sans"
                   placeholder="How this agent reasons through jobs, makes decisions, handles uncertainty, works with other agents, and verifies its work..."
                 />
                 <div className="flex items-center justify-between mt-1">
-                  <p className="text-[10px] text-zinc-500">
+                  <p className="text-xs text-zinc-500">
                     Used when this agent works. Leave the standard text in place unless you want this agent to behave differently.
                   </p>
-                  <span className={`text-[10px] font-mono shrink-0 ml-2 ${editBehaviorProtocol.length > MAX_BEHAVIOR_PROTOCOL_LENGTH ? 'text-red-400' : 'text-zinc-500'}`}>
+                  <span className={`text-xs font-mono shrink-0 ml-2 ${editBehaviorProtocol.length > MAX_BEHAVIOR_PROTOCOL_LENGTH ? 'text-red-400' : 'text-zinc-500'}`}>
                     {editBehaviorProtocol.length.toLocaleString()} / {MAX_BEHAVIOR_PROTOCOL_LENGTH.toLocaleString()}
                   </span>
                 </div>
@@ -591,30 +591,30 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
 
               {/* Autonomy Level */}
               <div className="space-y-1.5">
-                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
                   Autonomy Level
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setEditAutonomy('autonomous')}
-                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    className={`min-h-[48px] p-2.5 rounded-xl border text-left transition cursor-pointer ${
                       editAutonomy === 'autonomous'
-                        ? 'bg-lime-500/10 border-lime-500 text-white'
+                        ? 'bg-[#22ec72]/10 border-[#22ec72] text-white'
                         : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
                     }`}
                   >
                     <div className="font-bold flex items-center justify-between mb-0.5">
                       <span>Auto</span>
-                      <Zap className="w-3 h-3 text-lime-400" />
+                      <Zap className="w-3 h-3 text-[#22ec72]" />
                     </div>
-                    <div className="text-[10px] text-zinc-500">Autonomous</div>
+                    <div className="text-xs text-zinc-500">Autonomous</div>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setEditAutonomy('supervised')}
-                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    className={`min-h-[48px] p-2.5 rounded-xl border text-left transition cursor-pointer ${
                       editAutonomy === 'supervised'
                         ? 'bg-amber-500/10 border-amber-500 text-white'
                         : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
@@ -624,13 +624,13 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                       <span>Supervised</span>
                       <ShieldCheck className="w-3 h-3 text-amber-400" />
                     </div>
-                    <div className="text-[10px] text-zinc-500">Requires 1-Tap</div>
+                    <div className="text-xs text-zinc-500">Requires 1-Tap</div>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setEditAutonomy('manual')}
-                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    className={`min-h-[48px] p-2.5 rounded-xl border text-left transition cursor-pointer ${
                       editAutonomy === 'manual'
                         ? 'bg-cyan-500/10 border-cyan-500 text-white'
                         : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
@@ -640,14 +640,14 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                       <span>Manual</span>
                       <Hand className="w-3 h-3 text-cyan-400" />
                     </div>
-                    <div className="text-[10px] text-zinc-500">Operator Only</div>
+                    <div className="text-xs text-zinc-500">Operator Only</div>
                   </button>
                 </div>
               </div>
 
               {/* Tone of Voice — RCOS brand configuration per assistant */}
               <div className="space-y-1.5">
-                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
                   Tone of Voice
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -664,14 +664,14 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                         haptic.light();
                         setEditTone(toneOpt.id);
                       }}
-                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                      className={`min-h-[48px] p-2.5 rounded-xl border text-left transition cursor-pointer ${
                         editTone === toneOpt.id
-                          ? 'bg-lime-500/10 border-lime-500 text-white'
+                          ? 'bg-[#22ec72]/10 border-[#22ec72] text-white'
                           : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
                       }`}
                     >
                       <div className="font-bold text-xs">{toneOpt.label}</div>
-                      <div className="text-[10px] text-zinc-500">{toneOpt.hint}</div>
+                      <div className="text-xs text-zinc-500">{toneOpt.hint}</div>
                     </button>
                   ))}
                 </div>
@@ -680,8 +680,8 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
               {/* Approval Threshold Slider */}
               <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-zinc-300">Max Auto-Approval Limit</span>
-                  <span className="font-mono text-lime-400 font-bold">${editApprovalAmount.toLocaleString()}</span>
+                  <span className="text-xs font-bold text-zinc-300">Max Auto-Approval Limit</span>
+                  <span className="font-mono text-[#22ec72] font-bold">${editApprovalAmount.toLocaleString()}</span>
                 </div>
                 <input
                   type="range"
@@ -690,17 +690,17 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   step={100}
                   value={editApprovalAmount}
                   onChange={(e) => setEditApprovalAmount(Number(e.target.value))}
-                  className="w-full accent-lime-500 cursor-pointer"
+                  className="w-full accent-[#22ec72] cursor-pointer"
                 />
               </div>
 
               {/* Custom Operational Rules */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">
+                  <label className="text-xs font-bold text-zinc-300 uppercase tracking-wider">
                     Custom Operational Rules & Instructions
                   </label>
-                  <span className="text-[10px] text-zinc-500">{editRules.length} rules</span>
+                  <span className="text-xs text-zinc-500">{editRules.length} rules</span>
                 </div>
 
                 <div className="space-y-1.5">
@@ -713,7 +713,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDeleteRule(idx)}
-                        className="text-zinc-500 hover:text-red-400 p-1 cursor-pointer"
+                        className="min-h-[48px] text-zinc-500 hover:text-red-400 p-1 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -728,12 +728,12 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                     onChange={(e) => setNewRuleText(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddRule())}
                     placeholder="Add operational rule..."
-                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500"
+                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
                   />
                   <button
                     type="button"
                     onClick={handleAddRule}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs"
+                    className="min-h-[48px] px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs"
                   >
                     Add
                   </button>
@@ -745,7 +745,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                 <button
                   type="button"
                   onClick={handleResetEmployee}
-                  className="text-zinc-500 hover:text-zinc-300 text-xs flex items-center gap-1 cursor-pointer"
+                  className="min-h-[48px] text-zinc-500 hover:text-zinc-300 text-xs flex items-center gap-1 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Restore Factory Defaults</span>
@@ -755,7 +755,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
                   type="button"
                   onClick={handleSaveCustomization}
                   disabled={isSaving}
-                  className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-lime-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="min-h-[48px] px-4 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-[#22ec72]/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{isSaving ? 'Saving…' : 'Save Job Configuration'}</span>

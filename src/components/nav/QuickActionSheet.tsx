@@ -38,7 +38,7 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
         type="button"
         aria-label="Close quick actions"
         onClick={onClose}
-        className="absolute inset-0 w-full h-full bg-black/70 cursor-pointer"
+        className="min-h-[48px] absolute inset-0 w-full h-full bg-black/70 cursor-pointer"
       />
       <div className="absolute inset-x-0 bottom-0 bg-[#05090a] border-t border-[#1d2b26] rounded-t-3xl px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between mb-2">
@@ -49,7 +49,7 @@ export const QuickActionSheet: React.FC<QuickActionSheetProps> = ({
               haptic.light();
               onClose();
             }}
-            className="w-10 h-10 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer"
+            className="min-h-[48px] w-10 h-10 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer"
             aria-label="Close quick actions"
           >
             <X className="w-5 h-5" />

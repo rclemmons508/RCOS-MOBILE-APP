@@ -117,7 +117,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
   const getStatusColor = (st: Job['status']) => {
     switch (st) {
       case 'completed':
-        return 'bg-lime-500/10 text-lime-400 border-lime-500/30';
+        return 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30';
       case 'in_progress':
         return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
       case 'urgent':
@@ -134,7 +134,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
       <div className="w-full max-w-2xl max-h-[92vh] bg-zinc-950 border border-zinc-800 rounded-3xl flex flex-col shadow-2xl overflow-hidden">
         {/* Toast Feedback */}
         {toastMessage && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-lime-500 text-black px-4 py-2 rounded-full font-bold text-xs shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#22ec72] text-black px-4 py-2 rounded-full font-bold text-xs shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
             <CheckCircle2 className="w-4 h-4" />
             <span>{toastMessage}</span>
           </div>
@@ -149,10 +149,10 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-mono text-xs font-bold text-amber-400">{job.id}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold uppercase border ${getStatusColor(status)}`}>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-mono font-bold uppercase border ${getStatusColor(status)}`}>
                   {status}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-mono">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-mono">
                   {category}
                 </span>
               </div>
@@ -164,7 +164,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
           <button aria-label="Close"
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+            className="min-h-[48px] p-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -175,9 +175,9 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
-            className={`py-2.5 px-3 border-b-2 font-bold transition cursor-pointer ${
+            className={`min-h-[48px] py-2.5 px-3 border-b-2 font-bold transition cursor-pointer ${
               activeTab === 'overview'
-                ? 'border-lime-400 text-lime-400'
+                ? 'border-[#22ec72] text-[#22ec72]'
                 : 'border-transparent text-zinc-400 hover:text-white'
             }`}
           >
@@ -186,9 +186,9 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('customer')}
-            className={`py-2.5 px-3 border-b-2 font-bold transition cursor-pointer ${
+            className={`min-h-[48px] py-2.5 px-3 border-b-2 font-bold transition cursor-pointer ${
               activeTab === 'customer'
-                ? 'border-lime-400 text-lime-400'
+                ? 'border-[#22ec72] text-[#22ec72]'
                 : 'border-transparent text-zinc-400 hover:text-white'
             }`}
           >
@@ -197,9 +197,9 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('edit')}
-            className={`py-2.5 px-3 border-b-2 font-bold transition cursor-pointer ${
+            className={`min-h-[48px] py-2.5 px-3 border-b-2 font-bold transition cursor-pointer ${
               activeTab === 'edit'
-                ? 'border-lime-400 text-lime-400'
+                ? 'border-[#22ec72] text-[#22ec72]'
                 : 'border-transparent text-zinc-400 hover:text-white'
             }`}
           >
@@ -214,7 +214,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
             <div className="space-y-4">
               {/* Quick Status Bar */}
               <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
-                <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                <div className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                   Update Operational Status
                 </div>
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
@@ -223,9 +223,9 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                       key={st}
                       type="button"
                       onClick={() => handleAdvanceStatus(st)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer border ${
+                      className={`min-h-[48px] px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer border ${
                         status === st
-                          ? getStatusColor(st) + ' font-bold ring-1 ring-lime-400/50'
+                          ? getStatusColor(st) + ' font-bold ring-1 ring-[#22ec72]/50'
                           : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
                       }`}
                     >
@@ -238,24 +238,24 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               {/* Customer & Location Quick Card */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="p-3.5 rounded-2xl bg-zinc-900/40 border border-zinc-800 space-y-1.5">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-mono font-bold">Client Account</div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wider font-mono font-bold">Client Account</div>
                   <div className="text-sm font-bold text-white flex items-center gap-1.5">
                     <User className="w-4 h-4 text-purple-400" />
                     <span>{clientName}</span>
                   </div>
-                  <div className="text-zinc-400 flex items-center gap-1 text-[11px]">
+                  <div className="text-zinc-400 flex items-center gap-1 text-xs">
                     <Phone className="w-3 h-3 text-zinc-500" />
                     <span>{clientPhone}</span>
                   </div>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-zinc-900/40 border border-zinc-800 space-y-1.5">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-mono font-bold">Assigned Crew</div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wider font-mono font-bold">Assigned Crew</div>
                   <div className="text-sm font-bold text-white flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4 text-lime-400" />
+                    <UserCheck className="w-4 h-4 text-[#22ec72]" />
                     <span>{assignedTechnician}</span>
                   </div>
-                  <div className="text-zinc-400 flex items-center gap-1 text-[11px]">
+                  <div className="text-zinc-400 flex items-center gap-1 text-xs">
                     <Clock className="w-3 h-3 text-zinc-500" />
                     <span>{scheduledTime}</span>
                   </div>
@@ -267,13 +267,13 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                 <div className="flex items-center gap-2 min-w-0">
                   <MapPin className="w-4 h-4 text-rose-400 shrink-0" />
                   <div className="min-w-0">
-                    <div className="text-[10px] text-zinc-500 uppercase font-mono">Service Site</div>
+                    <div className="text-xs text-zinc-500 uppercase font-mono">Service Site</div>
                     <div className="text-zinc-200 font-medium truncate">{address}</div>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-[10px] text-zinc-500 uppercase font-mono">Contract Value</div>
-                  <div className="text-lime-400 font-mono font-black text-sm">${estimatedValue.toLocaleString()}</div>
+                  <div className="text-xs text-zinc-500 uppercase font-mono">Contract Value</div>
+                  <div className="text-[#22ec72] font-mono font-black text-sm">${estimatedValue.toLocaleString()}</div>
                 </div>
               </div>
 
@@ -282,15 +282,15 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={handleCallClient}
-                  className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="min-h-[48px] p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
-                  <Phone className="w-3.5 h-3.5 text-lime-400" />
+                  <Phone className="w-3.5 h-3.5 text-[#22ec72]" />
                   <span>Call Client</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleSmsClient}
-                  className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="min-h-[48px] p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5 text-purple-400" />
                   <span>SMS Status</span>
@@ -298,7 +298,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => alert(`Optimized GPS route dispatched for ${address}`)}
-                  className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="min-h-[48px] p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
                   <Navigation className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Navigate</span>
@@ -306,7 +306,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('edit')}
-                  className="p-2.5 rounded-xl bg-lime-500/10 hover:bg-lime-500/20 border border-lime-500/30 text-lime-400 font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="min-h-[48px] p-2.5 rounded-xl bg-[#22ec72]/10 hover:bg-[#22ec72]/20 border border-[#22ec72]/30 text-[#22ec72] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   <span>Edit Job</span>
@@ -316,7 +316,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               {/* AI Dispatch History & Insights */}
               {aiNotes && (
                 <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-lime-400 font-bold text-xs">
+                  <div className="flex items-center gap-1.5 text-[#22ec72] font-bold text-xs">
                     <Sparkles className="w-4 h-4" />
                     <span>RCOS AI Routing Insight</span>
                   </div>
@@ -335,24 +335,24 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                     <Building2 className="w-4 h-4 text-purple-400" />
                     <span>Customer Inbound Scope</span>
                   </h4>
-                  <span className="text-[10px] text-zinc-400 font-mono">Channel: Voice / Inbound Intake</span>
+                  <span className="text-xs text-zinc-400 font-mono">Channel: Voice / Inbound Intake</span>
                 </div>
 
                 <div className="p-3 rounded-xl bg-black/60 border border-zinc-850 text-zinc-300 space-y-2 leading-relaxed">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider font-mono">Reported Problem Description</div>
+                  <div className="text-xs text-zinc-500 uppercase tracking-wider font-mono">Reported Problem Description</div>
                   <p className="text-xs text-zinc-200 font-sans">{description || 'Customer reported operational disruption requiring immediate specialist dispatch.'}</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-1">
-                    <div className="text-[10px] text-zinc-500 uppercase font-mono">Customer Urgency</div>
+                    <div className="text-xs text-zinc-500 uppercase font-mono">Customer Urgency</div>
                     <div className="font-bold text-white capitalize flex items-center gap-1">
-                      <span className={`w-2 h-2 rounded-full ${priority === 'critical' ? 'bg-red-400 animate-pulse' : 'bg-lime-400'}`} />
+                      <span className={`w-2 h-2 rounded-full ${priority === 'critical' ? 'bg-red-400 animate-pulse' : 'bg-[#22ec72]'}`} />
                       <span>{priority} Priority</span>
                     </div>
                   </div>
                   <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-1">
-                    <div className="text-[10px] text-zinc-500 uppercase font-mono">Service Category</div>
+                    <div className="text-xs text-zinc-500 uppercase font-mono">Service Category</div>
                     <div className="font-bold text-white">{category}</div>
                   </div>
                 </div>
@@ -360,7 +360,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
               {/* Add Operator Notes to Customer History */}
               <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
-                <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block">
+                <label className="text-xs font-bold text-zinc-300 uppercase tracking-wider block">
                   Add Operator / Customer Service Follow-Up Notes
                 </label>
                 <textarea
@@ -368,7 +368,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                   value={operatorNotes}
                   onChange={(e) => setOperatorNotes(e.target.value)}
                   placeholder="Record customer updates, gate access codes, equipment serial numbers, or approval timestamps..."
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                 />
               </div>
             </div>
@@ -379,25 +379,25 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Job Title
                   </label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Service Category
                   </label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   >
                     <option value="HVAC">HVAC</option>
                     <option value="Automation">Automation</option>
@@ -411,89 +411,89 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Client Name
                   </label>
                   <input
                     type="text"
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Client Phone
                   </label>
                   <input
                     type="text"
                     value={clientPhone}
                     onChange={(e) => setClientPhone(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500 font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72] font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                   Service Site Location Address
                 </label>
                 <input
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Assigned Specialist
                   </label>
                   <input
                     type="text"
                     value={assignedTechnician}
                     onChange={(e) => setAssignedTechnician(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Scheduled Time
                   </label>
                   <input
                     type="text"
                     value={scheduledTime}
                     onChange={(e) => setScheduledTime(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500 font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72] font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Contract Value ($)
                   </label>
                   <input
                     type="number"
                     value={estimatedValue}
                     onChange={(e) => setEstimatedValue(Number(e.target.value))}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500 font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72] font-mono"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Job Priority
                   </label>
                   <select
                     value={priority}
                     onChange={(e) => setPriority(e.target.value as any)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   >
                     <option value="low">Low Priority</option>
                     <option value="normal">Normal Priority</option>
@@ -503,13 +503,13 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Status
                   </label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   >
                     <option value="unassigned">Unassigned / Pending</option>
                     <option value="dispatched">Dispatched</option>
@@ -521,14 +521,14 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                   Description / Customer Problem Statement
                 </label>
                 <textarea
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-lime-500"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                 />
               </div>
             </div>
@@ -546,7 +546,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                   onClose();
                 }
               }}
-              className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-xl transition cursor-pointer flex items-center gap-1.5"
+              className="min-h-[48px] p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-xl transition cursor-pointer flex items-center gap-1.5"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Delete Job</span>
@@ -559,14 +559,14 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold transition cursor-pointer"
+              className="min-h-[48px] px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold transition cursor-pointer"
             >
               Close
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-lime-500/20 transition cursor-pointer"
+              className="min-h-[48px] px-4 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-[#22ec72]/20 transition cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" />
               <span>Save Job Updates</span>

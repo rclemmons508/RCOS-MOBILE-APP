@@ -171,7 +171,7 @@ export const AiReceptionistDetail: React.FC<AiReceptionistDetailProps> = ({
           type="button"
           onClick={onClose}
           aria-label="Back to Calls"
-          className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-[#22ec72]/40 flex items-center justify-center transition shrink-0 cursor-pointer"
+          className="min-h-[48px] w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-[#22ec72]/40 flex items-center justify-center transition shrink-0 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
@@ -179,7 +179,7 @@ export const AiReceptionistDetail: React.FC<AiReceptionistDetailProps> = ({
           AI Receptionist
         </h2>
         <span
-          className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border ${statusPillClass(
+          className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border ${statusPillClass(
             status.tone
           )}`}
         >
@@ -201,7 +201,7 @@ export const AiReceptionistDetail: React.FC<AiReceptionistDetailProps> = ({
         {stats.map((s) => (
           <div key={s.label} className="text-center">
             <div className="text-2xl font-extrabold text-white leading-none">{s.value}</div>
-            <div className="text-[10px] font-bold text-zinc-400 mt-1">{s.label}</div>
+            <div className="text-xs font-bold text-zinc-400 mt-1">{s.label}</div>
           </div>
         ))}
       </div>
@@ -249,7 +249,7 @@ export const AiReceptionistDetail: React.FC<AiReceptionistDetailProps> = ({
             className="w-full h-16 bg-black border border-zinc-800 rounded-xl p-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72] resize-none"
           />
           <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
-            <span className="text-[11px] text-zinc-400">
+            <span className="text-xs text-zinc-400">
               Answers as {answeringMode === 'ai' ? 'AI Concierge Kore' : 'Live Operator'}
             </span>
             <div className="flex items-center gap-2">
@@ -286,7 +286,7 @@ export const AiReceptionistDetail: React.FC<AiReceptionistDetailProps> = ({
             {row.icon}
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-bold text-white">{row.title}</span>
-              <span className="block text-[11px] text-zinc-400 truncate">{row.subtitle}</span>
+              <span className="block text-xs text-zinc-400 truncate">{row.subtitle}</span>
             </span>
             <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
           </button>
