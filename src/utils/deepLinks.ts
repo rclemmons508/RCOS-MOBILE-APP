@@ -19,6 +19,7 @@ export const DEEP_LINK_ROUTES: Record<string, TabType> = {
   phone: 'phone',
   jobs: 'jobs',
   inbox: 'inbox',
+  operations: 'inbox',
   more: 'more',
   team: 'team',
   chat: 'chat',

@@ -3,7 +3,8 @@ import { PhoneCall, Job, Client, ActionRecord, TabType, User, IndustryOptimizati
 import {
   PhoneCall as PhoneIcon,
   Briefcase,
-  Users,
+  UserPlus,
+  AudioWaveform,
   AlertCircle,
   CheckCircle2,
   ChevronRight,
@@ -13,7 +14,6 @@ import {
   Share2,
   Link2,
   DollarSign,
-  FileText,
   Info
 } from 'lucide-react';
 import { RCLogoIcon } from '../RCLogo';
@@ -84,18 +84,50 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const unpaidInvoices = actions.filter(
     (a) => a.status === 'approved' && a.result?.invoiceDetails && a.paymentStatus !== 'paid'
   );
-  const owedTotal = unpaidInvoices.reduce(
-    (sum, a) => sum + (a.result?.invoiceDetails?.totalAmount || 0),
-    0
-  );
-  const pendingQuotes = actions.filter(
-    (a) => a.status === 'awaiting_approval' && (a.result?.quoteDetails || a.result?.invoiceDetails)
-  );
   const pendingRequestCount = customerRequests.filter((r) => r.status === 'pending').length;
   const missedCallCount = calls.filter((c) => c.status === 'missed').length;
   const activeJobsCount = jobs.filter((j) => j.status !== 'completed').length;
-  const activeClientCount = clients.filter((c) => c.status !== 'inactive').length;
   const firstName = currentUser?.authenticated ? currentUser.fullName.split(' ')[0] : '';
+
+  // Sidebar-design stat tiles — every number is real app data, same
+  // honesty rules as the weekly card. A timestamp that does not parse
+  // simply does not count; no delta is shown anywhere, because there is
+  // no prior-period baseline to compare against — never invented.
+  const sameDay = (iso: string | undefined, now: Date) => {
+    if (!iso) return false;
+    const t = new Date(iso);
+    if (Number.isNaN(t.getTime())) return false;
+    return t.getFullYear() === now.getFullYear() && t.getMonth() === now.getMonth() && t.getDate() === now.getDate();
+  };
+  const sameMonth = (iso: string | undefined, now: Date) => {
+    if (!iso) return false;
+    const t = new Date(iso);
+    if (Number.isNaN(t.getTime())) return false;
+    return t.getFullYear() === now.getFullYear() && t.getMonth() === now.getMonth();
+  };
+  const now = new Date();
+  // Server-recorded calls are the persistent record; the session-local
+  // list resets on sign-in and would undercount the day.
+  const callsToday = serverCalls.filter((c) => sameDay(c.timestamp, now)).length;
+  const aiHandledToday = serverCalls.filter(
+    (c) =>
+      c.answeredBy === 'ai_receptionist' &&
+      (c.status === 'completed' || c.status === 'transferred') &&
+      sameDay(c.timestamp, now)
+  ).length;
+  // Revenue this month: paid invoices only, stamped when they were paid.
+  // Unpaid or unstamped records do not count — the figure grows as
+  // payments land, it is never padded.
+  const revenueMTD = actions
+    .filter((a) => a.paymentStatus === 'paid' && sameMonth(a.paidAt, now))
+    .reduce(
+      (sum, a) =>
+        sum + (a.paidAmount ?? a.result?.invoiceDetails?.totalAmount ?? a.dollarAmount ?? 0),
+      0
+    );
+  // Time-aware greeting, as in the reference ("Good Morning, Ryan").
+  const hour = now.getHours();
+  const daypart = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
   const slaFor = (req: CustomerRequest) => {
     const urgent = req.urgency === 'urgent' || req.urgency === 'emergency';
@@ -250,20 +282,123 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </button>
       </div>
 
-      {/* Greeting */}
+      {/* Greeting — time-aware, as in the reference. */}
       <div className="px-1">
         <h2 className="text-xl font-extrabold text-white tracking-tight">
-          {firstName ? `Welcome Back, ${firstName}!` : 'Welcome Back!'}
+          {firstName ? `${daypart}, ${firstName}!` : `${daypart}!`}
         </h2>
-        <p className="text-xs text-zinc-400 mt-0.5">Let's get your business done today.</p>
+        <p className="text-xs text-zinc-400 mt-0.5">Here&apos;s what&apos;s happening with your business today.</p>
       </div>
 
-      {/* Today's Priorities — Design 1 card. Same live situations the
-          "What needs you" strip showed, plus jobs scheduled today. Each
-          row is one tap to the screen that handles it. */}
+      {/* Sidebar-design stat tiles — 2x2, real numbers only, no deltas.
+          Each tile is one tap to the screen that owns the number. */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light();
+            onNavigateTab('phone');
+          }}
+          className="p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left min-h-[96px] flex flex-col justify-between gap-1"
+        >
+          <span className="p-1.5 rounded-lg bg-[#22ec72]/10 text-[#22ec72] self-start">
+            <PhoneIcon className="w-4 h-4" />
+          </span>
+          <span className="text-2xl font-extrabold text-white leading-none">{callsToday}</span>
+          <span className="text-xs font-bold text-zinc-400">Today&apos;s Calls</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light();
+            onNavigateTab('requests');
+          }}
+          className="p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left min-h-[96px] flex flex-col justify-between gap-1"
+        >
+          <span className="p-1.5 rounded-lg bg-[#22ec72]/10 text-[#22ec72] self-start">
+            <UserPlus className="w-4 h-4" />
+          </span>
+          <span className="text-2xl font-extrabold text-white leading-none">{pendingRequestCount}</span>
+          <span className="text-xs font-bold text-zinc-400">New Leads</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light();
+            onNavigateTab('jobs');
+          }}
+          className="p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left min-h-[96px] flex flex-col justify-between gap-1"
+        >
+          <span className="p-1.5 rounded-lg bg-[#22ec72]/10 text-[#22ec72] self-start">
+            <Briefcase className="w-4 h-4" />
+          </span>
+          <span className="text-2xl font-extrabold text-white leading-none">{activeJobsCount}</span>
+          <span className="text-xs font-bold text-zinc-400">Jobs Scheduled</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light();
+            onNavigateTab('approvals');
+          }}
+          className="p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left min-h-[96px] flex flex-col justify-between gap-1"
+        >
+          <span className="p-1.5 rounded-lg bg-[#22ec72]/10 text-[#22ec72] self-start">
+            <DollarSign className="w-4 h-4" />
+          </span>
+          <span className="text-2xl font-extrabold text-white leading-none">${revenueMTD.toLocaleString('en-US')}</span>
+          <span className="text-xs font-bold text-zinc-400">Revenue (MTD)</span>
+        </button>
+      </div>
+
+      {/* AI Receptionist card — status follows the same server reachability
+          the Online badge uses; the count is AI-answered calls today from
+          the server's call record. One tap opens the AI Team screen
+          (the dedicated receptionist detail screen comes in Stage 4). */}
+      <button
+        type="button"
+        onClick={() => {
+          haptic.light();
+          onNavigateTab('team');
+        }}
+        className="w-full p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="p-3 rounded-full border-2 border-[#22ec72] text-[#22ec72] shrink-0">
+            <AudioWaveform className="w-5 h-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="text-sm font-extrabold text-white">AI Receptionist</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                serverOnline === true
+                  ? 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30'
+                  : serverOnline === false
+                  ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+              }`}>
+                {serverOnline === true ? 'Active' : serverOnline === false ? 'Offline' : 'Checking…'}
+              </span>
+            </span>
+            <span className="block text-xs text-zinc-400 mt-0.5">
+              {aiHandledToday === 0
+                ? 'No calls handled yet today'
+                : `${aiHandledToday} call${aiHandledToday === 1 ? '' : 's'} handled today`}
+            </span>
+          </span>
+          <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+        </div>
+      </button>
+
+      {/* Today's Focus — the reference's name for the same live
+          situations the Design 1 card showed. Each row is one tap to
+          the screen that handles it. */}
       <div className={`p-3.5 ${dashboardCard} space-y-2`}>
         <div className="flex items-center justify-between">
-          <span className={sectionLabel}>Today&apos;s Priorities</span>
+          <span className={sectionLabel}>Today&apos;s Focus</span>
           <button
             type="button"
             onClick={() => {
@@ -329,76 +464,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           onDismiss={onDismissSuggestion}
         />
       )}
-
-      {/* Design 1 stat tiles — Jobs, Invoices ($ owed), Quotes waiting,
-          Clients. One row, one tap each. The Clients tile counts the real
-          client list instead of the stale metrics counter the old tile
-          used; the Invoices tile shows the money-loop owed total. */}
-      <div className="grid grid-cols-4 gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            haptic.light();
-            onNavigateTab('jobs');
-          }}
-          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition cursor-pointer text-center min-h-[92px] flex flex-col items-center justify-center gap-1"
-        >
-          <span className="p-1.5 rounded-lg bg-lime-500/10 text-lime-400">
-            <Briefcase className="w-4 h-4" />
-          </span>
-          <span className="text-base font-extrabold text-white leading-none">{activeJobsCount}</span>
-          <span className="text-[10px] font-bold text-zinc-400">Jobs</span>
-          <span className="text-[9px] text-zinc-500 leading-none">{urgentJobs.length} urgent</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            haptic.light();
-            onNavigateTab('approvals');
-          }}
-          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition cursor-pointer text-center min-h-[92px] flex flex-col items-center justify-center gap-1"
-        >
-          <span className="p-1.5 rounded-lg bg-lime-500/10 text-lime-400">
-            <DollarSign className="w-4 h-4" />
-          </span>
-          <span className="text-base font-extrabold text-white leading-none">${owedTotal.toLocaleString('en-US')}</span>
-          <span className="text-[10px] font-bold text-zinc-400">Invoices</span>
-          <span className="text-[9px] text-zinc-500 leading-none">{unpaidInvoices.length} unpaid</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            haptic.light();
-            onNavigateTab('approvals');
-          }}
-          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition cursor-pointer text-center min-h-[92px] flex flex-col items-center justify-center gap-1"
-        >
-          <span className="p-1.5 rounded-lg bg-lime-500/10 text-lime-400">
-            <FileText className="w-4 h-4" />
-          </span>
-          <span className="text-base font-extrabold text-white leading-none">{pendingQuotes.length}</span>
-          <span className="text-[10px] font-bold text-zinc-400">Quotes</span>
-          <span className="text-[9px] text-zinc-500 leading-none">waiting</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            haptic.light();
-            onNavigateTab('clients');
-          }}
-          className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 transition cursor-pointer text-center min-h-[92px] flex flex-col items-center justify-center gap-1"
-        >
-          <span className="p-1.5 rounded-lg bg-lime-500/10 text-lime-400">
-            <Users className="w-4 h-4" />
-          </span>
-          <span className="text-base font-extrabold text-white leading-none">{clients.length}</span>
-          <span className="text-[10px] font-bold text-zinc-400">Clients</span>
-          <span className="text-[9px] text-zinc-500 leading-none">{activeClientCount} active</span>
-        </button>
-      </div>
 
       {/* Today's Work — Grok-style rows: time, client + job, status pill.
           One tap opens the Jobs tab. */}

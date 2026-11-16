@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Job, InvoicePrefill } from '../../types';
 import { 
   Briefcase, 
@@ -29,6 +29,10 @@ interface JobsTabProps {
   onDeleteJob?: (id: string) => void;
   onTriggerNotification?: (title: string, message: string) => void;
   onCreateInvoice?: (prefill: InvoicePrefill) => void;
+  /** Quick-action signal: when App bumps this number, the create-job
+      form opens. Lets the bottom bar's + button open the real form
+      instead of just navigating to the tab. */
+  openCreateSignal?: number;
 }
 
 export const JobsTab: React.FC<JobsTabProps> = ({
@@ -37,12 +41,23 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   onUpdateJob,
   onDeleteJob,
   onTriggerNotification,
-  onCreateInvoice
+  onCreateInvoice,
+  openCreateSignal = 0
 }) => {
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  // Quick-action signal from the bottom bar's + button: a new value
+  // opens the create form. The ref stops a re-render from reopening
+  // it after the user closes it.
+  const lastCreateSignalRef = useRef(0);
+  useEffect(() => {
+    if (openCreateSignal && openCreateSignal !== lastCreateSignalRef.current) {
+      lastCreateSignalRef.current = openCreateSignal;
+      setShowCreateModal(true);
+    }
+  }, [openCreateSignal]);
   // Stage 2 assembly (L5): one create at a time — double-click used to
   // create two jobs (random RC-#### ids, no dedupe).
   const [isCreatingJob, setIsCreatingJob] = useState(false);
