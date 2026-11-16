@@ -240,12 +240,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-4 pb-8 px-3.5 sm:px-4 pt-2 max-w-full overflow-x-hidden">
-      {/* Design 1 business header: RCOS logo, business name, "Business
+      {/* Business header: RCOS logo, business name, "Business
           Operating System", and a real Online badge from the server status
           the Dashboard already receives. The bell opens notifications.
           Sign-in lives in the global header's profile button, so this card
-          does not repeat it. */}
-      <div className={`p-3.5 ${dashboardCard} flex items-center justify-between gap-3`}>
+          does not repeat it. Restyled to the sidebar design in Stage 6 —
+          the badge and the business name are unchanged, only the shell. */}
+      <div className="p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <RCLogoIcon className="h-11 w-11 rounded-2xl" />
           <div className="min-w-0">
@@ -255,12 +256,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <p className="text-xs text-zinc-400 truncate">Business Operating System</p>
             <span className={`mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
               serverOnline === true
-                ? 'bg-lime-500/10 text-lime-400 border-lime-500/30'
+                ? 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30'
                 : serverOnline === false
                 ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
                 : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
             }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${serverOnline === true ? 'bg-lime-400 animate-pulse' : serverOnline === false ? 'bg-rose-400' : 'bg-amber-400 animate-pulse'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${serverOnline === true ? 'bg-[#22ec72] animate-pulse' : serverOnline === false ? 'bg-rose-400' : 'bg-amber-400 animate-pulse'}`} />
               {serverOnline === true ? 'Online' : serverOnline === false ? 'Offline' : 'Checking…'}
             </span>
           </div>
@@ -271,7 +272,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             haptic.light();
             onOpenAlerts();
           }}
-          className="relative w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-lime-500/40 flex items-center justify-center transition shrink-0 cursor-pointer"
+          className="relative w-10 h-10 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-zinc-300 hover:text-white hover:border-[#22ec72]/40 flex items-center justify-center transition shrink-0 cursor-pointer"
           aria-label="Open alerts in Operations"
           title="Alerts"
         >

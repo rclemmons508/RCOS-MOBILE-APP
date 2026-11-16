@@ -42,7 +42,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     { id: 'dashboard', label: 'Home', icon: Home, activeWhen: ['dashboard'] },
     { id: 'inbox', label: 'Operations', icon: ClipboardList, activeWhen: ['inbox', 'team-chat', 'gmail', 'requests'] },
     { id: 'clients', label: 'Customers', icon: Users, activeWhen: ['clients'] },
-    { id: 'more', label: 'More', icon: Ellipsis, activeWhen: ['more', 'settings', 'team', 'chat'] },
+    { id: 'more', label: 'More', icon: Ellipsis, activeWhen: ['more', 'settings', 'team', 'chat', 'reports'] },
   ];
 
   const navButton = (tab: { id: TabType; label: string; icon: any; activeWhen: TabType[] }) => {
