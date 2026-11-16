@@ -28,6 +28,7 @@ export const DEEP_LINK_ROUTES: Record<string, TabType> = {
   review: 'approvals',
   clients: 'clients',
   requests: 'requests',
+  reports: 'reports',
   'team-chat': 'team-chat',
   gmail: 'gmail',
   email: 'gmail',

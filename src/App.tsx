@@ -101,6 +101,7 @@ const OnboardingModal = lazy(() => import('./components/OnboardingModal').then((
 const ServiceManagerModal = lazy(() => import('./components/ServiceManagerModal').then((m) => ({ default: m.ServiceManagerModal })));
 const ProactiveIndustrySuggestionModal = lazy(() => import('./components/ProactiveIndustrySuggestionModal').then((m) => ({ default: m.ProactiveIndustrySuggestionModal })));
 const SettingsTab = lazy(() => import('./components/tabs/SettingsTab').then((m) => ({ default: m.SettingsTab })));
+const ReportsTab = lazy(() => import('./components/tabs/ReportsTab').then((m) => ({ default: m.ReportsTab })));
 
 
 /** Shown while a code-split tab or modal downloads (usually a few ms). */
@@ -2418,6 +2419,17 @@ export default function App() {
               onMoneyCreated={handleInvoiceCreated}
               invoicePrefill={invoicePrefill}
               onInvoicePrefillConsumed={() => setInvoicePrefill(null)}
+            />
+          )}
+
+          {activeTab === 'reports' && (
+            <ReportsTab
+              serverCalls={serverCalls}
+              jobs={jobs}
+              actions={actions}
+              clients={clients}
+              customerRequests={customerRequests}
+              onNavigateTab={(tab) => setActiveTab(tab)}
             />
           )}
 

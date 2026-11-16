@@ -40,11 +40,9 @@ interface SidebarDrawerProps {
  * Invoices / Reports / Settings, and the signed-in user at the bottom.
  *
  * Every item goes to a real screen — the mapping is the Stage 1 mapping
- * (see the sidebar stage plan). Two items are honest stand-ins until
- * their dedicated screen exists: Invoices opens the money-loop Review
- * screen (quotes + invoices + Mark Paid), and Reports opens Home, which
- * is where the live weekly numbers live today. Neither item is dead;
- * both are replaced by real screens in Stages 5–6.
+ * (see the sidebar stage plan). Invoices opens the money-loop Review
+ * screen (quotes + invoices + Mark Paid); Reports opens the dedicated
+ * Reports screen built in Stage 6. Neither item is dead.
  */
 export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   isOpen,
@@ -87,6 +85,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     : activeTab === 'phone' ? 'calls'
     : activeTab === 'jobs' ? 'schedule'
     : activeTab === 'approvals' ? 'invoices'
+    : activeTab === 'reports' ? 'reports'
     : activeTab === 'settings' ? (settingsSection === 'agents' ? 'automation' : 'settings')
     : null;
 
@@ -98,7 +97,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     { id: 'calls', label: 'Calls', icon: Phone, run: () => go('phone') },
     { id: 'schedule', label: 'Schedule', icon: Calendar, run: () => go('jobs') },
     { id: 'invoices', label: 'Invoices', icon: Receipt, run: () => go('approvals') },
-    { id: 'reports', label: 'Reports', icon: BarChart3, run: () => go('dashboard') },
+    { id: 'reports', label: 'Reports', icon: BarChart3, run: () => go('reports') },
     { id: 'settings', label: 'Settings', icon: Settings, run: () => goSettings('user') },
   ];
 
