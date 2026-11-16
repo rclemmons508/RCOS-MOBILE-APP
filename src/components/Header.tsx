@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RCLogo } from './RCLogo';
-import { Bell, User as UserIcon, MessageSquare, ShieldCheck, Mail, Fingerprint, Lock, Inbox } from 'lucide-react';
+import { Bell, User as UserIcon, MessageSquare, ShieldCheck, Mail, Fingerprint, Lock, Inbox, Menu } from 'lucide-react';
 import { TabType, User } from '../types';
 import { useBiometrics } from '../context/BiometricContext';
 
@@ -15,6 +15,8 @@ interface HeaderProps {
   onOpenAuth?: () => void;
   onOpenChat?: () => void;
   onOpenGmail?: () => void;
+  /** Opens the sidebar drawer (top-left hamburger). */
+  onOpenDrawer?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
   onOpenChat,
   onOpenGmail,
+  onOpenDrawer,
 }) => {
   const [time, setTime] = useState<string>('12:00');
   const { isBiometricEnabled, lockDashboard, biometryLabel } = useBiometrics();
@@ -87,7 +90,18 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 w-full shrink-0 bg-black/95 backdrop-blur-xl border-b border-zinc-900/80 pl-[max(0.6rem,env(safe-area-inset-left))] pr-[max(0.6rem,env(safe-area-inset-right))] pt-[max(0.45rem,calc(env(safe-area-inset-top)+0.25rem))] pb-2 transition-all">
       {/* Top Bar with Logo, Title, and Action Controls */}
       <div className="flex items-center justify-between gap-1.5 max-w-full overflow-hidden">
-        {/* Left: Brand Logo & Title */}
+        {/* Left: Hamburger (sidebar drawer), Brand Logo & Title */}
+        {onOpenDrawer && (
+          <button
+            type="button"
+            onClick={onOpenDrawer}
+            className="w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-[#22ec72]/50 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
+            title="Open menu"
+            aria-label="Open menu"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+        )}
         <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
           <RCLogo variant="compact" showText={false} className="shrink-0" />
           <div className="min-w-0 flex-1 flex flex-col justify-center">

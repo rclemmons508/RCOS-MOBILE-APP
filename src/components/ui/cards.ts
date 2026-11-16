@@ -22,3 +22,18 @@ export const hubSwitcherButton = (isActive: boolean): string =>
       ? 'bg-lime-500 text-black'
       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
   }`;
+
+/**
+ * Sidebar-design tokens (Stage 1 of the sidebar rebuild). Colors sampled
+ * from the reference image: near-black green-tinted background, dark
+ * green-tinted cards, and the reference's bright emerald accent.
+ * The rest of the app still uses the lime accent; the accent migrates
+ * screen by screen in later stages — do not mix the two greens on one
+ * surface.
+ */
+/** Page/card background for sidebar-design surfaces. */
+export const sidebarCard = 'rounded-2xl bg-[#0c1211] border border-[#1d2b26]';
+/** Bright green accent sampled from the reference's solid green buttons. */
+export const sidebarAccentHex = '#22ec72';
+/** Active drawer row / active pill: accent tint on the card background. */
+export const sidebarActiveTint = 'bg-[#22ec72]/15 text-[#22ec72] border border-[#22ec72]/30';

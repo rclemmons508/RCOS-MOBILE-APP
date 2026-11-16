@@ -26,6 +26,8 @@ import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { JobsHubSwitcher } from './components/nav/JobsHubSwitcher';
 import { MessagesHubSwitcher } from './components/nav/MessagesHubSwitcher';
+import { SidebarDrawer } from './components/nav/SidebarDrawer';
+import { QuickActionSheet } from './components/nav/QuickActionSheet';
 import { InboxView } from './components/InboxView';
 import { MoreMenu } from './components/nav/MoreMenu';
 import { RequestsView } from './components/nav/RequestsView';
@@ -175,6 +177,13 @@ async function resolveBusinessForUser(user: User): Promise<BusinessAccount | nul
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  // Sidebar drawer + quick-action sheet (sidebar design, Stage 1).
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  // Quick-action signals: bumped when the + sheet picks New Job / Add
+  // Customer, so the target tab opens its real create form on arrival.
+  const [jobCreateSignal, setJobCreateSignal] = useState(0);
+  const [clientAddSignal, setClientAddSignal] = useState(0);
   // One Inbox deep-link targets. Set when an Inbox row is tapped, consumed by
   // the target screen on mount; the screens unmount when you leave the tab,
   // so the next visit shows the plain screen again, exactly as before.
@@ -1223,6 +1232,8 @@ export default function App() {
       });
       backHandle = await App.addListener('backButton', async () => {
         // Close the topmost open window first (last rendered = on top).
+        if (isDrawerOpen) { setIsDrawerOpen(false); return; }
+        if (isQuickActionsOpen) { setIsQuickActionsOpen(false); return; }
         if (isOnboardingOpen) { setIsOnboardingOpen(false); return; }
         if (isSuggestionModalOpen) { setIsSuggestionModalOpen(false); return; }
         if (isServiceManagerOpen) { setIsServiceManagerOpen(false); return; }
@@ -1252,7 +1263,7 @@ export default function App() {
     };
     // Re-register when any window opens or closes so the handler always
     // sees the current top window.
-  }, [isOnboardingOpen, isSuggestionModalOpen, isServiceManagerOpen, isAuthModalOpen, isInboxOpen, isNotifPrefsOpen, isNotifCenterOpen]);
+  }, [isDrawerOpen, isQuickActionsOpen, isOnboardingOpen, isSuggestionModalOpen, isServiceManagerOpen, isAuthModalOpen, isInboxOpen, isNotifPrefsOpen, isNotifCenterOpen]);
 
   // Wipe everything that belongs to the signed-in operator / their company
   // (audit High #3). Run on logout, leave-team and before a sign-in, so the
@@ -2193,6 +2204,7 @@ export default function App() {
           onOpenAuth={() => setIsAuthModalOpen(true)}
           onOpenChat={() => setActiveTab('chat')}
           onOpenGmail={() => setActiveTab('gmail')}
+          onOpenDrawer={() => setIsDrawerOpen(true)}
         />
 
         {/* Tab Views Container with Safe Scrollable Bounds */}
@@ -2328,6 +2340,7 @@ export default function App() {
             <JobsTab
               jobs={jobs}
               onAddJob={handleAddJob}
+              openCreateSignal={jobCreateSignal}
               onUpdateJob={handleUpdateJob}
               onDeleteJob={handleDeleteJob}
               onCreateInvoice={handleCreateInvoiceFromJob}
@@ -2364,6 +2377,7 @@ export default function App() {
               onAddClient={handleAddClient}
               onEditClient={handleEditClient}
               onDeleteClient={handleDeleteClient}
+              openAddSignal={clientAddSignal}
             />
           )}
 
@@ -2506,6 +2520,39 @@ export default function App() {
           setActiveTab={setActiveTab}
           currentUser={currentUser}
           messagesBadge={inboxBadgeCount}
+          onOpenQuickActions={() => setIsQuickActionsOpen(true)}
+        />
+
+        {/* Sidebar drawer (hamburger, top-left) */}
+        <SidebarDrawer
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          activeTab={activeTab}
+          settingsSection={settingsSection}
+          currentUser={currentUser}
+          businessName={activeBusiness.name || 'Setup Company'}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+          onOpenSettings={openSettings}
+        />
+
+        {/* Quick-action sheet (bottom bar center +) */}
+        <QuickActionSheet
+          isOpen={isQuickActionsOpen}
+          onClose={() => setIsQuickActionsOpen(false)}
+          onNewJob={() => {
+            setIsQuickActionsOpen(false);
+            setJobCreateSignal((s) => s + 1);
+            setActiveTab('jobs');
+          }}
+          onAddCustomer={() => {
+            setIsQuickActionsOpen(false);
+            setClientAddSignal((s) => s + 1);
+            setActiveTab('clients');
+          }}
+          onAskAI={() => {
+            setIsQuickActionsOpen(false);
+            setActiveTab('chat');
+          }}
         />
 
         {/* Notification Center Modal */}

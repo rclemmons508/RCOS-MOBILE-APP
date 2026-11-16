@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Client, Job } from '../../types';
 import { 
   Users, 
@@ -24,6 +24,10 @@ interface ClientsTabProps {
   /** Jobs, for the "Last Job" line on each row. Optional — the list
       works without it, showing "No jobs yet" instead. */
   jobs?: Job[];
+  /** Quick-action signal: when App bumps this number, the add-client
+      form opens. Lets the bottom bar's + button open the real form
+      instead of just navigating to the tab. */
+  openAddSignal?: number;
 }
 
 export const ClientsTab: React.FC<ClientsTabProps> = ({ 
@@ -31,7 +35,8 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
   onAddClient, 
   onEditClient, 
   onDeleteClient,
-  jobs = []
+  jobs = [],
+  openAddSignal = 0
 }) => {
   const [selectedClient, setSelectedClient] = useState<Client | null>(clients[0] || null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,6 +44,16 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
   const [generatedDraft, setGeneratedDraft] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
+  // Quick-action signal from the bottom bar's + button: a new value
+  // opens the add-client form. The ref stops a re-render from reopening
+  // it after the user closes it.
+  const lastAddSignalRef = useRef(0);
+  useEffect(() => {
+    if (openAddSignal && openAddSignal !== lastAddSignalRef.current) {
+      lastAddSignalRef.current = openAddSignal;
+      setIsAddClientModalOpen(true);
+    }
+  }, [openAddSignal]);
   const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
   const [sentNotice, setSentNotice] = useState<string | null>(null);
 
