@@ -7,8 +7,6 @@ import { hubSwitcherButton, hubSwitcherContainer } from '../ui/cards';
 interface MessagesHubSwitcherProps {
   activeTab: TabType;
   onNavigate: (tab: TabType) => void;
-  /** Unread Team Chat messages from other people; badge on Chat. */
-  unreadTeamCount?: number;
 }
 
 /**
@@ -16,8 +14,10 @@ interface MessagesHubSwitcherProps {
  * Requests screens so the views behave as one hub. Old tab ids stay valid
  * view targets. Inbox is first: it is the hub's landing screen.
  * Phone is NOT here anymore: Calls is its own bottom-bar tab.
+ * No badge on Chat: the single Operations badge on the bottom nav
+ * already counts team unread — the same item is never badged twice.
  */
-export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ activeTab, onNavigate, unreadTeamCount = 0 }) => {
+export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ activeTab, onNavigate }) => {
   const items: { id: TabType; label: string; icon: any }[] = [
     { id: 'inbox', label: 'Inbox', icon: LayoutList },
     { id: 'team-chat', label: 'Chat', icon: MessageSquare },
@@ -44,11 +44,6 @@ export const MessagesHubSwitcher: React.FC<MessagesHubSwitcherProps> = ({ active
           >
             <Icon className="w-4 h-4" />
             <span>{item.label}</span>
-            {item.id === 'team-chat' && unreadTeamCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                {unreadTeamCount > 99 ? '99+' : unreadTeamCount}
-              </span>
-            )}
           </button>
         );
       })}

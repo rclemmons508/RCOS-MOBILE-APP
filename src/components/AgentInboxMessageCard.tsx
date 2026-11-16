@@ -1,10 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  X,
   AlertTriangle,
   Lightbulb,
   HelpCircle,
-  Inbox,
   Clock,
   Send,
   ChevronRight,
@@ -14,13 +12,10 @@ import { AGENT_META } from '../services/agentInboxService';
 import { buildSmsUrl, isFollowupMessage, parseSmsUrl } from '../utils/followups';
 import { safeOpenUrl } from '../lib/safeOpen';
 
-interface AgentInboxModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  messages: AgentInboxMessage[];
+interface AgentInboxMessageCardProps {
+  msg: AgentInboxMessage;
   onRespond: (msg: AgentInboxMessage, action: 'answered' | 'dismissed' | 'snoozed', text?: string) => void;
   onNavigateTab: (tab: TabType) => void;
-  onMarkRead: (msg: AgentInboxMessage) => void;
 }
 
 function timeAgo(iso: string): string {
@@ -40,11 +35,22 @@ const KIND_META = {
   question: { label: 'Question', icon: HelpCircle, chip: 'text-sky-300 bg-sky-500/15 border-sky-500/30' },
 } as const;
 
-const MessageCard: React.FC<{
-  msg: AgentInboxMessage;
-  onRespond: AgentInboxModalProps['onRespond'];
-  onNavigateTab: (tab: TabType) => void;
-}> = ({ msg, onRespond, onNavigateTab }) => {
+/**
+ * One AI Team message, with its full actions — moved verbatim out of the
+ * retired AgentInboxModal so the Operations feed renders it inline.
+ * Reply / snooze / dismiss and the follow-up Send now / Edit / Dismiss
+ * all behave exactly as they did in the modal.
+ *
+ * Follow-up drafts (Send now / Edit / Dismiss). Detected by the sms:
+ * action the engine stores. Send now only OPENS the phone's SMS app —
+ * nothing is marked sent; the owner taps Dismiss once they've actually
+ * sent it.
+ */
+export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
+  msg,
+  onRespond,
+  onNavigateTab,
+}) => {
   const agent = AGENT_META[msg.agent] || AGENT_META.system;
   const kind = KIND_META[msg.kind] || KIND_META.suggestion;
   const KindIcon = kind.icon;
@@ -52,9 +58,6 @@ const MessageCard: React.FC<{
   const [replyOpen, setReplyOpen] = useState(false);
   const done = msg.status !== 'unread' && msg.status !== 'read';
 
-  // Follow-up drafts (Send now / Edit / Dismiss). Detected by the sms: action
-  // the engine stores. Send now only OPENS the phone's SMS app — nothing is
-  // marked sent; the owner taps Dismiss once they've actually sent it.
   const followup = isFollowupMessage(msg);
   const sms = followup ? parseSmsUrl(msg.actionUrl) : null;
   const [editOpen, setEditOpen] = useState(false);
@@ -74,7 +77,7 @@ const MessageCard: React.FC<{
   return (
     <div
       className={`rounded-2xl border p-3.5 transition-opacity ${
-        done ? 'bg-zinc-900/40 border-zinc-800 opacity-60' : 'bg-zinc-900 border-zinc-800'
+        done ? 'bg-[#0c1211]/40 border-[#1d2b26] opacity-60' : 'bg-[#0c1211] border-[#1d2b26]'
       }`}
     >
       <div className="flex items-center gap-2 flex-wrap">
@@ -95,10 +98,10 @@ const MessageCard: React.FC<{
       <div className="mt-1 text-xs text-zinc-400 leading-relaxed">{msg.body}</div>
 
       {msg.status === 'snoozed' && (
-        <div className="mt-2 text-[10px] text-zinc-500 italic">Snoozed — I'll bring this back tomorrow.</div>
+        <div className="mt-2 text-[10px] text-zinc-500 italic">Snoozed — I&apos;ll bring this back tomorrow.</div>
       )}
       {msg.status === 'answered' && msg.responseText && (
-        <div className="mt-2 text-[10px] text-zinc-500 italic">Your reply: "{msg.responseText}"</div>
+        <div className="mt-2 text-[10px] text-zinc-500 italic">Your reply: &quot;{msg.responseText}&quot;</div>
       )}
 
       {!done && (
@@ -108,7 +111,7 @@ const MessageCard: React.FC<{
               <div className="flex gap-2">
                 <button
                   onClick={() => openSmsApp(sms?.text || '')}
-                  className="flex-1 py-2 rounded-xl bg-lime-500 text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98"
+                  className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98"
                 >
                   <Send className="w-3.5 h-3.5" /> Send now
                 </button>
@@ -140,13 +143,13 @@ const MessageCard: React.FC<{
                 onChange={(e) => setEditText(e.target.value)}
                 rows={3}
                 autoComplete="off"
-                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-lime-500"
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#22ec72]"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => openSmsApp(editText)}
                   disabled={!editText.trim()}
-                  className="flex-1 py-2 rounded-xl bg-lime-500 text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
+                  className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
                 >
                   <Send className="w-3.5 h-3.5" /> Open in SMS app
                 </button>
@@ -163,7 +166,7 @@ const MessageCard: React.FC<{
             <div className="flex gap-2">
               <button
                 onClick={() => setReplyOpen(true)}
-                className="flex-1 py-2 rounded-xl bg-lime-500 text-black text-xs font-extrabold active:scale-98"
+                className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold active:scale-98"
               >
                 Reply
               </button>
@@ -183,13 +186,13 @@ const MessageCard: React.FC<{
                 placeholder="Type your answer…"
                 rows={2}
                 autoComplete="off"
-                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-lime-500"
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#22ec72]"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => reply.trim() && onRespond(msg, 'answered', reply.trim())}
                   disabled={!reply.trim()}
-                  className="flex-1 py-2 rounded-xl bg-lime-500 text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
+                  className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
                 >
                   <Send className="w-3.5 h-3.5" /> Send
                 </button>
@@ -207,7 +210,7 @@ const MessageCard: React.FC<{
               {msg.actionLabel && (
                 <button
                   onClick={goAction}
-                  className="flex-1 py-2 rounded-xl bg-lime-500 text-black text-xs font-extrabold flex items-center justify-center gap-1 active:scale-98"
+                  className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1 active:scale-98"
                 >
                   {msg.actionLabel} <ChevronRight className="w-3.5 h-3.5" />
                 </button>
@@ -230,70 +233,6 @@ const MessageCard: React.FC<{
           )}
         </div>
       )}
-    </div>
-  );
-};
-
-export const AgentInboxModal: React.FC<AgentInboxModalProps> = ({
-  isOpen,
-  onClose,
-  messages,
-  onRespond,
-  onNavigateTab,
-  onMarkRead,
-}) => {
-  useEffect(() => {
-    if (isOpen) {
-      messages.filter((m) => m.status === 'unread').forEach(onMarkRead);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const active = messages.filter((m) => m.status === 'unread' || m.status === 'read' || m.status === 'snoozed');
-  const handled = messages.filter((m) => m.status === 'answered' || m.status === 'dismissed');
-
-  return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-full sm:max-w-lg bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-zinc-800">
-          <Inbox className="w-5 h-5 text-lime-400" />
-          <div className="text-base font-extrabold text-white">Agent Inbox</div>
-          <div className="text-[10px] text-zinc-500">Your team messages you here</div>
-          <button aria-label="Close" onClick={onClose} className="ml-auto p-2 rounded-xl bg-zinc-900 text-zinc-400">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto p-4 space-y-3">
-          {active.length === 0 && handled.length === 0 && (
-            <div className="text-center py-10">
-              <Inbox className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
-              <div className="text-sm font-bold text-zinc-300">All caught up</div>
-              <div className="text-xs text-zinc-500 mt-1 max-w-[240px] mx-auto">
-                When your agents spot something or need a decision, they'll message you here.
-              </div>
-            </div>
-          )}
-
-          {active.map((m) => (
-            <MessageCard key={m.id} msg={m} onRespond={onRespond} onNavigateTab={onNavigateTab} />
-          ))}
-
-          {handled.length > 0 && (
-            <>
-              <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider pt-2">
-                Handled
-              </div>
-              {handled.slice(0, 5).map((m) => (
-                <MessageCard key={m.id} msg={m} onRespond={onRespond} onNavigateTab={onNavigateTab} />
-              ))}
-            </>
-          )}
-        </div>
-      </div>
     </div>
   );
 };

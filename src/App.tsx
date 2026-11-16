@@ -40,8 +40,6 @@ import { useTeamLiveEvents } from './hooks/useTeamLiveEvents';
 import { industryLabel } from './utils/industry';
 import { asSafeSuggestion } from './utils/safeRender';
 import { NotificationToast } from './components/notifications/NotificationToast';
-import { NotificationCenterModal } from './components/notifications/NotificationCenterModal';
-import { AgentInboxModal } from './components/AgentInboxModal';
 import { agentInboxService } from './services/agentInboxService';
 import { AuthModal } from './components/auth/AuthModal';
 import { useBiometrics } from './context/BiometricContext';
@@ -278,12 +276,20 @@ export default function App() {
     initialPrefs?.notificationPreferences || INITIAL_NOTIFICATION_PREFERENCES
   );
   const [activePushToast, setActivePushToast] = useState<RCOSNotification | null>(null);
-  const [isNotifCenterOpen, setIsNotifCenterOpen] = useState(false);
   const [isNotifPrefsOpen, setIsNotifPrefsOpen] = useState(false);
 
   // Proactive Agent Inbox — the AI team messages the owner here.
+  // The messages live in the Operations feed (InboxView); the old
+  // Agent Inbox modal is retired — see the feed for the full actions.
   const [agentMessages, setAgentMessages] = useState<AgentInboxMessage[]>([]);
-  const [isInboxOpen, setIsInboxOpen] = useState(false);
+  // Operations shortcut target: a header button or toast opens the
+  // feed scrolled to a section ('ai-team' | 'alerts' | ...). The feed
+  // consumes (clears) it once it has scrolled.
+  const [inboxSection, setInboxSection] = useState<string | null>(null);
+  const openInboxSection = (section: string) => {
+    setInboxSection(section);
+    setActiveTab('inbox');
+  };
   const agentMessagesRef = useRef<AgentInboxMessage[]>([]);
   agentMessagesRef.current = agentMessages;
   const seenInboxIdsRef = useRef<Set<string>>(new Set());
@@ -1238,9 +1244,7 @@ export default function App() {
         if (isSuggestionModalOpen) { setIsSuggestionModalOpen(false); return; }
         if (isServiceManagerOpen) { setIsServiceManagerOpen(false); return; }
         if (isAuthModalOpen) { setIsAuthModalOpen(false); return; }
-        if (isInboxOpen) { setIsInboxOpen(false); return; }
         if (isNotifPrefsOpen) { setIsNotifPrefsOpen(false); return; }
-        if (isNotifCenterOpen) { setIsNotifCenterOpen(false); return; }
         // No window open: walk back through the tabs visited.
         const hist = tabHistoryRef.current;
         hist.pop(); // drop the current tab
@@ -1263,7 +1267,7 @@ export default function App() {
     };
     // Re-register when any window opens or closes so the handler always
     // sees the current top window.
-  }, [isDrawerOpen, isQuickActionsOpen, isOnboardingOpen, isSuggestionModalOpen, isServiceManagerOpen, isAuthModalOpen, isInboxOpen, isNotifPrefsOpen, isNotifCenterOpen]);
+  }, [isDrawerOpen, isQuickActionsOpen, isOnboardingOpen, isSuggestionModalOpen, isServiceManagerOpen, isAuthModalOpen, isNotifPrefsOpen]);
 
   // Wipe everything that belongs to the signed-in operator / their company
   // (audit High #3). Run on logout, leave-team and before a sign-in, so the
@@ -2184,11 +2188,12 @@ export default function App() {
           onClose={() => setActivePushToast(null)}
           onView={(notif) => {
             setActivePushToast(null);
-            // A team-message toast opens Team Chat, not the notification center.
+            // A team-message toast opens Team Chat, not the feed.
             if (notif.type === 'team_message') {
               setActiveTab('team-chat');
             } else {
-              setIsNotifCenterOpen(true);
+              // Alerts live in the Operations feed now, not a pop-up.
+              openInboxSection('alerts');
             }
           }}
         />
@@ -2196,11 +2201,9 @@ export default function App() {
         {/* Top Header with Brand Logo, Unread Bell, and Profile */}
         <Header
           activeTab={activeTab}
-          unreadCount={unreadNotifCount}
-          unreadInboxCount={agentMessages.filter((m) => m.status === 'unread').length}
           currentUser={currentUser}
-          onOpenNotifications={() => setIsNotifCenterOpen(true)}
-          onOpenInbox={() => setIsInboxOpen(true)}
+          onOpenNotifications={() => openInboxSection('alerts')}
+          onOpenInbox={() => openInboxSection('ai-team')}
           onOpenAuth={() => setIsAuthModalOpen(true)}
           onOpenChat={() => setActiveTab('chat')}
           onOpenGmail={() => setActiveTab('gmail')}
@@ -2217,7 +2220,7 @@ export default function App() {
           )}
           {(activeTab === 'inbox' || activeTab === 'team-chat' || activeTab === 'gmail' || activeTab === 'requests') && (
             <div className="px-3.5 sm:px-4 pt-2">
-              <MessagesHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} unreadTeamCount={teamUnreadCount} />
+              <MessagesHubSwitcher activeTab={activeTab} onNavigate={setActiveTab} />
             </div>
           )}
           {activeTab === 'dashboard' && (
@@ -2226,7 +2229,6 @@ export default function App() {
               jobs={jobs}
               actions={actions}
               currentUser={currentUser}
-              unreadNotifCount={unreadNotifCount}
               businessId={activeBusiness.id}
               businessName={activeBusiness.name || 'Setup Company'}
               serverOnline={serverOnline}
@@ -2238,7 +2240,7 @@ export default function App() {
               onReviewSuggestion={() => setIsSuggestionModalOpen(true)}
               onDismissSuggestion={handleDismissSuggestion}
               onNavigateTab={(tab) => setActiveTab(tab)}
-              onOpenNotifications={() => setIsNotifCenterOpen(true)}
+              onOpenAlerts={() => openInboxSection('alerts')}
             />
           )}
 
@@ -2247,12 +2249,22 @@ export default function App() {
               agentMessages={agentMessages}
               notifications={notifications}
               customerRequests={customerRequests}
+              actions={actions}
+              jobs={jobs}
+              serverCalls={serverCalls}
               businessId={activeBusiness.id}
               currentUserEmail={currentUser?.email || ''}
               teamUnreadCount={teamUnreadCount}
+              sectionTarget={inboxSection}
+              onSectionTargetConsumed={() => setInboxSection(null)}
               onNavigateTab={(tab) => setActiveTab(tab)}
-              onOpenInbox={() => setIsInboxOpen(true)}
-              onOpenNotifications={() => setIsNotifCenterOpen(true)}
+              onRespond={handleInboxRespond}
+              onMarkRead={handleInboxMarkRead}
+              onMarkNotifRead={handleMarkAsRead}
+              onMarkAllNotifsRead={handleMarkAllAsRead}
+              onClearNotifs={handleClearNotifications}
+              onOpenNotifPrefs={() => setIsNotifPrefsOpen(true)}
+              onTriggerTestPush={handleTriggerTestPush}
               onOpenRequest={(id) => {
                 setInboxRequestId(id);
                 setActiveTab('requests');
@@ -2531,6 +2543,7 @@ export default function App() {
           settingsSection={settingsSection}
           currentUser={currentUser}
           businessName={activeBusiness.name || 'Setup Company'}
+          operationsBadge={inboxBadgeCount}
           onNavigateTab={(tab) => setActiveTab(tab)}
           onOpenSettings={openSettings}
         />
@@ -2555,23 +2568,8 @@ export default function App() {
           }}
         />
 
-        {/* Notification Center Modal */}
-        <NotificationCenterModal
-          isOpen={isNotifCenterOpen}
-          onClose={() => setIsNotifCenterOpen(false)}
-          notifications={notifications}
-          onMarkAsRead={handleMarkAsRead}
-          onMarkAllAsRead={handleMarkAllAsRead}
-          onClearAll={handleClearNotifications}
-          onOpenPreferences={() => {
-            setIsNotifCenterOpen(false);
-            setIsNotifPrefsOpen(true);
-          }}
-          onNavigateTab={(tab) => setActiveTab(tab)}
-          onTriggerTestNotification={handleTriggerTestPush}
-        />
-
-        {/* Notification Preferences Modal (loaded on first open) */}
+        {/* Notification Preferences Modal (loaded on first open) — opened
+            from the Alerts toolbar in the Operations feed. */}
         {isNotifPrefsOpen && (
           <Suspense fallback={null}>
             <NotificationPreferencesModal
@@ -2583,19 +2581,6 @@ export default function App() {
             />
           </Suspense>
         )}
-
-        {/* Proactive Agent Inbox */}
-        <AgentInboxModal
-          isOpen={isInboxOpen}
-          onClose={() => setIsInboxOpen(false)}
-          messages={agentMessages}
-          onRespond={handleInboxRespond}
-          onNavigateTab={(tab) => {
-            setIsInboxOpen(false);
-            setActiveTab(tab);
-          }}
-          onMarkRead={handleInboxMarkRead}
-        />
 
         {/* User Authentication Modal */}
         <AuthModal
