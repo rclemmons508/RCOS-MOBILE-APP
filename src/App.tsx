@@ -182,6 +182,9 @@ export default function App() {
   // Customer, so the target tab opens its real create form on arrival.
   const [jobCreateSignal, setJobCreateSignal] = useState(0);
   const [clientAddSignal, setClientAddSignal] = useState(0);
+  // Receptionist signal: bumped when the Dashboard's AI Receptionist
+  // card is tapped, so the Calls tab opens on the detail screen.
+  const [receptionistSignal, setReceptionistSignal] = useState(0);
   // One Inbox deep-link targets. Set when an Inbox row is tapped, consumed by
   // the target screen on mount; the screens unmount when you leave the tab,
   // so the next visit shows the plain screen again, exactly as before.
@@ -2241,6 +2244,10 @@ export default function App() {
               onDismissSuggestion={handleDismissSuggestion}
               onNavigateTab={(tab) => setActiveTab(tab)}
               onOpenAlerts={() => openInboxSection('alerts')}
+              onOpenReceptionist={() => {
+                setReceptionistSignal((s) => s + 1);
+                setActiveTab('phone');
+              }}
             />
           )}
 
@@ -2280,6 +2287,12 @@ export default function App() {
             <PhoneSystemTab
               initialSubTab={inboxPhoneSubTab}
               calls={calls}
+              serverCalls={serverCalls}
+              customerRequests={customerRequests}
+              jobs={jobs}
+              serverOnline={serverOnline}
+              openReceptionistSignal={receptionistSignal}
+              onOpenSettingsSection={openSettings}
               onSimulateCall={handleSimulateInboundCall}
               messages={messages}
               currentUser={currentUser}

@@ -43,6 +43,9 @@ interface DashboardTabProps {
   onNavigateTab: (tab: TabType) => void;
   /** Opens the Operations feed at the Alerts section. */
   onOpenAlerts: () => void;
+  /** Opens the AI Receptionist detail screen (Stage 4). Falls back to
+      the AI Team tab when not provided. */
+  onOpenReceptionist?: () => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -62,6 +65,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   serverCalls = [],
   onNavigateTab,
   onOpenAlerts,
+  onOpenReceptionist,
 }) => {
   const urgentJobs = jobs.filter(j => j.priority === 'critical' || j.status === 'urgent');
   const upcomingJobs = jobs.filter(j => j.status !== 'completed').slice(0, 3);
@@ -349,13 +353,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
       {/* AI Receptionist card — status follows the same server reachability
           the Online badge uses; the count is AI-answered calls today from
-          the server's call record. One tap opens the AI Team screen
-          (the dedicated receptionist detail screen comes in Stage 4). */}
+          the server's call record. One tap opens the dedicated
+          receptionist detail screen (Stage 4). */}
       <button
         type="button"
         onClick={() => {
           haptic.light();
-          onNavigateTab('team');
+          if (onOpenReceptionist) onOpenReceptionist();
+          else onNavigateTab('team');
         }}
         className="w-full p-3.5 rounded-2xl bg-[#0c1211] border border-[#1d2b26] hover:border-[#22ec72]/40 transition cursor-pointer text-left"
       >
