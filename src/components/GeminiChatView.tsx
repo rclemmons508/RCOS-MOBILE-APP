@@ -77,6 +77,14 @@ const DEFAULT_BIZ: BusinessAccount = {
 
 const timeNow = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+/**
+ * Agent display name, shown once: every employee record has
+ * name === roleTitle (e.g. "Sales Assistant"), so "Name — RoleTitle"
+ * printed the same words twice.
+ */
+const displayAgentName = (emp: { name: string; roleTitle: string }): string =>
+  emp.name === emp.roleTitle ? emp.name : `${emp.name} — ${emp.roleTitle}`;
+
 /** Most messages kept per thread (on screen and in storage). */
 const MAX_THREAD_MESSAGES = 100;
 
@@ -254,13 +262,28 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
       } else {
         throw new Error('Empty response');
       }
-    } catch {
+    } catch (err) {
+      // NEVER claim success when the request failed. The old code printed
+      // "Done — your jobs and records are up to date." for EVERY failure —
+      // including a 401 from the login gate — so a refused request read as
+      // a completed one. Name what happened and the next step instead.
+      // apiFetch throws ApiError with a numeric status: 401/403 from the
+      // gate, 408 on the 15s timeout, 0 when the network itself failed.
+      const status = (err as { status?: unknown } | null)?.status;
+      const message =
+        status === 401 || status === 403
+          ? "That didn't go through — you're not signed in on this device. Sign out and sign back in, then try again. Nothing was done."
+          : status === 408 || status === 0
+            ? "That didn't go through — I couldn't reach the server. Check your connection and try again. Nothing was done."
+            : typeof status === 'number'
+              ? `That didn't go through (server error ${status}). Nothing was done.`
+              : "That didn't go through (no reply from the server). Nothing was done.";
       setMessages(prev => [
         ...prev,
         {
           id: uniqueId('msg_'),
           role: 'assistant',
-          content: 'Done — your jobs and records are up to date.',
+          content: message,
           timestamp: timeNow(),
           roleId: selectedRole
         }
@@ -327,7 +350,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
       {
         id: uniqueId('msg_'),
         role: 'assistant',
-        content: `Session refreshed. I'm ${activeEmployee.name} (${activeEmployee.roleTitle}). How can I assist with your ${business.name} operations?`,
+        content: `Session refreshed. I'm ${displayAgentName(activeEmployee)}. How can I assist with your ${business.name} operations?`,
         timestamp: timeNow(),
         roleId: selectedRole
       }
@@ -548,7 +571,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                 >
                   <div className={`flex items-center justify-between gap-3 text-xs ${isUser ? 'text-black/70' : 'text-zinc-400'}`}>
                     <span className={`font-bold ${isUser ? '' : msgColors.label}`}>
-                      {isUser ? 'You' : `${msgEmployee.name} — ${msgEmployee.roleTitle}`}
+                      {isUser ? 'You' : displayAgentName(msgEmployee)}
                     </span>
                     <span className="text-[11px]">{msg.timestamp}</span>
                   </div>
