@@ -201,10 +201,10 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
   const ss = String(callSeconds % 60).padStart(2, '0');
 
   return (
-    <div className="p-4 rounded-2xl bg-gradient-to-b from-lime-500/10 to-zinc-950 border border-lime-500/30 space-y-3">
+    <div className="p-4 rounded-2xl bg-gradient-to-b from-[#22ec72]/10 to-zinc-950 border border-[#22ec72]/30 space-y-3">
       <div className="flex items-center gap-2.5">
-        <div className="p-2 rounded-xl bg-lime-500/15 border border-lime-500/30">
-          <Mic className="w-4 h-4 text-lime-400" />
+        <div className="p-2 rounded-xl bg-[#22ec72]/15 border border-[#22ec72]/30">
+          <Mic className="w-4 h-4 text-[#22ec72]" />
         </div>
         <div>
           <div className="text-xs font-bold text-white">Call us — free voice call</div>
@@ -218,8 +218,8 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs text-zinc-300 font-mono">
             <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-lime-400" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22ec72] opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#22ec72]" />
             </span>
             On the call — {mm}:{ss}
           </div>
@@ -231,7 +231,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
               title={speakerOn ? 'Switch to earpiece' : 'Switch to speakerphone'}
               className={`p-2.5 rounded-xl border flex items-center transition cursor-pointer active:scale-95 ${
                 speakerOn
-                  ? 'bg-lime-500 text-black border-lime-500'
+                  ? 'bg-[#22ec72] text-black border-[#22ec72]'
                   : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
               }`}
             >
@@ -252,7 +252,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
           type="button"
           onClick={startCall}
           disabled={state === 'connecting'}
-          className="w-full px-4 py-3 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-60 text-black font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-lime-500/20 active:scale-98"
+          className="w-full px-4 py-3 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] disabled:opacity-60 text-black font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-[#22ec72]/20 active:scale-98"
         >
           {state === 'connecting' ? (
             <>

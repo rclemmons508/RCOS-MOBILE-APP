@@ -1,27 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { PhoneCall, ChatMessage, User, VoicemailRecord, BusinessAccount } from '../../types';
-import { 
-  Phone, 
-  PhoneCall as PhoneIcon, 
-  PhoneIncoming, 
-  Mic, 
-  Volume2, 
-  Sparkles, 
-  CheckCircle2, 
-  ChevronDown, 
-  ChevronUp, 
+import React, { useState, useEffect, useRef } from 'react';
+import { PhoneCall, ChatMessage, User, VoicemailRecord, BusinessAccount, Job, CustomerRequest } from '../../types';
+import {
+  Phone,
+  PhoneCall as PhoneIcon,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOutgoing,
+  AudioWaveform,
+  Mic,
+  Sparkles,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ChevronRight,
   MessageSquare,
   Users,
-  Radio,
-  FileText,
-  Mail,
-  PhoneForwarded,
-  Sliders,
-  History,
-  AlertTriangle,
   Settings,
-  ShieldCheck,
-  Send,
   ExternalLink,
   Play
 } from 'lucide-react';
@@ -31,6 +25,8 @@ import { IncomingCallModal } from '../phone/IncomingCallModal';
 import { VoicemailsView } from '../phone/VoicemailsView';
 import { RealPhoneSetupModal } from '../phone/RealPhoneSetupModal';
 import { VoiceCallButton } from '../phone/VoiceCallButton';
+import { AiReceptionistDetail, receptionistStatus } from '../phone/AiReceptionistDetail';
+import { sidebarCard } from '../ui/cards';
 import { apiFetch } from '../../lib/api';
 import { withBusinessId, filterToBusiness } from '../../lib/businessScope';
 import { firestoreService } from '../../services/firestoreService';
@@ -49,80 +45,33 @@ interface PhoneSystemTabProps {
   onTriggerNotification?: (title: string, message: string) => void;
   /** One Inbox deep-link: start on this sub-tab instead of the default. */
   initialSubTab?: 'phone' | 'voicemails' | 'comms';
+  /** Server-recorded calls — the persistent record the receptionist
+      detail screen's "Calls Today" counts from (same source as the
+      Dashboard tiles and the WeeklyCard). */
+  serverCalls?: PhoneCall[];
+  /** Customer requests — the detail screen's "Leads Captured" counts
+      requests created today. */
+  customerRequests?: CustomerRequest[];
+  /** Jobs — the detail screen's "Appts Booked" counts jobs booked today. */
+  jobs?: Job[];
+  /** Same server-reachability signal as the Dashboard's Online badge. */
+  serverOnline?: boolean | null;
+  /** Bumped by App when the Dashboard's AI Receptionist card is tapped,
+      so the Calls tab opens straight on the receptionist detail screen. */
+  openReceptionistSignal?: number;
+  /** Opens Settings on a section (Knowledge Base lives in 'user', where
+      Teach Your Team is). */
+  onOpenSettingsSection?: (section: 'user' | 'agents') => void;
 }
 
-const PRESET_SCENARIOS = [
-  {
-    id: 'sc-1',
-    label: '⚡ Emergency Chiller Breakdown',
-    callerName: 'Apex Tower Facilities (Marcus Vance)',
-    callerNumber: '+1 (555) 392-8811',
-    topic: 'Critical Rooftop Chiller Failure',
-    speech: 'Our main cooling tower chiller pump failed! Water temperature is climbing, please transfer me to Dispatch immediately!',
-    expectedAction: 'Transfers to Dispatch & Field Operations'
-  },
-  {
-    id: 'sc-2',
-    label: '📑 Automation Retrofit Quote Request',
-    callerName: 'BioHealth Labs (Dr. Angela Vance)',
-    callerNumber: '+1 (555) 612-4490',
-    topic: 'Cleanroom Sensor Automation Quote',
-    speech: 'We need an official project quote to install smart environmental IoT sensors across 4 laboratories. Scope estimate is around $3,400.',
-    expectedAction: 'Creates Quote Approval in Ledger'
-  },
-  {
-    id: 'sc-3',
-    label: '🎙️ Leave Voicemail for Billing',
-    callerName: 'Sterling Logistics (David Sterling)',
-    callerNumber: '+1 (555) 741-2290',
-    topic: 'Invoice #RC-8810 Clarification',
-    speech: 'I need to leave a message for Elena in billing regarding invoice 8810 payment schedule.',
-    expectedAction: 'Transcribes & Saves Voicemail'
-  },
-  {
-    id: 'sc-4',
-    label: '✉️ Send Confirmation Email',
-    callerName: 'Summit Plaza Operations',
-    callerNumber: '+1 (555) 902-3310',
-    topic: 'Quarterly Maintenance Schedule',
-    speech: 'Can you please email me a formal confirmation of our scheduled electrical inspection for tomorrow morning?',
-    expectedAction: 'Sends a follow-up email'
-  }
-];
+// No preset scenarios: the old Quick Scenarios box was demo content
+// (fake names and 555 numbers shown as real callers). The inbound test
+// lives on the AI Receptionist detail screen now, starting empty.
 
-const DEFAULT_VOICEMAILS: VoicemailRecord[] = [
-  {
-    id: 'vm-201',
-    callerName: 'Robert Thorne (Metro Commercial)',
-    callerNumber: '+1 (555) 201-9944',
-    company: 'Metro Commercial Real Estate',
-    timestamp: '25 mins ago',
-    duration: '0m 42s',
-    transcription: 'Hi RC Solutions team, this is Robert from Metro Commercial. We have three rooftop HVAC units at the Westside complex that are due for quarterly diagnostic sensor calibration. Could you provide a formal quote for the maintenance contract? Thank you.',
-    summary: 'Inquired about quarterly sensor calibration and quote for 3 rooftop HVAC units.',
-    urgency: 'high',
-    department: 'Billing & Invoicing',
-    reviewed: false
-  },
-  {
-    id: 'vm-202',
-    callerName: 'Evelyn Reed (Oakmont Labs)',
-    callerNumber: '+1 (555) 883-1120',
-    company: 'Oakmont Biologics',
-    timestamp: '2 hours ago',
-    duration: '0m 31s',
-    transcription: 'Hello, calling for Dave Miller in Emergency Maintenance. The secondary backup generator switchgear showed an alert code E-42 during routine self-test. Please give us a callback when free.',
-    summary: 'Generator switchgear alert E-42 report for Dave Miller.',
-    urgency: 'urgent',
-    department: 'Emergency Mechanical & Electrical',
-    reviewed: true
-  }
-];
-
-export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({ 
-  calls: propCalls, 
-  onSimulateCall, 
-  messages, 
+export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
+  calls: propCalls,
+  onSimulateCall,
+  messages,
   currentUser,
   businessId,
   availableDepartments,
@@ -130,13 +79,36 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   onNavigateTab,
   onTriggerNotification,
   initialSubTab,
+  serverCalls = [],
+  customerRequests = [],
+  jobs = [],
+  serverOnline = null,
+  openReceptionistSignal = 0,
+  onOpenSettingsSection,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'phone' | 'voicemails' | 'comms'>(initialSubTab ?? 'phone');
   const [answeringMode, setAnsweringMode] = useState<'ai' | 'manual'>('ai');
   const [isSavingMode, setIsSavingMode] = useState(false);
   const [callsList, setCallsList] = useState<PhoneCall[]>(propCalls);
-  const [voicemails, setVoicemails] = useState<VoicemailRecord[]>(DEFAULT_VOICEMAILS);
+  // No seeded voicemails: the old defaults were fake demo messages shown
+  // as real. The list starts empty and fills from the server only.
+  const [voicemails, setVoicemails] = useState<VoicemailRecord[]>([]);
   const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
+  // Sidebar-design Calls screen: filter pills + the AI Receptionist
+  // detail screen (Stage 4). The detail is an in-tab view like the
+  // Stage 3 Customer Profile — the in-app back arrow is the way back.
+  const [callFilter, setCallFilter] = useState<'all' | 'active' | 'missed'>('all');
+  const [showReceptionist, setShowReceptionist] = useState(false);
+  // Dashboard AI Receptionist card → open the detail screen on arrival
+  // (same signal pattern as the quick-action create signals in App).
+  const lastReceptionistSignalRef = useRef(0);
+  useEffect(() => {
+    if (openReceptionistSignal && openReceptionistSignal !== lastReceptionistSignalRef.current) {
+      lastReceptionistSignalRef.current = openReceptionistSignal;
+      setActiveSubTab('phone');
+      setShowReceptionist(true);
+    }
+  }, [openReceptionistSignal]);
 
   // Real Phone System state (no carrier line connected — Twilio parked)
   const [carrierLive, setCarrierLive] = useState(false);
@@ -153,10 +125,12 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     initialSpeech?: string;
   } | null>(null);
 
-  // Manual simulator form fields
-  const [customName, setCustomName] = useState('Metro Commercial Facilities');
-  const [customPhone, setCustomPhone] = useState('+1 (555) 492-7721');
-  const [customTopic, setCustomTopic] = useState('HVAC & Electrical Maintenance');
+  // Manual simulator form fields — start empty. The old defaults were
+  // a fake caller (a 555 number shown as a real business), and the
+  // ring handler fell back to one when the fields were blank.
+  const [customName, setCustomName] = useState('');
+  const [customPhone, setCustomPhone] = useState('');
+  const [customTopic, setCustomTopic] = useState('');
   const [customSpeech, setCustomSpeech] = useState('');
 
   // Load the saved answering mode from the business record on mount.
@@ -270,17 +244,19 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     }
   };
 
-  // Trigger Inbound Call
+  // Trigger Inbound Call — blank fields stay blank labels, never a
+  // fake caller. Answering a call closes the receptionist detail screen
+  // so the live call console (rendered in the phone view) is visible.
   const handleTriggerIncomingCall = (
-    name = customName, 
-    phone = customPhone, 
-    topic = customTopic, 
+    name = customName,
+    phone = customPhone,
+    topic = customTopic,
     speech = customSpeech
   ) => {
     setIncomingCall({
-      callerName: name || 'Inbound Commercial Client',
-      callerNumber: phone || '+1 (555) 019-4820',
-      callerTopic: topic || 'Facility Service Inquiry',
+      callerName: name || 'Unknown Caller',
+      callerNumber: phone || 'Unknown number',
+      callerTopic: topic || 'General Inquiry',
       initialSpeech: speech
     });
   };
@@ -313,6 +289,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     };
 
     setIncomingCall(null);
+    setShowReceptionist(false);
     setActiveLiveCall(newCall);
   };
 
@@ -344,6 +321,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     };
 
     setIncomingCall(null);
+    setShowReceptionist(false);
     setActiveLiveCall(newCall);
   };
 
@@ -380,8 +358,66 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   const unreviewedVoicemailCount = voicemails.filter(v => !v.reviewed).length;
   // No carrier line is connected (Twilio parked), so no carrier number is shown.
 
+  // Receptionist detail stats — same honesty rules as the Dashboard
+  // tiles and the WeeklyCard: a timestamp that does not parse simply
+  // does not count. Calls today counts every server-recorded call from
+  // today; leads captured counts customer requests created today;
+  // appointments booked counts jobs booked today. No delta anywhere.
+  const sameDay = (iso: string | undefined, now: Date) => {
+    if (!iso) return false;
+    const t = new Date(iso);
+    if (Number.isNaN(t.getTime())) return false;
+    return t.getFullYear() === now.getFullYear() && t.getMonth() === now.getMonth() && t.getDate() === now.getDate();
+  };
+  const today = new Date();
+  const callsToday = serverCalls.filter((c) => sameDay(c.timestamp, today)).length;
+  const leadsCaptured = customerRequests.filter((r) => sameDay(r.createdAt, today)).length;
+  const appointmentsBooked = jobs.filter((j) => sameDay(j.createdAt, today)).length;
+  const receptionist = receptionistStatus(serverOnline, answeringMode);
+  // Call-list filters — real counts from the list itself.
+  const isMissedCall = (c: PhoneCall) => c.type === 'missed' || c.status === 'missed';
+  const isActiveCall = (c: PhoneCall) => c.status === 'active' || c.status === 'ringing';
+  const filteredCalls =
+    callFilter === 'all'
+      ? callsList
+      : callFilter === 'missed'
+      ? callsList.filter(isMissedCall)
+      : callsList.filter(isActiveCall);
+  // Plain type words for the row subtitle, as in the reference.
+  const callLabel = (c: PhoneCall) => {
+    if (isMissedCall(c)) return 'Missed Call';
+    if (c.status === 'voicemail') return 'Voicemail';
+    if (c.answeredBy === 'ai_receptionist') return 'AI Handled';
+    if (c.type === 'outbound') return 'Outgoing Call';
+    return 'Incoming Call';
+  };
+
   return (
     <div className="flex flex-col w-full max-w-full overflow-hidden">
+      {showReceptionist ? (
+        <AiReceptionistDetail
+          serverOnline={serverOnline}
+          answeringMode={answeringMode}
+          callsToday={callsToday}
+          leadsCaptured={leadsCaptured}
+          appointmentsBooked={appointmentsBooked}
+          testName={customName}
+          onTestNameChange={setCustomName}
+          testPhone={customPhone}
+          onTestPhoneChange={setCustomPhone}
+          testTopic={customTopic}
+          onTestTopicChange={setCustomTopic}
+          testSpeech={customSpeech}
+          onTestSpeechChange={setCustomSpeech}
+          onRingTest={() => handleTriggerIncomingCall()}
+          onDialRealPhone={() => setIsPbxModalOpen(true)}
+          onClose={() => setShowReceptionist(false)}
+          onOpenCallFlow={() => onNavigateTab?.('team')}
+          onOpenKnowledgeBase={() => onOpenSettingsSection?.('user')}
+          onOpenTranscripts={() => setShowReceptionist(false)}
+        />
+      ) : (
+        <>
       {/* Sub-navigation Switcher */}
       <div className="px-3 sm:px-4 pt-1.5 pb-2 border-b border-zinc-800 shrink-0 bg-black">
         <div className="flex bg-zinc-950 border border-zinc-800/80 rounded-2xl p-1 gap-1">
@@ -389,8 +425,8 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
             type="button"
             onClick={() => setActiveSubTab('phone')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeSubTab === 'phone' 
-                ? 'bg-lime-500 text-black shadow-md shadow-lime-500/20' 
+              activeSubTab === 'phone'
+                ? 'bg-[#22ec72] text-black shadow-md shadow-[#22ec72]/20'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
@@ -444,8 +480,14 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
             />
           ) : (
             <>
+              {/* Header — as in the reference. */}
+              <div className="px-1">
+                <h2 className="text-xl font-extrabold text-white tracking-tight">Calls</h2>
+                <p className="text-xs text-zinc-400 mt-0.5">AI-Powered Communication</p>
+              </div>
+
               {/* Phone status bar — no carrier line is connected; calls run in-app. */}
-              <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-between gap-2 flex-wrap">
+              <div className={`p-3 ${sidebarCard} flex items-center justify-between gap-2 flex-wrap`}>
                 <div className="flex items-center gap-2.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-zinc-500" />
                   <div>
@@ -470,13 +512,13 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                     onClick={() => setIsPbxModalOpen(true)}
                     className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono font-bold text-white flex items-center gap-1.5 transition cursor-pointer"
                   >
-                    <Settings className="w-3.5 h-3.5 text-lime-400" />
+                    <Settings className="w-3.5 h-3.5 text-[#22ec72]" />
                     <span>Carrier PBX Settings</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsPbxModalOpen(true)}
-                    className="px-3 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-lime-500/20"
+                    className="px-3 py-1.5 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-[#22ec72]/20"
                   >
                     <PhoneIcon className="w-3.5 h-3.5" />
                     <span>Call Real Phone</span>
@@ -488,195 +530,85 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
               {/* Free in-app voice call (WebRTC) — used while the Twilio carrier is parked */}
               <VoiceCallButton />
 
-              {/* Header Status & Telemetry Banner */}
-              <div className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2.5 rounded-xl bg-lime-500/10 border border-lime-500/30 text-lime-400">
-                      <Phone className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                        RC Solutions Receptionist
-                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-semibold font-mono">
-                          PSTN & Web
-                        </span>
-                      </h2>
-                      <p className="text-xs text-zinc-400">Real Voice AI Concierge (Kore) & Human Line</p>
-                    </div>
-                  </div>
-
-                  {/* Mode Toggle: AI Auto-Answer vs Manual Ring */}
-                  <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 rounded-xl text-[10px] font-mono">
-                    <button
-                      type="button"
-                      onClick={() => handleSetAnsweringMode('ai')}
-                      disabled={isSavingMode}
-                      className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 ${
-                        answeringMode === 'ai' 
-                          ? 'bg-purple-600 text-white shadow-sm' 
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      <Sparkles className="w-3 h-3 text-purple-200" />
-                      <span>AI Concierge</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSetAnsweringMode('manual')}
-                      disabled={isSavingMode}
-                      className={`px-2 py-1 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 ${
-                        answeringMode === 'manual' 
-                          ? 'bg-blue-600 text-white shadow-sm' 
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      <Users className="w-3 h-3 text-blue-200" />
-                      <span>Human Only</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Call Stats Bar */}
-                <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-zinc-900 text-center font-mono">
-                  <div className="p-1">
-                    <div className="text-sm sm:text-base font-black text-white">{callsList.length}</div>
-                    <div className="text-[9.5px] text-zinc-400">Total Calls</div>
-                  </div>
-                  <div className="p-1">
-                    <div className="text-sm sm:text-base font-black text-lime-400">99.4%</div>
-                    <div className="text-[9.5px] text-zinc-400">Transcription</div>
-                  </div>
-                  <div className="p-1">
-                    <div className="text-sm sm:text-base font-black text-purple-400">5 Depts</div>
-                    <div className="text-[9.5px] text-zinc-400">PSTN Transfers</div>
-                  </div>
-                  <div className="p-1">
-                    <div className="text-sm sm:text-base font-black text-blue-400">&lt; 1.2s</div>
-                    <div className="text-[9.5px] text-zinc-400">AI Pickup</div>
-                  </div>
+              {/* Answering mode — the real toggle, kept from the old
+                  banner. The banner's stats are gone: three of the four
+                  were invented ("99.4%", "5 Depts", "< 1.2s"); the real
+                  total now lives on the All pill below. */}
+              <div className={`p-3 ${sidebarCard} flex items-center justify-between gap-2`}>
+                <span className="text-xs font-bold text-white">Answering mode</span>
+                <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 p-1 rounded-xl text-[10px] font-mono">
+                  <button
+                    type="button"
+                    onClick={() => handleSetAnsweringMode('ai')}
+                    disabled={isSavingMode}
+                    className={`px-2 py-1.5 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 min-h-[36px] ${
+                      answeringMode === 'ai'
+                        ? 'bg-[#22ec72] text-black shadow-sm'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>AI Concierge</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetAnsweringMode('manual')}
+                    disabled={isSavingMode}
+                    className={`px-2 py-1.5 rounded-lg font-bold transition cursor-pointer flex items-center gap-1 min-h-[36px] ${
+                      answeringMode === 'manual'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Users className="w-3 h-3" />
+                    <span>Human Only</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Quick Scenarios Box */}
-              <div className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2.5">
-                <div className="flex items-center justify-between text-xs font-bold text-white">
-                  <span className="flex items-center gap-1.5">
-                    <Radio className="w-4 h-4 text-lime-400" />
-                    <span>Quick Interactive Scenarios</span>
-                  </span>
-                  <span className="text-[10px] text-zinc-400 font-mono">PSTN & Web Audio</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {PRESET_SCENARIOS.map((scenario) => (
+              {/* Call log — filter pills with real counts, as in the reference. */}
+              <div className="space-y-2.5">
+                <div className="flex gap-1.5 px-1">
+                  {(
+                    [
+                      { id: 'all', label: 'All', count: callsList.length },
+                      { id: 'active', label: 'Active', count: callsList.filter(isActiveCall).length },
+                      { id: 'missed', label: 'Missed', count: callsList.filter(isMissedCall).length },
+                    ] as const
+                  ).map((pill) => (
                     <button
-                      key={scenario.id}
+                      key={pill.id}
                       type="button"
-                      onClick={() => handleTriggerIncomingCall(
-                        scenario.callerName,
-                        scenario.callerNumber,
-                        scenario.topic,
-                        scenario.speech
-                      )}
-                      className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 hover:border-lime-500/50 hover:bg-zinc-900 transition-all text-left cursor-pointer flex flex-col gap-1 group active:scale-98"
+                      onClick={() => setCallFilter(pill.id)}
+                      className={`px-3.5 py-2 rounded-full text-xs font-bold border transition cursor-pointer min-h-[36px] ${
+                        callFilter === pill.id
+                          ? 'bg-[#22ec72]/15 text-[#22ec72] border-[#22ec72]/30'
+                          : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                      }`}
                     >
-                      <span className="text-xs font-bold text-white group-hover:text-lime-400 transition-colors">
-                        {scenario.label}
-                      </span>
-                      <p className="text-[10.5px] text-zinc-400 truncate">
-                        "{scenario.speech}"
-                      </p>
-                      <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60 text-[9.5px] font-mono text-zinc-500">
-                        <span>Action: <strong className="text-zinc-300">{scenario.expectedAction}</strong></span>
-                        <span className="text-lime-400 font-bold group-hover:translate-x-0.5 transition-transform">Ring Console →</span>
-                      </div>
+                      {pill.label} ({pill.count})
                     </button>
                   ))}
                 </div>
-              </div>
 
-              {/* Inbound Simulator / Real Phone Dial Box */}
-              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-b from-zinc-900/80 to-zinc-950 border border-zinc-800/90 space-y-3">
-                <div className="flex items-center justify-between text-xs font-bold text-white">
-                  <span className="flex items-center gap-1.5">
-                    <Sliders className="w-4 h-4 text-blue-400" />
-                    <span>Direct Inbound Caller Test</span>
-                  </span>
-                  <span className="text-[10px] text-zinc-400 font-mono">Gemini 3.8 Flash Engine</span>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={customName}
-                      onChange={(e) => setCustomName(e.target.value)}
-                      placeholder="Caller Name / Company"
-                      className="bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
-                    />
-                    <input
-                      type="text"
-                      value={customTopic}
-                      onChange={(e) => setCustomTopic(e.target.value)}
-                      placeholder="Service Topic / Department"
-                      className="bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
-                    />
+                {filteredCalls.length === 0 ? (
+                  <div className={`p-4 ${sidebarCard} text-center`}>
+                    <p className="text-xs text-zinc-400">
+                      {callFilter === 'missed'
+                        ? 'No missed calls.'
+                        : callFilter === 'active'
+                        ? 'No calls in progress right now.'
+                        : 'No calls yet — answered calls will show up here.'}
+                    </p>
                   </div>
-
-                  <textarea
-                    value={customSpeech}
-                    onChange={(e) => setCustomSpeech(e.target.value)}
-                    placeholder="What the caller says (e.g., 'Can you connect me with billing?' or 'I need a quote for $1,200 compressor repair')..."
-                    className="w-full h-16 bg-black border border-zinc-800 rounded-xl p-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 resize-none font-sans"
-                  />
-
-                  <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
-                    <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-                      <Volume2 className="w-3.5 h-3.5 text-lime-400 shrink-0" />
-                      <span>Answers as {answeringMode === 'ai' ? 'AI Concierge Kore' : 'Live Operator'}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsPbxModalOpen(true)}
-                        className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer border border-zinc-800"
-                      >
-                        <PhoneIcon className="w-3.5 h-3.5 text-lime-400" />
-                        <span>Dial Real Phone</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleTriggerIncomingCall()}
-                        className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-lime-500/20 active:scale-95 shrink-0"
-                      >
-                        <PhoneIncoming className="w-3.5 h-3.5" />
-                        <span>Ring Operator Console</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Call History & Transcripts Log */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between px-1">
-                  <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <History className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Call Log & Transcripts (Carrier & Web)</span>
-                  </h3>
-                  <span className="text-[10px] text-zinc-500 font-mono">{callsList.length} Archived</span>
-                </div>
-
+                ) : (
                 <div className="space-y-2">
-                  {callsList.map((call) => {
+                  {filteredCalls.map((call) => {
                     const isExpanded = expandedCallId === call.id;
                     return (
                       <div
                         key={call.id}
-                        className="rounded-2xl bg-zinc-950 border border-zinc-800/80 overflow-hidden transition-all hover:border-zinc-700"
+                        className={`${sidebarCard} overflow-hidden transition-all hover:border-[#22ec72]/40`}
                       >
                         <button
                           type="button"
@@ -684,14 +616,28 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                           className="w-full p-3.5 text-left flex items-center justify-between gap-3 hover:bg-zinc-900/50 transition-colors cursor-pointer"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="p-2 rounded-xl bg-zinc-900 text-blue-400 border border-zinc-800 shrink-0">
-                              <PhoneIcon className="w-4 h-4" />
+                            <div className={`p-2 rounded-xl border shrink-0 ${
+                              isMissedCall(call)
+                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                : call.answeredBy === 'ai_receptionist'
+                                ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                                : call.type === 'outbound'
+                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                : 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30'
+                            }`}>
+                              {isMissedCall(call) ? (
+                                <PhoneMissed className="w-4 h-4" />
+                              ) : call.type === 'outbound' ? (
+                                <PhoneOutgoing className="w-4 h-4" />
+                              ) : (
+                                <PhoneIcon className="w-4 h-4" />
+                              )}
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-bold text-white truncate">{call.callerName}</span>
                                 {call.isRealPstnCall && (
-                                  <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase bg-lime-500/10 text-lime-400 border border-lime-500/30">
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold uppercase bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30">
                                     PSTN Carrier
                                   </span>
                                 )}
@@ -705,13 +651,13 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                                   </span>
                                 )}
                                 {call.department && (
-                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-lime-400 font-mono font-semibold">
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-[#22ec72] font-mono font-semibold">
                                     🔀 {call.department}
                                   </span>
                                 )}
                               </div>
                               <div className="text-[10px] text-zinc-400 font-mono truncate">
-                                {call.callerNumber} • {call.duration}
+                                {callLabel(call)} • {call.callerNumber} • {call.duration}
                               </div>
                             </div>
                           </div>
@@ -782,7 +728,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                             )}
 
                             {call.actionRequired && (
-                              <div className="p-2.5 rounded-xl bg-lime-500/10 border border-lime-500/30 text-xs text-lime-400 flex items-center gap-2">
+                              <div className="p-2.5 rounded-xl bg-[#22ec72]/10 border border-[#22ec72]/30 text-xs text-[#22ec72] flex items-center gap-2">
                                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                                 <div>
                                   <strong className="text-white">Action Taken: </strong>
@@ -796,7 +742,40 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                     );
                   })}
                 </div>
+                )}
               </div>
+
+              {/* AI Receptionist card — as in the reference. One tap
+                  opens the detail screen. */}
+              <button
+                type="button"
+                onClick={() => setShowReceptionist(true)}
+                className={`w-full p-3.5 ${sidebarCard} hover:border-[#22ec72]/40 transition cursor-pointer text-left`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="p-3 rounded-full border-2 border-[#22ec72] text-[#22ec72] shrink-0">
+                    <AudioWaveform className="w-5 h-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="text-sm font-extrabold text-white">AI Receptionist</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        receptionist.tone === 'active'
+                          ? 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30'
+                          : receptionist.tone === 'offline'
+                          ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                          : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                      }`}>
+                        {receptionist.label}
+                      </span>
+                    </span>
+                    <span className="block text-xs text-zinc-400 mt-0.5">
+                      {receptionist.tone === 'active' ? 'Handling calls 24/7' : receptionist.subline}
+                    </span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+                </div>
+              </button>
             </>
           )}
         </div>
@@ -820,6 +799,8 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
             onSendMessage={onSendMessage}
           />
         </div>
+      )}
+        </>
       )}
 
       {/* Incoming Call Ringing Overlay */}
