@@ -31,7 +31,6 @@ import { QuickActionSheet } from './components/nav/QuickActionSheet';
 import { InboxView } from './components/InboxView';
 import { MoreMenu } from './components/nav/MoreMenu';
 import { RequestsView } from './components/nav/RequestsView';
-import { FloatingAIAssistant } from './components/FloatingAIAssistant';
 import { DashboardTab } from './components/tabs/DashboardTab';
 import type { ProfileUpdate } from './components/tabs/SettingsTab';
 import { teamService } from './services/teamService';
@@ -262,7 +261,6 @@ export default function App() {
     );
   }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [aiAssistantEnabled, setAiAssistantEnabled] = useState(true);
 
   // System Settings State (initialized from user preferences if available)
   const initialPrefs = currentUser?.email 
@@ -2182,7 +2180,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen h-[100dvh] max-h-[100dvh] w-full bg-black text-zinc-100 flex flex-col items-center justify-start overflow-hidden selection:bg-lime-500 selection:text-black">
+    <div className="h-screen h-[100dvh] max-h-[100dvh] w-full bg-black text-zinc-100 flex flex-col items-center justify-start overflow-hidden selection:bg-[#22ec72] selection:text-black">
       {/* Mobile Device Frame Container (Full viewport width on phones, centered on wider displays) */}
       <div className="w-full max-w-md h-full max-h-[100dvh] bg-black relative flex flex-col shadow-2xl border-x border-zinc-900/80 overflow-hidden">
         
@@ -2206,6 +2204,7 @@ export default function App() {
         <Header
           activeTab={activeTab}
           currentUser={currentUser}
+          serverOnline={serverOnline}
           onOpenNotifications={() => openInboxSection('alerts')}
           onOpenInbox={() => openInboxSection('ai-team')}
           onOpenAuth={() => setIsAuthModalOpen(true)}
@@ -2508,8 +2507,6 @@ export default function App() {
               onAddCustomTask={(task) => {
                 setAutomationTasks(prev => [...prev, task]);
               }}
-              aiAssistantEnabled={aiAssistantEnabled}
-              onToggleAiAssistant={() => setAiAssistantEnabled(!aiAssistantEnabled)}
               autoDispatchThreshold={autoDispatchThreshold}
               onUpdateAutoDispatchThreshold={(val) => {
                 setAutoDispatchThreshold(val);
@@ -2546,11 +2543,6 @@ export default function App() {
           )}
           </Suspense>
         </main>
-
-        {/* Floating Multi-Agent AI Assistant Button */}
-        {aiAssistantEnabled && activeTab !== 'chat' && (
-          <FloatingAIAssistant onOpenTab={(tab) => setActiveTab(tab)} />
-        )}
 
         {/* Bottom Navigation Bar with Safe Area Insets */}
         <BottomNav

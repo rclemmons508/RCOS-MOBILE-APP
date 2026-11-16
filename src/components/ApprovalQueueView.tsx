@@ -49,11 +49,11 @@ const SectionHeader: React.FC<{ icon: React.ReactNode; title: string; subtitle: 
     <div className="flex-1 min-w-0">
       <h3 className="text-sm font-bold text-white flex items-center gap-2">
         {title}
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+        <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
           {count}
         </span>
       </h3>
-      <p className="text-[11px] text-slate-400">{subtitle}</p>
+      <p className="text-xs text-slate-400">{subtitle}</p>
     </div>
   </div>
 );
@@ -143,14 +143,14 @@ const QuoteInvoiceModal: React.FC<{
       <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl bg-zinc-950 border border-zinc-800 p-5 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
-            {isQuote ? <FileText className="w-4 h-4 text-[#22ec72]" /> : <DollarSign className="w-4 h-4 text-emerald-400" />}
+            {isQuote ? <FileText className="w-4 h-4 text-[#22ec72]" /> : <DollarSign className="w-4 h-4 text-[#22ec72]" />}
             <span>{isQuote ? 'New Quote' : 'New Invoice'}</span>
           </h3>
-          <button aria-label="Close" type="button" onClick={onClose} className="text-zinc-500 hover:text-white p-1 cursor-pointer">
+          <button aria-label="Close" type="button" onClick={onClose} className="min-h-[48px] text-zinc-500 hover:text-white p-1 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-[11px] text-zinc-400">
+        <p className="text-xs text-zinc-400">
           {isQuote
             ? 'Creates a quote held for your approval in the queue below.'
             : 'Creates an invoice held for your approval in the queue below.'}
@@ -159,7 +159,7 @@ const QuoteInvoiceModal: React.FC<{
         <div className="space-y-3">
           <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client name *" className={inputCls} />
           <div>
-            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Service</label>
+            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Service</label>
             {business.services && business.services.length > 0 ? (
               <select value={serviceName} onChange={(e) => setServiceName(e.target.value)} className={inputCls}>
                 {asStringList(business.services).map((sv) => (
@@ -171,7 +171,7 @@ const QuoteInvoiceModal: React.FC<{
             )}
           </div>
           <div>
-            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
+            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">
               Amount (USD) *
             </label>
             <input
@@ -185,7 +185,7 @@ const QuoteInvoiceModal: React.FC<{
 
           {isQuote && (
             <div className="p-3 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-2">
-              <div className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">Estimate helper</div>
+              <div className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Estimate helper</div>
               <div className="grid grid-cols-2 gap-2">
                 <input value={hours} onChange={(e) => setHours(e.target.value)} placeholder="Hours" inputMode="decimal" className={inputCls} />
                 <input value={materials} onChange={(e) => setMaterials(e.target.value)} placeholder="Materials $" inputMode="decimal" className={inputCls} />
@@ -198,7 +198,7 @@ const QuoteInvoiceModal: React.FC<{
                 type="button"
                 onClick={handleCalculate}
                 disabled={calculating}
-                className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-xs font-bold text-white transition cursor-pointer"
+                className="min-h-[48px] w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-xs font-bold text-white transition cursor-pointer"
               >
                 {calculating ? 'Calculating…' : 'Calculate amount'}
               </button>
@@ -207,7 +207,7 @@ const QuoteInvoiceModal: React.FC<{
 
           {!isQuote && (
             <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Payment due in (days)</label>
+              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Payment due in (days)</label>
               <input value={dueDays} onChange={(e) => setDueDays(e.target.value)} inputMode="numeric" className={inputCls} />
             </div>
           )}
@@ -229,7 +229,7 @@ const QuoteInvoiceModal: React.FC<{
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl bg-zinc-800 text-xs font-bold text-zinc-300 hover:text-white transition cursor-pointer"
+            className="min-h-[48px] flex-1 py-2.5 rounded-xl bg-zinc-800 text-xs font-bold text-zinc-300 hover:text-white transition cursor-pointer"
           >
             Cancel
           </button>
@@ -237,7 +237,7 @@ const QuoteInvoiceModal: React.FC<{
             type="button"
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex-1 py-2.5 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] disabled:opacity-50 text-black text-xs font-extrabold transition cursor-pointer"
+            className="min-h-[48px] flex-1 py-2.5 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] disabled:opacity-50 text-black text-xs font-extrabold transition cursor-pointer"
           >
             {submitting ? 'Saving…' : isQuote ? 'Create Quote' : 'Create Invoice'}
           </button>
@@ -308,7 +308,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
   const invoiceBadge = (status: InvoiceStatus) => {
     switch (status) {
       case 'paid':
-        return { label: 'Paid', cls: 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' };
+        return { label: 'Paid', cls: 'bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30' };
       case 'overdue':
         return { label: 'Overdue', cls: 'bg-rose-500/10 text-rose-300 border border-rose-500/30' };
       case 'unpaid':
@@ -499,7 +499,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-white">{action.title}</h4>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
                         <span className="text-[#22ec72] font-medium">{employee.name}</span>
                         <span>•</span>
                         <span>{employee.roleTitle}</span>
@@ -513,7 +513,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
 
                   <div className="flex items-center gap-2 self-start sm:self-center">
                     {action.riskCategory === 'money_movement' && (
-                      <span title="Needs your approval before it sends — you can still edit the amount." className="px-2.5 py-1 rounded-md text-[10px] font-semibold bg-emerald-950/50 text-emerald-300 border border-emerald-800/40 flex items-center gap-1">
+                      <span title="Needs your approval before it sends — you can still edit the amount." className="px-2.5 py-1 rounded-md text-xs font-semibold bg-[#22ec72]/15 text-[#22ec72] border border-[#22ec72]/25 flex items-center gap-1">
                         <DollarSign className="w-3 h-3" />
                         Approval required
                       </span>
@@ -540,7 +540,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                       {editingQuote ? (
                         <>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Client name</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Client name</label>
                             <input
                               value={editingQuote.clientName}
                               onChange={(e) => updateEditField({ clientName: e.target.value })}
@@ -559,7 +559,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                                     aria-label="Line item description"
                                     className={`${editItemInputCls} flex-1`}
                                   />
-                                  <button type="button" onClick={() => removeEditItem(idx)} aria-label="Remove line item" className="text-slate-500 hover:text-rose-400 text-base leading-none px-1 cursor-pointer">
+                                  <button type="button" onClick={() => removeEditItem(idx)} aria-label="Remove line item" className="min-h-[48px] text-slate-500 hover:text-rose-400 text-base leading-none px-1 cursor-pointer">
                                     ×
                                   </button>
                                 </div>
@@ -583,12 +583,12 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                                 </div>
                               </div>
                             ))}
-                            <button type="button" onClick={addEditItem} className="text-[11px] font-semibold text-[#22ec72] hover:text-[#22ec72] cursor-pointer">
+                            <button type="button" onClick={addEditItem} className="min-h-[48px] text-xs font-semibold text-[#22ec72] hover:text-[#22ec72] cursor-pointer">
                               + Add line item
                             </button>
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total amount (USD)</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total amount (USD)</label>
                             <input
                               value={String(editingQuote.totalAmount)}
                               onChange={(e) => updateEditField({ totalAmount: Number(e.target.value) || 0 })}
@@ -598,7 +598,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Terms</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Terms</label>
                             <input
                               value={editingQuote.terms || ''}
                               onChange={(e) => updateEditField({ terms: e.target.value })}
@@ -624,7 +624,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                             ))}
                           </div>
                           {action.result.quoteDetails.terms && (
-                            <div className="text-[11px] text-slate-500 italic">
+                            <div className="text-xs text-slate-500 italic">
                               Terms: {action.result.quoteDetails.terms}
                             </div>
                           )}
@@ -642,7 +642,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                             Invoice: {editingInvoice.invoiceNumber}
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Client name</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Client name</label>
                             <input
                               value={editingInvoice.clientName}
                               onChange={(e) => updateEditField({ clientName: e.target.value })}
@@ -661,7 +661,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                                     aria-label="Line item description"
                                     className={`${editItemInputCls} flex-1`}
                                   />
-                                  <button type="button" onClick={() => removeEditItem(idx)} aria-label="Remove line item" className="text-slate-500 hover:text-rose-400 text-base leading-none px-1 cursor-pointer">
+                                  <button type="button" onClick={() => removeEditItem(idx)} aria-label="Remove line item" className="min-h-[48px] text-slate-500 hover:text-rose-400 text-base leading-none px-1 cursor-pointer">
                                     ×
                                   </button>
                                 </div>
@@ -685,12 +685,12 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                                 </div>
                               </div>
                             ))}
-                            <button type="button" onClick={addEditItem} className="text-[11px] font-semibold text-[#22ec72] hover:text-[#22ec72] cursor-pointer">
+                            <button type="button" onClick={addEditItem} className="min-h-[48px] text-xs font-semibold text-[#22ec72] hover:text-[#22ec72] cursor-pointer">
                               + Add line item
                             </button>
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Total amount (USD)</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total amount (USD)</label>
                             <input
                               value={String(editingInvoice.totalAmount)}
                               onChange={(e) => updateEditField({ totalAmount: Number(e.target.value) || 0 })}
@@ -700,7 +700,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Due date</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Due date</label>
                             <input
                               value={editingInvoice.dueDate || ''}
                               onChange={(e) => updateEditField({ dueDate: e.target.value })}
@@ -709,7 +709,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Payment instructions</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Payment instructions</label>
                             <input
                               value={editingInvoice.paymentInstructions || ''}
                               onChange={(e) => updateEditField({ paymentInstructions: e.target.value })}
@@ -718,7 +718,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Notes</label>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Notes</label>
                             <input
                               value={editingInvoice.notes || ''}
                               onChange={(e) => updateEditField({ notes: e.target.value })}
@@ -743,7 +743,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                               </div>
                             ))}
                           </div>
-                          <div className="text-[11px] text-slate-400">
+                          <div className="text-xs text-slate-400">
                             Due: {action.result.invoiceDetails.dueDate} • {action.result.invoiceDetails.paymentInstructions}
                           </div>
                         </>
@@ -786,14 +786,14 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setRejectingActionId(null)}
-                        className="px-3 py-1 text-xs text-slate-400 hover:text-white"
+                        className="min-h-[48px] px-3 py-1 text-xs text-slate-400 hover:text-white"
                       >
                         Cancel
                       </button>
                       <button
                         type="button"
                         onClick={() => handleReject(action.id)}
-                        className="px-3 py-1 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg cursor-pointer"
+                        className="min-h-[48px] px-3 py-1 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg cursor-pointer"
                       >
                         Confirm Rejection
                       </button>
@@ -809,7 +809,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                         <button
                           type="button"
                           onClick={() => { setEditingActionId(null); setEditAmounts(null); }}
-                          className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+                          className="min-h-[48px] px-3 py-1.5 text-xs text-slate-400 hover:text-white"
                         >
                           Cancel Edit
                         </button>
@@ -817,7 +817,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                           type="button"
                           disabled={isBusy}
                           onClick={() => handleEditAndApprove(action.id)}
-                          className="px-4 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-[#05090a] font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                          className="min-h-[48px] px-4 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-[#05090a] font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
                         >
                           {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                           <span>Save & Approve</span>
@@ -832,7 +832,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                             setRejectingActionId(action.id);
                             setEditingActionId(null);
                           }}
-                          className="px-3 py-2 rounded-xl bg-transparent hover:bg-rose-950/40 text-rose-400 hover:text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition border border-rose-900/30 cursor-pointer disabled:opacity-40"
+                          className="min-h-[48px] px-3 py-2 rounded-xl bg-transparent hover:bg-rose-950/40 text-rose-400 hover:text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition border border-rose-900/30 cursor-pointer disabled:opacity-40"
                         >
                           <X className="w-3.5 h-3.5" />
                           <span>Reject</span>
@@ -842,7 +842,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                           type="button"
                           disabled={isBusy}
                           onClick={() => startEdit(action)}
-                          className="px-3 py-2 rounded-xl bg-[#1d2b26] hover:bg-[#1d2b26] text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition border border-[#1d2b26] cursor-pointer disabled:opacity-40"
+                          className="min-h-[48px] px-3 py-2 rounded-xl bg-[#1d2b26] hover:bg-[#1d2b26] text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition border border-[#1d2b26] cursor-pointer disabled:opacity-40"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                           <span>Edit</span>
@@ -852,7 +852,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                           type="button"
                           disabled={isBusy}
                           onClick={() => handleApprove(action.id)}
-                          className="px-5 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-[#05090a] font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-[#22ec72]/20 cursor-pointer disabled:opacity-40"
+                          className="min-h-[48px] px-5 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-[#05090a] font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-[#22ec72]/20 cursor-pointer disabled:opacity-40"
                         >
                           {isBusy ? (
                             <>
@@ -885,7 +885,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
             <div className="text-sm font-bold text-white truncate">
               {quote ? `Quote — ${quote.clientName}` : `Invoice ${invoice?.invoiceNumber} — ${invoice?.clientName}`}
             </div>
-            <div className="text-[11px] text-slate-500">
+            <div className="text-xs text-slate-500">
               Approved {new Date(action.createdAt).toLocaleDateString()}
             </div>
           </div>
@@ -896,7 +896,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {quote && (
             action.scheduledJobId ? (
-              <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 flex items-center gap-1.5">
+              <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 flex items-center gap-1.5">
                 <BadgeCheck className="w-3.5 h-3.5" /> Job scheduled
               </span>
             ) : (
@@ -904,7 +904,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                 type="button"
                 disabled={busy}
                 onClick={async () => { setPipelineBusyId(action.id); try { await onScheduleJob(action); } finally { setPipelineBusyId(null); } }}
-                className="px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] disabled:opacity-50 text-black text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] disabled:opacity-50 text-black text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
               >
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Briefcase className="w-3.5 h-3.5" />}
                 Schedule Job
@@ -913,7 +913,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
           )}
           {invoice && (
             action.paymentStatus === 'paid' ? (
-              <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+              <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 flex items-center gap-1.5">
                 <BadgeCheck className="w-3.5 h-3.5" /> Paid{action.paidAmount ? ` $${action.paidAmount}` : ''}
               </span>
             ) : (
@@ -921,7 +921,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                 type="button"
                 disabled={busy}
                 onClick={async () => { setPipelineBusyId(action.id); try { await onMarkPaid(action); } finally { setPipelineBusyId(null); } }}
-                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:opacity-50 text-black text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
               >
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DollarSign className="w-3.5 h-3.5" />}
                 Mark Paid
@@ -953,7 +953,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
           <button
             type="button"
             onClick={() => setModalMode('quote')}
-            className="px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer"
+            className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer"
           >
             <FileText className="w-3.5 h-3.5" />
             <span>New Quote</span>
@@ -961,7 +961,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
           <button
             type="button"
             onClick={() => setModalMode('invoice')}
-            className="px-3 py-2 rounded-xl bg-[#0c1211] hover:bg-[#16211c] border border-[#22ec72]/40 text-xs font-bold text-[#22ec72] flex items-center gap-1.5 transition cursor-pointer"
+            className="min-h-[48px] px-3 py-2 rounded-xl bg-[#0c1211] hover:bg-[#16211c] border border-[#22ec72]/40 text-xs font-bold text-[#22ec72] flex items-center gap-1.5 transition cursor-pointer"
           >
             <DollarSign className="w-3.5 h-3.5" />
             <span>New Invoice</span>
@@ -999,7 +999,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                 setExpandedInvoiceId(null);
               }}
               aria-pressed={invoiceFilter === id}
-              className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer min-h-[32px] ${
+              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer min-h-[32px] ${
                 invoiceFilter === id
                   ? 'bg-[#22ec72] text-black'
                   : 'bg-[#0c1211] border border-[#1d2b26] text-zinc-400 hover:text-white'
@@ -1020,7 +1020,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
             <button
               type="button"
               onClick={() => setModalMode('invoice')}
-              className="mt-2 px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black text-xs font-extrabold cursor-pointer"
+              className="min-h-[48px] mt-2 px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black text-xs font-extrabold cursor-pointer"
             >
               Create Invoice
             </button>
@@ -1035,7 +1035,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
             <button
               type="button"
               onClick={() => setInvoiceFilter('all')}
-              className="mt-2 px-3 py-1.5 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-[#22ec72] text-xs font-semibold hover:border-[#22ec72]/50 transition-colors cursor-pointer"
+              className="min-h-[48px] mt-2 px-3 py-1.5 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-[#22ec72] text-xs font-semibold hover:border-[#22ec72]/50 transition-colors cursor-pointer"
             >
               Show all invoices
             </button>
@@ -1053,7 +1053,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                     type="button"
                     aria-expanded={expanded}
                     onClick={() => setExpandedInvoiceId(expanded ? null : action.id)}
-                    className="w-full flex items-center gap-3 p-3.5 text-left hover:bg-[#16211c]/40 transition cursor-pointer"
+                    className="min-h-[48px] w-full flex items-center gap-3 p-3.5 text-left hover:bg-[#16211c]/40 transition cursor-pointer"
                   >
                     <span className="w-9 h-9 rounded-xl bg-[#0c1211] border border-[#1d2b26] text-[#22ec72] flex items-center justify-center shrink-0">
                       <FileText className="w-4 h-4" />
@@ -1062,14 +1062,14 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                       <span className="block text-xs font-mono font-bold text-white truncate">
                         {invoice.invoiceNumber}
                       </span>
-                      <span className="block text-[11px] text-zinc-400 truncate">
+                      <span className="block text-xs text-zinc-400 truncate">
                         {invoice.clientName} • {new Date(action.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
                       </span>
                     </span>
                     <span className="text-sm font-mono font-extrabold text-[#22ec72] shrink-0">
                       ${invoice.totalAmount.toLocaleString()}
                     </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${badge.cls}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${badge.cls}`}>
                       {badge.label}
                     </span>
                     <ChevronDown className={`w-4 h-4 text-zinc-500 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
@@ -1085,7 +1085,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
             <button
               type="button"
               onClick={() => setModalMode('invoice')}
-              className="w-full py-2.5 rounded-xl bg-[#0c1211] border border-[#22ec72]/40 text-[#22ec72] text-xs font-bold hover:bg-[#22ec72]/10 transition cursor-pointer flex items-center justify-center gap-1.5"
+              className="min-h-[48px] w-full py-2.5 rounded-xl bg-[#0c1211] border border-[#22ec72]/40 text-[#22ec72] text-xs font-bold hover:bg-[#22ec72]/10 transition cursor-pointer flex items-center justify-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
               <span>Create Invoice</span>
@@ -1108,7 +1108,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-1">
+          <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider px-1">
             Needs your approval
           </div>
           {quoteActions.length > 0 && (

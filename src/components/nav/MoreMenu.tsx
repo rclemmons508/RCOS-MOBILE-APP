@@ -42,9 +42,9 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({ onOpenSettings, onNavigateTa
                 if (item.tab && onNavigateTab) onNavigateTab(item.tab);
                 else if (item.section) onOpenSettings(item.section);
               }}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-lime-500/40 active:scale-[0.99] transition-all cursor-pointer text-left min-h-[64px]"
+              className="w-full flex items-center gap-3 p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 hover:border-[#22ec72]/40 active:scale-[0.99] transition-all cursor-pointer text-left min-h-[64px]"
             >
-              <span className="p-2.5 rounded-xl bg-lime-500/10 text-lime-400 shrink-0">
+              <span className="p-2.5 rounded-xl bg-[#22ec72]/10 text-[#22ec72] shrink-0">
                 <Icon className="w-5 h-5" />
               </span>
               <span className="min-w-0 flex-1">

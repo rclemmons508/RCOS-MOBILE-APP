@@ -81,7 +81,7 @@ export const PublicBookingPage: React.FC = () => {
   };
 
   const inputCls =
-    'w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500';
+    'w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]';
 
   if (loading) {
     return (
@@ -106,8 +106,8 @@ export const PublicBookingPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
         <div className="max-w-sm text-center space-y-3">
-          <div className="w-14 h-14 mx-auto rounded-full bg-lime-500/15 border border-lime-500/40 flex items-center justify-center">
-            <svg className="w-7 h-7 text-lime-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <div className="w-14 h-14 mx-auto rounded-full bg-[#22ec72]/15 border border-[#22ec72]/40 flex items-center justify-center">
+            <svg className="w-7 h-7 text-[#22ec72]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
@@ -125,7 +125,7 @@ export const PublicBookingPage: React.FC = () => {
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-md mx-auto px-5 py-8 space-y-5">
         <div className="text-center space-y-1">
-          <p className="text-[11px] uppercase tracking-widest text-lime-400 font-bold">{business.industry}</p>
+          <p className="text-xs uppercase tracking-widest text-[#22ec72] font-bold">{business.industry}</p>
           <h1 className="text-2xl font-extrabold">{business.name}</h1>
           <p className="text-sm text-zinc-400">Request service online — no account needed.</p>
         </div>
@@ -138,7 +138,7 @@ export const PublicBookingPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Service needed</label>
+            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Service needed</label>
             {business.services.length > 0 ? (
               <select value={service} onChange={(e) => setService(e.target.value)} className={inputCls}>
                 {asStringList(business.services).map((sv) => (
@@ -159,18 +159,18 @@ export const PublicBookingPage: React.FC = () => {
           />
 
           <div>
-            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1">How urgent?</label>
+            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">How urgent?</label>
             <div className="grid grid-cols-2 gap-2">
               {(['routine', 'urgent'] as const).map((u) => (
                 <button
                   key={u}
                   type="button"
                   onClick={() => setUrgency(u)}
-                  className={`p-2.5 rounded-xl border text-sm font-bold transition cursor-pointer ${
+                  className={`min-h-[48px] p-2.5 rounded-xl border text-sm font-bold transition cursor-pointer ${
                     urgency === u
                       ? u === 'urgent'
                         ? 'bg-amber-500/15 border-amber-500 text-white'
-                        : 'bg-lime-500/10 border-lime-500 text-white'
+                        : 'bg-[#22ec72]/10 border-[#22ec72] text-white'
                       : 'bg-zinc-900 border-zinc-800 text-zinc-400'
                   }`}
                 >
@@ -194,11 +194,11 @@ export const PublicBookingPage: React.FC = () => {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 rounded-2xl bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-black font-extrabold text-sm transition cursor-pointer"
+            className="min-h-[48px] w-full py-3 rounded-2xl bg-[#22ec72] hover:bg-[#22ec72] disabled:opacity-50 text-black font-extrabold text-sm transition cursor-pointer"
           >
             {submitting ? 'Sending…' : 'Request Service'}
           </button>
-          <p className="text-[11px] text-zinc-500 text-center">
+          <p className="text-xs text-zinc-500 text-center">
             Powered by {business.name} · We typically respond within 24 hours.
           </p>
         </form>

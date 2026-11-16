@@ -33,10 +33,10 @@ export const MessagesTab: React.FC<MessagesTabProps> = ({ messages, currentUser,
           </div>
           <div>
             <h2 className="text-xs font-bold text-white">Team Comms & Dispatch Radio</h2>
-            <p className="text-[10px] text-zinc-400">Internal technician channel</p>
+            <p className="text-xs text-zinc-400">Internal technician channel</p>
           </div>
         </div>
-        <span className="text-[10px] font-mono text-lime-400 bg-lime-500/10 px-2 py-0.5 rounded-full border border-lime-500/20">
+        <span className="text-xs font-mono text-[#22ec72] bg-[#22ec72]/10 px-2 py-0.5 rounded-full border border-[#22ec72]/20">
           Encrypted
         </span>
       </div>
@@ -60,11 +60,11 @@ export const MessagesTab: React.FC<MessagesTabProps> = ({ messages, currentUser,
                 )}
                 {!isMe && !msg.avatar && (
                   <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center shrink-0 mt-auto border border-zinc-700">
-                    <span className="text-[10px] text-white font-bold">{msg.senderName?.charAt(0) || 'U'}</span>
+                    <span className="text-xs text-white font-bold">{msg.senderName?.charAt(0) || 'U'}</span>
                   </div>
                 )}
                 <div className={`space-y-1 ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
-                  {!isMe && <span className="text-[10px] text-zinc-400 px-1 font-semibold">{msg.senderName}</span>}
+                  {!isMe && <span className="text-xs text-zinc-400 px-1 font-semibold">{msg.senderName}</span>}
                   <div className={`px-3.5 py-2 rounded-2xl text-xs sm:text-sm leading-relaxed ${
                     isMe 
                       ? 'bg-blue-600 text-white rounded-br-none shadow-md' 
@@ -72,7 +72,7 @@ export const MessagesTab: React.FC<MessagesTabProps> = ({ messages, currentUser,
                   }`}>
                     {msg.text || msg.content}
                   </div>
-                  <span className="text-[9px] text-zinc-500 px-1 font-mono">{msg.timestamp}</span>
+                  <span className="text-xs text-zinc-500 px-1 font-mono">{msg.timestamp}</span>
                 </div>
               </div>
             </div>
@@ -94,7 +94,7 @@ export const MessagesTab: React.FC<MessagesTabProps> = ({ messages, currentUser,
           <button
             type="submit"
             disabled={!inputText.trim()}
-            className="p-2.5 rounded-xl bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500 transition-colors shrink-0 cursor-pointer"
+            className="min-h-[48px] p-2.5 rounded-xl bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500 transition-colors shrink-0 cursor-pointer"
             aria-label="Send Message"
           >
             <Send className="w-4 h-4" />

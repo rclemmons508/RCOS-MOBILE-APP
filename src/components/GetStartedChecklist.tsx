@@ -58,7 +58,7 @@ export const GetStartedChecklist: React.FC<GetStartedChecklistProps> = ({
     <div className={`p-3.5 ${dashboardCard} space-y-2`}>
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-2">
-          <ListChecks className="w-4 h-4 text-lime-400 shrink-0" />
+          <ListChecks className="w-4 h-4 text-[#22ec72] shrink-0" />
           <span className={sectionLabel}>Get started</span>
         </span>
         <button
@@ -73,7 +73,7 @@ export const GetStartedChecklist: React.FC<GetStartedChecklistProps> = ({
 
       {allDone ? (
         <div className="flex items-center gap-2 text-sm text-zinc-300">
-          <Check className="w-4 h-4 text-lime-400 shrink-0" />
+          <Check className="w-4 h-4 text-[#22ec72] shrink-0" />
           <span>You're all set — you've seen every part of the app. You can hide this card with the X above.</span>
         </div>
       ) : (
@@ -89,11 +89,11 @@ export const GetStartedChecklist: React.FC<GetStartedChecklistProps> = ({
                   key={item.id}
                   type="button"
                   onClick={() => handleItemTap(item.id, item.tab)}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-lime-500/40 text-left transition cursor-pointer min-h-[44px]"
+                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-[#22ec72]/40 text-left transition cursor-pointer min-h-[44px]"
                 >
                   <span
                     className={`w-6 h-6 rounded-full border flex items-center justify-center shrink-0 ${
-                      isDone ? 'bg-lime-500 border-lime-500' : 'border-zinc-700'
+                      isDone ? 'bg-[#22ec72] border-[#22ec72]' : 'border-zinc-700'
                     }`}
                   >
                     {isDone && <Check className="w-4 h-4 text-black" />}
@@ -102,7 +102,7 @@ export const GetStartedChecklist: React.FC<GetStartedChecklistProps> = ({
                     <span className={`block text-sm font-bold truncate ${isDone ? 'text-zinc-500 line-through' : 'text-white'}`}>
                       {item.title}
                     </span>
-                    <span className="block text-[11px] text-zinc-400 truncate">{item.where}</span>
+                    <span className="block text-xs text-zinc-400 truncate">{item.where}</span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
                 </button>

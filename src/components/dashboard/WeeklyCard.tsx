@@ -53,16 +53,16 @@ export const WeeklyCard: React.FC<WeeklyCardProps> = ({ serverCalls, jobs, actio
     );
 
   const stats: { label: string; value: string; tab: TabType; icon: React.ReactNode }[] = [
-    { label: 'Calls answered', value: String(callsAnswered), tab: 'phone', icon: <PhoneIcon className="w-4 h-4 text-lime-400" /> },
-    { label: 'Jobs booked', value: String(jobsBooked), tab: 'jobs', icon: <Briefcase className="w-4 h-4 text-lime-400" /> },
-    { label: 'Dollars earned', value: money(earned), tab: 'approvals', icon: <DollarSign className="w-4 h-4 text-lime-400" /> },
+    { label: 'Calls answered', value: String(callsAnswered), tab: 'phone', icon: <PhoneIcon className="w-4 h-4 text-[#22ec72]" /> },
+    { label: 'Jobs booked', value: String(jobsBooked), tab: 'jobs', icon: <Briefcase className="w-4 h-4 text-[#22ec72]" /> },
+    { label: 'Dollars earned', value: money(earned), tab: 'approvals', icon: <DollarSign className="w-4 h-4 text-[#22ec72]" /> },
   ];
   const allZero = callsAnswered === 0 && jobsBooked === 0 && earned === 0;
 
   return (
-    <div className="rounded-3xl border border-lime-500/25 bg-gradient-to-b from-lime-500/10 to-transparent p-4">
+    <div className="rounded-3xl border border-[#22ec72]/25 bg-gradient-to-b from-[#22ec72]/10 to-transparent p-4">
       <div>
-        <div className="text-[10px] font-bold uppercase tracking-widest text-lime-400/80">This week</div>
+        <div className="text-xs font-bold uppercase tracking-widest text-[#22ec72]/80">This week</div>
         <div className="text-base font-extrabold text-white leading-tight">What your AI team did</div>
         <div className="text-xs text-zinc-500">Last 7 days</div>
       </div>
@@ -75,7 +75,7 @@ export const WeeklyCard: React.FC<WeeklyCardProps> = ({ serverCalls, jobs, actio
               haptic.light();
               onNavigateTab(s.tab);
             }}
-            className="rounded-2xl bg-zinc-950/70 border border-zinc-800 px-2 py-3 text-center hover:border-lime-500/40 transition cursor-pointer"
+            className="min-h-[48px] rounded-2xl bg-zinc-950/70 border border-zinc-800 px-2 py-3 text-center hover:border-[#22ec72]/40 transition cursor-pointer"
           >
             <span className="flex justify-center mb-1.5">{s.icon}</span>
             <span className="block text-lg font-extrabold text-white leading-none">{s.value}</span>

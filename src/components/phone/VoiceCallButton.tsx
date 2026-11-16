@@ -208,7 +208,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
         </div>
         <div>
           <div className="text-xs font-bold text-white">Call us — free voice call</div>
-          <div className="text-[10.5px] text-zinc-400">
+          <div className="text-xs text-zinc-400">
             Talk to the AI receptionist right from the app. No phone number needed.
           </div>
         </div>
@@ -229,7 +229,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
               onClick={toggleSpeaker}
               aria-pressed={speakerOn}
               title={speakerOn ? 'Switch to earpiece' : 'Switch to speakerphone'}
-              className={`p-2.5 rounded-xl border flex items-center transition cursor-pointer active:scale-95 ${
+              className={`min-h-[48px] p-2.5 rounded-xl border flex items-center transition cursor-pointer active:scale-95 ${
                 speakerOn
                   ? 'bg-[#22ec72] text-black border-[#22ec72]'
                   : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
@@ -240,7 +240,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
             <button
               type="button"
               onClick={endCall}
-              className="px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+              className="min-h-[48px] px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
             >
               <PhoneOff className="w-4 h-4" />
               <span>End call</span>
@@ -252,7 +252,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
           type="button"
           onClick={startCall}
           disabled={state === 'connecting'}
-          className="w-full px-4 py-3 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] disabled:opacity-60 text-black font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-[#22ec72]/20 active:scale-98"
+          className="min-h-[48px] w-full px-4 py-3 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] disabled:opacity-60 text-black font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-[#22ec72]/20 active:scale-98"
         >
           {state === 'connecting' ? (
             <>
@@ -269,7 +269,7 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
       )}
 
       {state === 'error' && error && (
-        <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+        <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
           {error}
         </p>
       )}

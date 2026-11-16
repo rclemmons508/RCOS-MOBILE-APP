@@ -199,7 +199,7 @@ function Section({
         <span className="text-[#22ec72]">{icon}</span>
         <h2 className="text-sm font-bold text-white">{title}</h2>
         {typeof count === 'number' && count > 0 && (
-          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#22ec72]/15 text-[#22ec72] border border-[#22ec72]/30 text-[11px] font-bold flex items-center justify-center">
+          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#22ec72]/15 text-[#22ec72] border border-[#22ec72]/30 text-xs font-bold flex items-center justify-center">
             {count}
           </span>
         )}
@@ -226,7 +226,7 @@ function Row({ row }: { row: InboxRow }) {
           <span className="text-xs font-bold text-white truncate">{row.title}</span>
           {row.tag && (
             <span
-              className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+              className={`shrink-0 text-xs font-bold px-1.5 py-0.5 rounded-full border ${
                 row.tagTone === 'red'
                   ? 'bg-red-500/10 text-red-300 border-red-500/30'
                   : row.tagTone === 'lime'
@@ -238,9 +238,9 @@ function Row({ row }: { row: InboxRow }) {
             </span>
           )}
         </span>
-        {row.body && <span className="block text-[11px] text-zinc-400 truncate mt-0.5">{row.body}</span>}
+        {row.body && <span className="block text-xs text-zinc-400 truncate mt-0.5">{row.body}</span>}
         {row.time && (
-          <span className="flex items-center gap-1 text-[10px] text-zinc-500 mt-0.5">
+          <span className="flex items-center gap-1 text-xs text-zinc-500 mt-0.5">
             <Clock className="w-3 h-3" />
             {row.time}
           </span>
@@ -606,7 +606,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         setFilter(id);
       }}
       aria-pressed={filter === id}
-      className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer min-h-[32px] ${
+      className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer min-h-[32px] ${
         filter === id
           ? 'bg-[#22ec72] text-black'
           : 'bg-[#0c1211] border border-[#1d2b26] text-zinc-400 hover:text-white'
@@ -623,7 +623,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           <ClipboardList className="w-5 h-5 text-[#22ec72]" />
           Operations
         </h1>
-        <p className="text-[11px] text-zinc-400 mt-0.5">Manage your daily workflow.</p>
+        <p className="text-xs text-zinc-400 mt-0.5">Manage your daily workflow.</p>
       </div>
 
       {/* Pill filters — All / Calls / Leads, real counts of rows shown. */}
@@ -685,7 +685,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           )}
           {filter === 'all' && handledAiMessages.length > 0 && (
             <div className="px-3.5 sm:px-4 pt-4">
-              <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider pb-2">Handled</div>
+              <div className="text-xs font-bold text-zinc-600 uppercase tracking-wider pb-2">Handled</div>
               <div className="space-y-2.5">
                 {handledAiMessages.map((m) => (
                   <AgentInboxMessageCard
@@ -817,7 +817,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     <button
                       type="button"
                       onClick={onMarkAllNotifsRead}
-                      className="text-[10px] text-zinc-400 hover:text-[#22ec72] font-semibold flex items-center gap-1 cursor-pointer"
+                      className="min-h-[48px] text-xs text-zinc-400 hover:text-[#22ec72] font-semibold flex items-center gap-1 cursor-pointer"
                     >
                       <CheckCheck className="w-3.5 h-3.5" />
                       <span>Mark All Read</span>
@@ -827,7 +827,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     <button
                       type="button"
                       onClick={onClearNotifs}
-                      className="text-[10px] text-zinc-500 hover:text-red-400 flex items-center gap-1 cursor-pointer"
+                      className="min-h-[48px] text-xs text-zinc-500 hover:text-red-400 flex items-center gap-1 cursor-pointer"
                     >
                       <Trash2 className="w-3 h-3" />
                       <span>Clear</span>
@@ -836,7 +836,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   <button
                     type="button"
                     onClick={onTriggerTestPush}
-                    className="text-[10px] text-[#22ec72] hover:underline font-semibold cursor-pointer"
+                    className="min-h-[48px] text-xs text-[#22ec72] hover:underline font-semibold cursor-pointer"
                   >
                     + Test Push
                   </button>
@@ -845,7 +845,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     onClick={onOpenNotifPrefs}
                     aria-label="Notification preferences"
                     title="Notification preferences"
-                    className="ml-auto p-1.5 rounded-lg text-zinc-400 hover:text-white cursor-pointer"
+                    className="min-h-[48px] ml-auto p-1.5 rounded-lg text-zinc-400 hover:text-white cursor-pointer"
                   >
                     <Settings className="w-4 h-4" />
                   </button>
@@ -859,7 +859,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         </>
       )}
 
-      <p className="px-3.5 sm:px-4 pt-4 text-[11px] text-zinc-500 flex items-center gap-1.5">
+      <p className="px-3.5 sm:px-4 pt-4 text-xs text-zinc-500 flex items-center gap-1.5">
         <Phone className="w-3.5 h-3.5" />
         Phone calls and the older Dispatch Radio stay on the Phone screen, unchanged.
       </p>

@@ -56,11 +56,11 @@ export const GmailConfirmModal: React.FC<GmailConfirmModalProps> = ({
       case 'send':
         return {
           icon: Send,
-          iconBg: 'bg-lime-500/10 text-lime-400 border-lime-500/30',
-          btnBg: 'bg-lime-500 hover:bg-lime-400 text-black font-bold shadow-lg shadow-lime-950/50',
+          iconBg: 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30',
+          btnBg: 'bg-[#22ec72] hover:bg-[#22ec72] text-black font-bold shadow-lg shadow-[#22ec72]/15',
           defaultBtnText: 'Confirm & Send Email',
           badgeText: 'Outbound Gmail Message',
-          badgeColor: 'text-lime-400 bg-lime-950/60 border-lime-800/60',
+          badgeColor: 'text-[#22ec72] bg-[#22ec72]/15 border-[#22ec72]/30',
         };
       case 'draft':
       default:
@@ -89,7 +89,7 @@ export const GmailConfirmModal: React.FC<GmailConfirmModalProps> = ({
               <Icon className="w-5 h-5" />
             </div>
             <div>
-              <span className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded-full border ${theme.badgeColor} font-semibold inline-block mb-1`}>
+              <span className={`text-xs uppercase font-mono px-2 py-0.5 rounded-full border ${theme.badgeColor} font-semibold inline-block mb-1`}>
                 {theme.badgeText}
               </span>
               <h3 className="text-sm sm:text-base font-bold text-white tracking-tight leading-snug">
@@ -101,7 +101,7 @@ export const GmailConfirmModal: React.FC<GmailConfirmModalProps> = ({
             type="button"
             onClick={onCancel}
             disabled={isProcessing}
-            className="p-1 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-900 cursor-pointer transition disabled:opacity-40"
+            className="min-h-[48px] p-1 rounded-xl text-zinc-500 hover:text-white hover:bg-zinc-900 cursor-pointer transition disabled:opacity-40"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -119,7 +119,7 @@ export const GmailConfirmModal: React.FC<GmailConfirmModalProps> = ({
             {targetDetails.recipient && (
               <div className="flex items-start justify-between gap-2">
                 <span className="text-zinc-500 font-medium shrink-0">Recipient:</span>
-                <span className="text-zinc-200 font-mono text-[11px] truncate text-right">
+                <span className="text-zinc-200 font-mono text-xs truncate text-right">
                   {targetDetails.recipient}
                 </span>
               </div>
@@ -141,7 +141,7 @@ export const GmailConfirmModal: React.FC<GmailConfirmModalProps> = ({
               </div>
             )}
             {targetDetails.impactSummary && (
-              <div className="pt-1.5 border-t border-zinc-800/60 text-[11px] text-zinc-400">
+              <div className="pt-1.5 border-t border-zinc-800/60 text-xs text-zinc-400">
                 {targetDetails.impactSummary}
               </div>
             )}
@@ -154,7 +154,7 @@ export const GmailConfirmModal: React.FC<GmailConfirmModalProps> = ({
             type="button"
             onClick={onCancel}
             disabled={isProcessing}
-            className="px-4 py-2.5 rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold transition cursor-pointer disabled:opacity-40"
+            className="min-h-[48px] px-4 py-2.5 rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold transition cursor-pointer disabled:opacity-40"
           >
             Cancel
           </button>
@@ -162,7 +162,7 @@ export const GmailConfirmModal: React.FC<GmailConfirmModalProps> = ({
             type="button"
             onClick={onConfirm}
             disabled={isProcessing}
-            className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-40 flex items-center gap-2 ${theme.btnBg}`}
+            className={`min-h-[48px] px-5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-40 flex items-center gap-2 ${theme.btnBg}`}
           >
             {isProcessing ? (
               <>

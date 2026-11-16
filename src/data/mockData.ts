@@ -105,7 +105,7 @@ export const INITIAL_AGENTS: Agent[] = [
     currentTask: 'Routing inbound client request to Task Agent',
     tasksCompletedToday: 142,
     accuracy: 99.8,
-    color: '#84CC16', // Neon Green
+    color: '#22EC72', // Neon Green
   },
   {
     id: 'agent-phone',

@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               type="button"
               onClick={this.handleReset}
-              className="w-full py-3 rounded-xl bg-[#00ff66] hover:bg-[#10e560] text-[#090b0e] font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition shadow-lg shadow-[#00ff66]/20"
+              className="min-h-[48px] w-full py-3 rounded-xl bg-[#00ff66] hover:bg-[#10e560] text-[#090b0e] font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition shadow-lg shadow-[#00ff66]/20"
             >
               <RefreshCw className="w-4 h-4" />
               <span>Reload RCOS Operations</span>

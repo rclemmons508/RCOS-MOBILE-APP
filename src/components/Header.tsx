@@ -15,6 +15,8 @@ interface HeaderProps {
   onOpenGmail?: () => void;
   /** Opens the sidebar drawer (top-left hamburger). */
   onOpenDrawer?: () => void;
+  /** Real server reachability (null = still checking). Drives the Online/Offline badge — never hardcoded. */
+  serverOnline?: boolean | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenChat,
   onOpenGmail,
   onOpenDrawer,
+  serverOnline = null,
 }) => {
   const [time, setTime] = useState<string>('12:00');
   const { isBiometricEnabled, lockDashboard, biometryLabel } = useBiometrics();
@@ -91,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenDrawer}
-            className="w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-[#22ec72]/50 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
+            className="min-h-[48px] min-w-[48px] w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-[#22ec72]/50 flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0"
             title="Open menu"
             aria-label="Open menu"
           >
@@ -104,9 +107,9 @@ export const Header: React.FC<HeaderProps> = ({
             <h1 className="text-xs sm:text-sm font-bold text-white tracking-tight truncate leading-tight">
               {getTitle()}
             </h1>
-            <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] text-zinc-400 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-lime-500 animate-pulse shrink-0" />
-              <span className="text-lime-400 font-semibold shrink-0">ONLINE</span>
+            <div className="flex items-center gap-1.5 text-xs text-zinc-400 font-mono">
+              <span className={`w-1.5 h-1.5 rounded-full ${serverOnline === true ? 'bg-[#22ec72] animate-pulse' : serverOnline === false ? 'bg-rose-400' : 'bg-amber-400 animate-pulse'} shrink-0`} />
+              <span className={`font-semibold shrink-0 ${serverOnline === true ? 'text-[#22ec72]' : serverOnline === false ? 'text-rose-400' : 'text-amber-400'}`}>{serverOnline === true ? 'Online' : serverOnline === false ? 'Offline' : 'Checking…'}</span>
               <span className="text-zinc-600">•</span>
               <span className="text-zinc-400 font-mono truncate">{time}</span>
             </div>
@@ -120,7 +123,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenGmail}
-              className={`w-8 h-8 rounded-xl border hidden min-[420px]:flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+              className={`min-h-[48px] min-w-[48px] w-8 h-8 rounded-xl border hidden min-[420px]:flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
                 activeTab === 'gmail'
                   ? 'bg-red-500/20 text-red-400 border-red-500/50'
                   : 'bg-zinc-900/90 text-zinc-400 hover:text-white border-zinc-800'
@@ -137,9 +140,9 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenChat}
-              className={`w-8 h-8 rounded-xl border hidden min-[420px]:flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+              className={`min-h-[48px] min-w-[48px] w-8 h-8 rounded-xl border hidden min-[420px]:flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
                 activeTab === 'chat'
-                  ? 'bg-lime-500/20 text-lime-400 border-lime-500/50'
+                  ? 'bg-[#22ec72]/20 text-[#22ec72] border-[#22ec72]/50'
                   : 'bg-zinc-900/90 text-zinc-400 hover:text-white border-zinc-800'
               }`}
               title="Open AI Operations Chat"
@@ -154,11 +157,11 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={lockDashboard}
-              className="w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-lime-500/50 text-zinc-400 hover:text-lime-400 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+              className="min-h-[48px] min-w-[48px] w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-[#22ec72]/50 text-zinc-400 hover:text-[#22ec72] flex items-center justify-center transition-all active:scale-95 cursor-pointer"
               title={`Lock Dashboard (${biometryLabel} Protected)`}
               aria-label="Lock Dashboard with Biometrics"
             >
-              <Fingerprint className="w-3.5 h-3.5 text-lime-400" />
+              <Fingerprint className="w-3.5 h-3.5 text-[#22ec72]" />
             </button>
           )}
 
@@ -168,11 +171,11 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenInbox}
-            className="relative w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-lime-500/50 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+            className="min-h-[48px] min-w-[48px] relative w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-[#22ec72]/50 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
             aria-label="Open AI Team in Operations"
             title="AI Team"
           >
-            <Inbox className="w-3.5 h-3.5 text-lime-400" />
+            <Inbox className="w-3.5 h-3.5 text-[#22ec72]" />
           </button>
 
           {/* Notification bell — opens the Operations feed at the Alerts
@@ -181,7 +184,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenNotifications}
-            className="relative w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+            className="min-h-[48px] min-w-[48px] relative w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
             aria-label="Open alerts in Operations"
             title="Alerts"
           >
@@ -192,7 +195,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenAuth}
-            className="w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-lime-500/40 flex items-center justify-center transition-all active:scale-95 cursor-pointer p-0.5"
+            className="min-h-[48px] min-w-[48px] w-8 h-8 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-[#22ec72]/40 flex items-center justify-center transition-all active:scale-95 cursor-pointer p-0.5"
             title={currentUser?.authenticated ? `Authenticated as ${currentUser.fullName}` : 'Login / Register Operator'}
             aria-label="User Profile"
           >
@@ -202,9 +205,9 @@ export const Header: React.FC<HeaderProps> = ({
                   src={currentUser.avatar}
                   alt={currentUser.fullName}
                   onError={() => setAvatarBroken(true)}
-                  className="w-full h-full rounded-lg object-cover border border-lime-500/60"
+                  className="w-full h-full rounded-lg object-cover border border-[#22ec72]/60"
                 />
-                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-lime-500 border border-black" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#22ec72] border border-black" />
               </div>
             ) : (
               <div className="w-full h-full rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">

@@ -96,8 +96,6 @@ interface SettingsTabProps {
   onToggleIndustryModifier: (on: boolean) => void;
   industryName?: string;
   onAddCustomTask: (task: AutomationTask) => void;
-  aiAssistantEnabled: boolean;
-  onToggleAiAssistant: () => void;
   /** Owner-only: save the Company Profile card (business name + public contact phone/email). */
   onUpdateCompanyProfile?: (profile: { name: string; contactPhone: string; contactEmail: string }) => Promise<void>;
   autoDispatchThreshold: 'all' | 'critical' | 'high' | 'manual';
@@ -165,8 +163,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onToggleIndustryModifier,
   industryName,
   onAddCustomTask,
-  aiAssistantEnabled,
-  onToggleAiAssistant,
   autoDispatchThreshold,
   onUpdateAutoDispatchThreshold,
   onUpdateAutonomyMode,
@@ -674,7 +670,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <button
           type="button"
           onClick={() => setActiveSection('user')}
-          className={`py-2 px-1 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 truncate ${
+          className={`min-h-[48px] py-2 px-1 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 truncate ${
             activeSection === 'user'
               ? 'bg-[#22ec72]/15 text-[#22ec72] border border-[#22ec72]/30 shadow'
               : 'text-zinc-400 hover:text-white'
@@ -687,7 +683,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <button
           type="button"
           onClick={() => setActiveSection('agents')}
-          className={`py-2 px-1 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 truncate ${
+          className={`min-h-[48px] py-2 px-1 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 truncate ${
             activeSection === 'agents'
               ? 'bg-[#22ec72]/15 text-[#22ec72] border border-[#22ec72]/30 shadow'
               : 'text-zinc-400 hover:text-white'
@@ -700,7 +696,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <button
           type="button"
           onClick={() => setActiveSection('device')}
-          className={`py-2 px-1 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 truncate ${
+          className={`min-h-[48px] py-2 px-1 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 truncate ${
             activeSection === 'device'
               ? 'bg-[#22ec72]/15 text-[#22ec72] border border-[#22ec72]/30 shadow'
               : 'text-zinc-400 hover:text-white'
@@ -719,10 +715,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           {/* Current Operator Profile Card */}
           <div className="p-4 rounded-2xl bg-[#0c1211] border border-[#1d2b26] space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
+              <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
                 Logged In Operator
               </span>
-              <span className="text-[9px] px-2 py-0.5 rounded-full bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 font-mono font-bold uppercase">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 font-mono font-bold uppercase">
                 Active Session
               </span>
             </div>
@@ -741,7 +737,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   <div className="text-xs text-[#22ec72] font-mono">
                     {currentUser?.role || 'Operations Lead'}
                   </div>
-                  <div className="text-[11px] text-zinc-400 font-mono truncate">
+                  <div className="text-xs text-zinc-400 font-mono truncate">
                     {currentUser?.email || 'rcsoulutions@gmail.com'}
                   </div>
                 </div>
@@ -751,7 +747,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <button
                   type="button"
                   onClick={onLogout}
-                  className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                  className="min-h-[48px] px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0"
                   title="Log Out of this account"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -772,7 +768,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 haptic.light();
                 setGuideExpanded((v) => !v);
               }}
-              className="w-full flex items-center gap-3 text-left transition cursor-pointer"
+              className="min-h-[48px] w-full flex items-center gap-3 text-left transition cursor-pointer"
             >
               <span className="w-10 h-10 rounded-2xl bg-[#22ec72]/10 border border-[#22ec72]/30 flex items-center justify-center shrink-0">
                 <BookOpen className="w-5 h-5 text-[#22ec72]" />
@@ -816,7 +812,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   onShowGetStartedChecklist();
                   onNavigateTab?.('dashboard');
                 }}
-                className="w-full px-4 py-3 rounded-2xl bg-[#05090a] text-white border border-[#1d2b26] text-sm font-bold transition cursor-pointer"
+                className="min-h-[48px] w-full px-4 py-3 rounded-2xl bg-[#05090a] text-white border border-[#1d2b26] text-sm font-bold transition cursor-pointer"
               >
                 Show the Get started checklist again
               </button>
@@ -838,12 +834,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               />
               <div className="min-w-0">
                 <p className="text-xs text-white font-bold truncate">{profileName || 'Your name'}</p>
-                <p className="text-[11px] text-zinc-400">Pick a picture or upload your own photo.</p>
+                <p className="text-xs text-zinc-400">Pick a picture or upload your own photo.</p>
               </div>
             </div>
 
             <div>
-              <p className="text-[10px] text-zinc-400 font-mono mb-1.5">Choose a picture:</p>
+              <p className="text-xs text-zinc-400 font-mono mb-1.5">Choose a picture:</p>
               <div className="flex gap-2 flex-wrap">
                 {DEFAULT_PROFILE_PICTURES.map((pic) => {
                   const value = `default:${pic.id}`;
@@ -854,7 +850,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       type="button"
                       title={pic.label}
                       onClick={() => { setProfilePicture(value); setProfileError(null); }}
-                      className={`w-10 h-10 rounded-xl overflow-hidden border-2 transition cursor-pointer ${selected ? 'border-[#22ec72]' : 'border-transparent'}`}
+                      className={`min-h-[48px] w-10 h-10 rounded-xl overflow-hidden border-2 transition cursor-pointer ${selected ? 'border-[#22ec72]' : 'border-transparent'}`}
                     >
                       <img src={defaultPictureDataUrl(pic.id)} alt={pic.label} className="w-full h-full object-cover" />
                     </button>
@@ -863,7 +859,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <button
                   type="button"
                   onClick={() => { biometricService.notifyFilePickerOpened(); profileFileRef.current?.click(); }}
-                  className="h-10 px-3 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-zinc-700 text-[11px] font-bold text-zinc-200 transition cursor-pointer"
+                  className="min-h-[48px] h-10 px-3 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-zinc-700 text-xs font-bold text-zinc-200 transition cursor-pointer"
                 >
                   Upload a photo
                 </button>
@@ -879,7 +875,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-[10px] text-zinc-400 font-mono block mb-1">Full name:</label>
+                <label className="text-xs text-zinc-400 font-mono block mb-1">Full name:</label>
                 <input
                   type="text"
                   value={profileName}
@@ -889,7 +885,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 />
               </div>
               <div>
-                <label className="text-[10px] text-zinc-400 font-mono block mb-1">Phone:</label>
+                <label className="text-xs text-zinc-400 font-mono block mb-1">Phone:</label>
                 <input
                   type="tel"
                   value={profilePhone}
@@ -899,7 +895,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 />
               </div>
               <div>
-                <label className="text-[10px] text-zinc-400 font-mono block mb-1">Contact email:</label>
+                <label className="text-xs text-zinc-400 font-mono block mb-1">Contact email:</label>
                 <input
                   type="email"
                   value={profileContactEmail}
@@ -907,7 +903,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   placeholder="you@company.com"
                   className="w-full bg-[#05090a] border border-[#1d2b26] focus:border-[#22ec72] rounded-xl px-3 py-2 text-xs text-white focus:outline-none font-mono"
                 />
-                <p className="text-[10px] text-zinc-500 mt-1">Your own contact email. Changing this never changes the company's contact info. Your login email stays the same.</p>
+                <p className="text-xs text-zinc-500 mt-1">Your own contact email. Changing this never changes the company's contact info. Your login email stays the same.</p>
               </div>
             </div>
 
@@ -916,7 +912,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               type="button"
               onClick={handleSaveProfile}
               disabled={profileSaving}
-              className="px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
+              className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
             >
               {profileSaving ? 'Saving…' : 'Save profile'}
             </button>
@@ -931,7 +927,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-[#22ec72]" />
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider">Company contact</h3>
-                <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-mono font-bold uppercase">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-mono font-bold uppercase">
                   Owner only
                 </span>
               </div>
@@ -940,7 +936,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </p>
               <div className="space-y-3 text-xs">
                 <div>
-                  <label className="text-[10px] text-zinc-400 font-mono block mb-1">Company phone:</label>
+                  <label className="text-xs text-zinc-400 font-mono block mb-1">Company phone:</label>
                   <input
                     type="tel"
                     value={companyContactPhone}
@@ -950,7 +946,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-zinc-400 font-mono block mb-1">Company email:</label>
+                  <label className="text-xs text-zinc-400 font-mono block mb-1">Company email:</label>
                   <input
                     type="email"
                     value={companyContactEmail}
@@ -965,7 +961,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 type="button"
                 onClick={handleSaveCompanyContact}
                 disabled={companyContactSaving}
-                className="px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
               >
                 {companyContactSaving ? 'Saving…' : 'Save company contact'}
               </button>
@@ -991,12 +987,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               className="w-full bg-[#0c1211] border border-zinc-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-[#22ec72] leading-relaxed"
             />
             <div className="flex items-center justify-between gap-3">
-              <span className="text-[10px] text-zinc-500">{knowledgeText.length.toLocaleString()} / {MAX_BUSINESS_KNOWLEDGE_LENGTH.toLocaleString()} characters</span>
+              <span className="text-xs text-zinc-500">{knowledgeText.length.toLocaleString()} / {MAX_BUSINESS_KNOWLEDGE_LENGTH.toLocaleString()} characters</span>
               <button
                 type="button"
                 onClick={handleSaveKnowledge}
                 disabled={knowledgeSaving}
-                className="px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
               >
                 {knowledgeSaving ? 'Saving…' : 'Save'}
               </button>
@@ -1020,7 +1016,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     haptic.light();
                     onReopenOnboarding();
                   }}
-                  className="px-2.5 py-1 rounded-xl bg-[#22ec72]/10 hover:bg-[#22ec72]/20 text-[#22ec72] border border-[#22ec72]/30 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                  className="min-h-[48px] px-2.5 py-1 rounded-xl bg-[#22ec72]/10 hover:bg-[#22ec72]/20 text-[#22ec72] border border-[#22ec72]/30 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
                 >
                   <Sparkles className="w-3 h-3" />
                   <span>Re-detect Industry</span>
@@ -1030,7 +1026,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-[10px] text-zinc-400 font-mono block mb-1">Company Business Name:</label>
+                <label className="text-xs text-zinc-400 font-mono block mb-1">Company Business Name:</label>
                 <input
                   type="text"
                   value={companyName}
@@ -1043,7 +1039,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <div className="p-2.5 rounded-xl bg-[#05090a]/60 border border-[#1d2b26] flex flex-col justify-between">
                   <div>
-                    <label className="text-[10px] text-zinc-400 font-mono block mb-0.5">Active Industry:</label>
+                    <label className="text-xs text-zinc-400 font-mono block mb-0.5">Active Industry:</label>
                     <div className="text-xs font-bold text-[#22ec72] truncate">{industryName}</div>
                   </div>
                   {onReopenOnboarding && (
@@ -1053,7 +1049,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         haptic.light();
                         onReopenOnboarding();
                       }}
-                      className="mt-1.5 text-[10px] text-zinc-400 hover:text-white flex items-center gap-1 font-mono transition cursor-pointer"
+                      className="min-h-[48px] mt-1.5 text-xs text-zinc-400 hover:text-white flex items-center gap-1 font-mono transition cursor-pointer"
                     >
                       <Sparkles className="w-3 h-3 text-[#22ec72]" />
                       <span>Re-tune with AI</span>
@@ -1062,7 +1058,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-zinc-400 font-mono block mb-1">Dispatch Hotline Phone:</label>
+                  <label className="text-xs text-zinc-400 font-mono block mb-1">Dispatch Hotline Phone:</label>
                   <input
                     type="text"
                     value={companyPhone}
@@ -1074,7 +1070,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
 
               <div>
-                <label className="text-[10px] text-zinc-400 font-mono block mb-1">Work Order Routing Email:</label>
+                <label className="text-xs text-zinc-400 font-mono block mb-1">Work Order Routing Email:</label>
                 <input
                   type="email"
                   value={dispatchEmail}
@@ -1091,7 +1087,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     type="button"
                     onClick={handleSaveCompanyProfile}
                     disabled={companyProfileSaving}
-                    className="px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
+                    className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-black transition cursor-pointer"
                   >
                     {companyProfileSaving ? 'Saving…' : 'Save company profile'}
                   </button>
@@ -1112,7 +1108,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         haptic.light();
                         onOpenServiceManager();
                       }}
-                      className="px-2 py-1 rounded-lg bg-[#22ec72]/10 hover:bg-[#22ec72]/20 text-[#22ec72] border border-[#22ec72]/30 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                      className="min-h-[48px] px-2 py-1 rounded-lg bg-[#22ec72]/10 hover:bg-[#22ec72]/20 text-[#22ec72] border border-[#22ec72]/30 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
                     >
                       <Plus className="w-3 h-3" />
                       <span>Manage Services</span>
@@ -1121,7 +1117,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </div>
                 <div className="flex flex-wrap gap-1 pt-0.5">
                   {(asStringList(businessServices).length > 0 ? asStringList(businessServices) : ['General Commercial Services']).map((svc, idx) => (
-                    <span key={idx} className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-mono">
+                    <span key={idx} className="text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-mono">
                       {svc}
                     </span>
                   ))}
@@ -1129,7 +1125,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
                 {/* Proactive AI Industry Suggestion Inside Settings */}
                 {proactiveSuggestion && onReviewSuggestion && (
-                  <div className="mt-2 p-2.5 rounded-xl bg-gradient-to-r from-[#22ec72]/15 via-emerald-500/10 to-zinc-900/40 border border-[#22ec72]/40 animate-in fade-in duration-300">
+                  <div className="mt-2 p-2.5 rounded-xl bg-gradient-to-r from-[#22ec72]/15 via-[#22ec72]/10 to-zinc-900/40 border border-[#22ec72]/40 animate-in fade-in duration-300">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-start gap-2">
                         <div className="p-1.5 rounded-lg bg-[#22ec72]/20 text-[#22ec72] shrink-0 mt-0.5">
@@ -1137,14 +1133,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-extrabold text-white">
+                            <span className="text-xs font-extrabold text-white">
                               AI Monitor Optimization Available
                             </span>
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#22ec72]/20 text-[#22ec72] font-mono font-bold">
+                            <span className="text-xs px-1.5 py-0.2 rounded bg-[#22ec72]/20 text-[#22ec72] font-mono font-bold">
                               {Math.round(asScore(proactiveSuggestion.confidence) || 95)}% Match
                             </span>
                           </div>
-                          <p className="text-[10px] text-zinc-300 mt-0.5 leading-snug">
+                          <p className="text-xs text-zinc-300 mt-0.5 leading-snug">
                             Services indicate specialized <strong className="text-[#22ec72]">{asText(proactiveSuggestion.suggestedPresetName)}</strong> workflows rather than current profile.
                           </p>
                         </div>
@@ -1156,7 +1152,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                             haptic.light();
                             onDismissSuggestion();
                           }}
-                          className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg transition"
+                          className="min-h-[48px] text-zinc-500 hover:text-zinc-300 p-1 rounded-lg transition"
                           title="Dismiss suggestion"
                         >
                           <X className="w-3 h-3" />
@@ -1170,7 +1166,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                           haptic.selection();
                           onReviewSuggestion();
                         }}
-                        className="px-3 py-1 rounded-lg bg-[#22ec72] hover:bg-[#22ec72] text-black text-[10px] font-extrabold flex items-center gap-1 transition cursor-pointer shadow-sm shadow-[#22ec72]/20"
+                        className="min-h-[48px] px-3 py-1 rounded-lg bg-[#22ec72] hover:bg-[#22ec72] text-black text-xs font-extrabold flex items-center gap-1 transition cursor-pointer shadow-sm shadow-[#22ec72]/20"
                       >
                         <span>Review & Upgrade Preset</span>
                         <ArrowRight className="w-3 h-3" />
@@ -1179,7 +1175,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   </div>
                 )}
 
-                <p className="text-[10px] text-zinc-500 italic">
+                <p className="text-xs text-zinc-500 italic">
                   AI Context Monitor automatically suggests optimized industry presets as you add or alter services.
                 </p>
               </div>
@@ -1187,7 +1183,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <label className="flex items-center justify-between p-2.5 rounded-xl bg-[#05090a]/60 border border-[#1d2b26] cursor-pointer">
                 <div>
                   <span className="text-xs font-semibold text-white block">24/7 Emergency Dispatch Readiness</span>
-                  <span className="text-[10px] text-zinc-400">Routes off-hours voice AI calls directly to emergency on-call technicians</span>
+                  <span className="text-xs text-zinc-400">Routes off-hours voice AI calls directly to emergency on-call technicians</span>
                 </div>
                 <input
                   type="checkbox"
@@ -1210,7 +1206,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <button
                   type="button"
                   onClick={onOpenTeamChat}
-                  className="px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                   <span>Open Team Chat</span>
@@ -1239,9 +1235,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         <div className="text-xs font-bold text-white truncate">
                           {m.name} {isMe && <span className="text-[#22ec72]">(You)</span>}
                         </div>
-                        <div className="text-[11px] text-zinc-400 truncate">{m.email}</div>
+                        <div className="text-xs text-zinc-400 truncate">{m.email}</div>
                       </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border shrink-0 ${m.role === 'owner' ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold border shrink-0 ${m.role === 'owner' ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' : 'bg-zinc-800 text-zinc-300 border-zinc-700'}`}>
                         {m.role === 'owner' ? 'Owner' : 'Team member'}
                       </span>
                       {teamIsOwner && !isMe && m.role !== 'owner' && (
@@ -1249,7 +1245,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                           <button
                             type="button"
                             onClick={() => handleRemoveMember(m.email)}
-                            className="px-2 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                            className="min-h-[48px] px-2 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold shrink-0 cursor-pointer"
                           >
                             Remove?
                           </button>
@@ -1257,7 +1253,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                           <button
                             type="button"
                             onClick={() => setRemoveTarget(m.email.toLowerCase())}
-                            className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 text-[11px] font-bold shrink-0 cursor-pointer"
+                            className="min-h-[48px] px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 text-xs font-bold shrink-0 cursor-pointer"
                           >
                             Remove
                           </button>
@@ -1291,7 +1287,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     type="button"
                     onClick={handleCreateInvite}
                     disabled={inviteBusy}
-                    className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-bold text-white transition cursor-pointer shrink-0"
+                    className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-bold text-white transition cursor-pointer shrink-0"
                   >
                     {inviteBusy ? 'Making…' : 'Make invite code'}
                   </button>
@@ -1304,29 +1300,29 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleCopyCode(inviteCreated.code)}
-                        className="px-2 py-1 rounded-lg bg-zinc-800 text-xs font-bold text-white flex items-center gap-1 cursor-pointer"
+                        className="min-h-[48px] px-2 py-1 rounded-lg bg-zinc-800 text-xs font-bold text-white flex items-center gap-1 cursor-pointer"
                       >
                         <Copy className="w-3 h-3" />
                         <span>{copiedCode ? 'Copied!' : 'Copy'}</span>
                       </button>
                     </div>
-                    <p className="text-[11px] text-zinc-400">
+                    <p className="text-xs text-zinc-400">
                       {inviteCreated.email ? `Only ${inviteCreated.email} can use it. ` : ''}It works for 7 days and can only be used once.
                     </p>
                   </div>
                 )}
                 {teamInvites.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-[11px] font-bold text-zinc-400">Waiting invites</p>
+                    <p className="text-xs font-bold text-zinc-400">Waiting invites</p>
                     {teamInvites.map(inv => (
                       <div key={inv.code} className="flex items-center gap-2 p-2 rounded-xl bg-[#05090a]/60 border border-[#1d2b26]">
                         <span className="font-mono font-bold text-xs text-white tracking-widest">{inv.code}</span>
-                        <span className="text-[11px] text-zinc-400 flex-1 truncate">{inv.email || 'Anyone with the code'}</span>
-                        <span className="text-[10px] text-zinc-500 shrink-0">Expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                        <span className="text-xs text-zinc-400 flex-1 truncate">{inv.email || 'Anyone with the code'}</span>
+                        <span className="text-xs text-zinc-500 shrink-0">Expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
                         <button
                           type="button"
                           onClick={() => handleRevokeInvite(inv.code)}
-                          className="px-2 py-1 rounded-lg bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 text-[11px] font-bold shrink-0 cursor-pointer"
+                          className="min-h-[48px] px-2 py-1 rounded-lg bg-zinc-800 hover:bg-red-500/20 text-zinc-400 hover:text-red-300 text-xs font-bold shrink-0 cursor-pointer"
                         >
                           Cancel
                         </button>
@@ -1346,7 +1342,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   type="button"
                   onClick={handleLeaveTeam}
                   disabled={leavingTeam}
-                  className="px-3 py-2 rounded-xl bg-transparent hover:bg-red-500/10 border border-red-800 text-xs font-bold text-red-400 transition cursor-pointer"
+                  className="min-h-[48px] px-3 py-2 rounded-xl bg-transparent hover:bg-red-500/10 border border-red-800 text-xs font-bold text-red-400 transition cursor-pointer"
                 >
                   {leavingTeam ? 'Leaving…' : 'Leave team'}
                 </button>
@@ -1374,14 +1370,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   Multi-Agent Autonomy Mode
                 </h3>
               </div>
-              <span className="text-[10px] text-zinc-400 font-mono">Operations Policy</span>
+              <span className="text-xs text-zinc-400 font-mono">Operations Policy</span>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
                 onClick={() => handleAutonomyChange('autonomous')}
-                className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                className={`min-h-[48px] p-3 rounded-xl border text-left transition cursor-pointer ${
                   autonomyMode === 'autonomous'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-white'
                     : 'bg-[#05090a]/60 border-[#1d2b26] text-zinc-400 hover:text-white'
@@ -1391,7 +1387,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   <span className="font-bold">Autonomous</span>
                   <Zap className="w-3.5 h-3.5 text-[#22ec72]" />
                 </div>
-                <p className="text-[10px] text-zinc-400">
+                <p className="text-xs text-zinc-400">
                   Agents route calls, draft quotes, and assign technicians automatically within business thresholds.
                 </p>
               </button>
@@ -1399,7 +1395,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 type="button"
                 onClick={() => handleAutonomyChange('supervised')}
-                className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                className={`min-h-[48px] p-3 rounded-xl border text-left transition cursor-pointer ${
                   autonomyMode === 'supervised'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-white'
                     : 'bg-[#05090a]/60 border-[#1d2b26] text-zinc-400 hover:text-white'
@@ -1409,7 +1405,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   <span className="font-bold">Supervised</span>
                   <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
                 </div>
-                <p className="text-[10px] text-zinc-400">
+                <p className="text-xs text-zinc-400">
                   All job assignments, client invoices, and emergency dispatches require operator 1-tap approval.
                 </p>
               </button>
@@ -1423,7 +1419,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <Sliders className="w-4 h-4 text-[#22ec72]" />
                 <span>Job Auto-Dispatch Threshold</span>
               </span>
-              <span className="text-[10px] text-[#22ec72] font-mono font-bold uppercase">
+              <span className="text-xs text-[#22ec72] font-mono font-bold uppercase">
                 Active: {autoDispatchThreshold}
               </span>
             </div>
@@ -1432,53 +1428,53 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 type="button"
                 onClick={() => onUpdateAutoDispatchThreshold('all')}
-                className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                className={`min-h-[48px] p-2.5 rounded-xl border text-left transition cursor-pointer ${
                   autoDispatchThreshold === 'all'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-white font-bold'
                     : 'bg-[#05090a]/60 border-[#1d2b26] text-zinc-400 hover:text-white'
                 }`}
               >
                 <div>All Work Orders</div>
-                <div className="text-[10px] text-zinc-500">Auto-routes all incoming requests</div>
+                <div className="text-xs text-zinc-500">Auto-routes all incoming requests</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => onUpdateAutoDispatchThreshold('critical')}
-                className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                className={`min-h-[48px] p-2.5 rounded-xl border text-left transition cursor-pointer ${
                   autoDispatchThreshold === 'critical'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-white font-bold'
                     : 'bg-[#05090a]/60 border-[#1d2b26] text-zinc-400 hover:text-white'
                 }`}
               >
                 <div>Critical Emergency Only</div>
-                <div className="text-[10px] text-zinc-500">Only dispatches priority outages</div>
+                <div className="text-xs text-zinc-500">Only dispatches priority outages</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => onUpdateAutoDispatchThreshold('high')}
-                className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                className={`min-h-[48px] p-2.5 rounded-xl border text-left transition cursor-pointer ${
                   autoDispatchThreshold === 'high'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-white font-bold'
                     : 'bg-[#05090a]/60 border-[#1d2b26] text-zinc-400 hover:text-white'
                 }`}
               >
                 <div>High Priority + Urgent</div>
-                <div className="text-[10px] text-zinc-500">Priority and critical tiers</div>
+                <div className="text-xs text-zinc-500">Priority and critical tiers</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => onUpdateAutoDispatchThreshold('manual')}
-                className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                className={`min-h-[48px] p-2.5 rounded-xl border text-left transition cursor-pointer ${
                   autoDispatchThreshold === 'manual'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-white font-bold'
                     : 'bg-[#05090a]/60 border-[#1d2b26] text-zinc-400 hover:text-white'
                 }`}
               >
                 <div>Manual Approval Only</div>
-                <div className="text-[10px] text-zinc-500">Operators manually assign all</div>
+                <div className="text-xs text-zinc-500">Operators manually assign all</div>
               </button>
             </div>
           </div>
@@ -1492,9 +1488,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   AI Employee Fleet & Job Roles ({customEmployees.length})
                 </h3>
               </div>
-              <span className="text-[10px] text-zinc-500 font-mono">1-Tap Customizer</span>
+              <span className="text-xs text-zinc-500 font-mono">1-Tap Customizer</span>
             </div>
-            <p className="text-[11px] text-zinc-400">
+            <p className="text-xs text-zinc-400">
               Customize job responsibilities, operational boundaries, and escalation triggers for each AI specialist:
             </p>
 
@@ -1509,10 +1505,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     <div className="text-xs font-bold text-white group-hover:text-[#22ec72] transition-colors truncate">
                       {emp.name}
                     </div>
-                    <div className="text-[10px] text-zinc-400 truncate">
+                    <div className="text-xs text-zinc-400 truncate">
                       {emp.roleTitle}
                     </div>
-                    <div className="text-[9px] text-zinc-500 font-mono mt-0.5">
+                    <div className="text-xs text-zinc-500 font-mono mt-0.5">
                       Autonomy: <span className="text-[#22ec72]">{emp.autonomyLevel || 'autonomous'}</span>
                     </div>
                   </div>
@@ -1522,7 +1518,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       e.stopPropagation();
                       setSelectedEmployeeForCustomizer(emp);
                     }}
-                    className="px-2 py-1 rounded-lg bg-[#22ec72]/10 hover:bg-[#22ec72]/20 text-[#22ec72] text-[10px] font-bold border border-[#22ec72]/30 shrink-0 cursor-pointer"
+                    className="min-h-[48px] px-2 py-1 rounded-lg bg-[#22ec72]/10 hover:bg-[#22ec72]/20 text-[#22ec72] text-xs font-bold border border-[#22ec72]/30 shrink-0 cursor-pointer"
                   >
                     Edit Job
                   </button>
@@ -1543,7 +1539,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAddingTask(true)}
-                className="px-2 py-1 rounded-lg bg-[#22ec72] hover:bg-[#22ec72] text-black text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                className="min-h-[48px] px-2 py-1 rounded-lg bg-[#22ec72] hover:bg-[#22ec72] text-black text-xs font-bold flex items-center gap-1 transition cursor-pointer"
               >
                 <Plus className="w-3 h-3" />
                 <span>Add Rule</span>
@@ -1558,7 +1554,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     <Zap className="w-4 h-4 text-[#22ec72]" />
                     Automation Engine
                   </div>
-                  <div className="text-[10px] text-zinc-400">
+                  <div className="text-xs text-zinc-400">
                     {automationMasterOn
                       ? 'Live — your rules are running.'
                       : 'Paused — nothing will fire until you turn it back on.'}
@@ -1598,25 +1594,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         </span>
                         <span className="truncate min-w-0">{task.name}</span>
                         {task.isCustom && (
-                          <span className="shrink-0 text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
+                          <span className="shrink-0 text-xs px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-mono">
                             CUSTOM
                           </span>
                         )}
                         {live && (
-                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 font-bold">
+                          <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 font-bold">
                             RUNNING
                           </span>
                         )}
                         {task.isAutomated && task.paused && (
-                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
+                          <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
                             PAUSED
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-zinc-400 leading-snug">
+                      <div className="text-xs text-zinc-400 leading-snug">
                         {task.description}
                       </div>
-                      <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                      <div className="text-xs text-zinc-500 font-mono mt-0.5">
                         Ran {task.runCount || 0}× • last {timeAgoShort(task.lastFiredAt)}
                       </div>
                     </div>
@@ -1624,7 +1620,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     <button
                       type="button"
                       onClick={() => onToggleAutomation(task.id, !task.isAutomated)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      className={`min-h-[48px] relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                         task.isAutomated ? 'bg-[#22ec72]' : 'bg-zinc-800'
                       }`}
                     >
@@ -1642,7 +1638,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         type="button"
                         disabled={!task.isAutomated}
                         onClick={() => onPauseAutomation(task.id, false)}
-                        className="px-2.5 py-1 rounded-lg bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 text-[10px] font-bold disabled:opacity-40"
+                        className="min-h-[48px] px-2.5 py-1 rounded-lg bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 text-xs font-bold disabled:opacity-40"
                       >
                         Resume
                       </button>
@@ -1651,7 +1647,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         type="button"
                         disabled={!task.isAutomated}
                         onClick={() => onPauseAutomation(task.id, true)}
-                        className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-bold disabled:opacity-40"
+                        className="min-h-[48px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-bold disabled:opacity-40"
                       >
                         Pause
                       </button>
@@ -1659,7 +1655,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     <button
                       type="button"
                       onClick={() => onResetAutomation(task.id)}
-                      className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-400 border border-zinc-700 text-[10px] font-bold"
+                      className="min-h-[48px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-400 border border-zinc-700 text-xs font-bold"
                     >
                       Reset stats
                     </button>
@@ -1668,7 +1664,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   {isFollowupRuleId(task.id) && (
                     <div className="space-y-2 pt-1">
                       <label className="block">
-                        <span className="text-[10px] font-bold text-zinc-400">Message text — use {'{firstName}'}, {'{businessName}'}{task.id === 'rule-review' ? ', {reviewLink}' : ''}</span>
+                        <span className="text-xs font-bold text-zinc-400">Message text — use {'{firstName}'}, {'{businessName}'}{task.id === 'rule-review' ? ', {reviewLink}' : ''}</span>
                         <textarea
                           value={task.messageTemplate || FOLLOWUP_META[task.id as 'rule-welcome' | 'rule-missed-call' | 'rule-review'].defaultTemplate}
                           onChange={(e) => onUpdateAutomationTemplate?.(task.id, e.target.value)}
@@ -1679,7 +1675,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       </label>
                       {task.id === 'rule-review' && (
                         <label className="block">
-                          <span className="text-[10px] font-bold text-zinc-400">Review link (your Google review page — pasted into the message)</span>
+                          <span className="text-xs font-bold text-zinc-400">Review link (your Google review page — pasted into the message)</span>
                           <input
                             type="url"
                             value={task.reviewLink || ''}
@@ -1693,7 +1689,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       <button
                         type="button"
                         onClick={() => onUpdateAutomationTemplate?.(task.id, FOLLOWUP_META[task.id as 'rule-welcome' | 'rule-missed-call' | 'rule-review'].defaultTemplate)}
-                        className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-400 border border-zinc-700 text-[10px] font-bold"
+                        className="min-h-[48px] px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-400 border border-zinc-700 text-xs font-bold"
                       >
                         Reset message to default
                       </button>
@@ -1709,14 +1705,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <div className="p-3 rounded-xl bg-[#05090a]/60 border border-[#1d2b26] flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-white">Smart timing</div>
-                  <div className="text-[10px] text-zinc-400">
+                  <div className="text-xs text-zinc-400">
                     Hold non-urgent automations during your quiet hours. Emergencies always fire.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => onToggleConditionalLogic(!conditionalLogicOn)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  className={`min-h-[48px] relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                     conditionalLogicOn ? 'bg-[#22ec72]' : 'bg-zinc-800'
                   }`}
                 >
@@ -1730,14 +1726,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <div className="p-3 rounded-xl bg-[#05090a]/60 border border-[#1d2b26] flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-white">Industry pacing</div>
-                  <div className="text-[10px] text-zinc-400">
+                  <div className="text-xs text-zinc-400">
                     Follow-up timing matches your trade's pace. Now: {describeFollowupWindow(industryName, industryModifierOn)}.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => onToggleIndustryModifier(!industryModifierOn)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  className={`min-h-[48px] relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                     industryModifierOn ? 'bg-[#22ec72]' : 'bg-zinc-800'
                   }`}
                 >
@@ -1776,13 +1772,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsAddingTask(false)}
-                    className="px-3 py-1 rounded-lg bg-zinc-800 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                    className="min-h-[48px] px-3 py-1 rounded-lg bg-zinc-800 text-xs text-zinc-400 hover:text-white cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-3 py-1 rounded-lg bg-[#22ec72] text-black font-bold text-xs cursor-pointer"
+                    className="min-h-[48px] px-3 py-1 rounded-lg bg-[#22ec72] text-black font-bold text-xs cursor-pointer"
                   >
                     Save Rule
                   </button>
@@ -1802,7 +1798,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </h3>
             </div>
             {fireLog.length === 0 ? (
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-xs text-zinc-500">
                 No automations have fired yet. When a rule runs, it will show up here.
               </p>
             ) : (
@@ -1813,10 +1809,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     className="p-2 rounded-xl bg-[#05090a]/60 border border-[#1d2b26] flex items-start justify-between gap-2"
                   >
                     <div className="min-w-0">
-                      <div className="text-[11px] font-bold text-white truncate">{entry.ruleName}</div>
-                      <div className="text-[10px] text-zinc-400 truncate">{entry.detail}</div>
+                      <div className="text-xs font-bold text-white truncate">{entry.ruleName}</div>
+                      <div className="text-xs text-zinc-400 truncate">{entry.detail}</div>
                     </div>
-                    <span className="text-[9px] text-zinc-500 font-mono shrink-0">
+                    <span className="text-xs text-zinc-500 font-mono shrink-0">
                       {new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
@@ -1852,7 +1848,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <Volume2 className="w-4 h-4 text-[#22ec72]" />
                 <span>Device Alert & Audio Profile</span>
               </span>
-              <span className="text-[10px] text-[#22ec72] font-mono font-bold uppercase">
+              <span className="text-xs text-[#22ec72] font-mono font-bold uppercase">
                 Mode: {ringerMode}
               </span>
             </div>
@@ -1869,14 +1865,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   });
                   showToast('Ringer Mode: Full Audio enabled');
                 }}
-                className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition cursor-pointer ${
+                className={`min-h-[48px] p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition cursor-pointer ${
                   ringerMode === 'sound'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-[#22ec72] font-bold'
                     : 'bg-[#05090a] border-[#1d2b26] text-zinc-400 hover:text-white'
                 }`}
               >
                 <Volume2 className="w-5 h-5" />
-                <span className="text-[11px]">Sound</span>
+                <span className="text-xs">Sound</span>
               </button>
 
               <button
@@ -1890,14 +1886,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   });
                   showToast('Ringer Mode: Vibrate Only');
                 }}
-                className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition cursor-pointer ${
+                className={`min-h-[48px] p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition cursor-pointer ${
                   ringerMode === 'vibrate'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-[#22ec72] font-bold'
                     : 'bg-[#05090a] border-[#1d2b26] text-zinc-400 hover:text-white'
                 }`}
               >
                 <Smartphone className="w-5 h-5" />
-                <span className="text-[11px]">Vibrate</span>
+                <span className="text-xs">Vibrate</span>
               </button>
 
               <button
@@ -1911,14 +1907,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   });
                   showToast('Ringer Mode: Silent');
                 }}
-                className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition cursor-pointer ${
+                className={`min-h-[48px] p-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition cursor-pointer ${
                   ringerMode === 'silent'
                     ? 'bg-[#22ec72]/10 border-[#22ec72] text-[#22ec72] font-bold'
                     : 'bg-[#05090a] border-[#1d2b26] text-zinc-400 hover:text-white'
                 }`}
               >
                 <VolumeX className="w-5 h-5" />
-                <span className="text-[11px]">Silent</span>
+                <span className="text-xs">Silent</span>
               </button>
             </div>
 
@@ -1927,7 +1923,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 type="button"
                 onClick={onTriggerTestPush}
-                className="px-3 py-1.5 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-[#1d2b26] text-xs font-mono font-bold text-white flex items-center gap-1.5 transition cursor-pointer"
+                className="min-h-[48px] px-3 py-1.5 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-[#1d2b26] text-xs font-mono font-bold text-white flex items-center gap-1.5 transition cursor-pointer"
               >
                 <Bell className="w-3.5 h-3.5 text-[#22ec72]" />
                 <span>Test Alert</span>
@@ -1945,11 +1941,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="p-3 rounded-xl bg-[#05090a]/60 border border-[#1d2b26] flex items-center justify-between text-xs font-mono">
               <div>
                 <div className="text-white font-bold">App Status:</div>
-                <div className="text-[10px] text-zinc-400">Connected & Synced</div>
+                <div className="text-xs text-zinc-400">Connected & Synced</div>
               </div>
               <div className="text-right">
                 <div className="text-[#22ec72] font-bold">OPERATIONAL</div>
-                <div className="text-[10px] text-zinc-400">Fast Local Storage</div>
+                <div className="text-xs text-zinc-400">Fast Local Storage</div>
               </div>
             </div>
 
@@ -1958,7 +1954,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 type="button"
                 onClick={handleClearCache}
-                className="px-3 py-1.5 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-[#1d2b26] text-xs font-mono text-zinc-300 hover:text-white flex items-center gap-1.5 transition cursor-pointer"
+                className="min-h-[48px] px-3 py-1.5 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-[#1d2b26] text-xs font-mono text-zinc-300 hover:text-white flex items-center gap-1.5 transition cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-[#22ec72] ${cacheCleared ? 'animate-spin' : ''}`} />
                 <span>Clear Cache</span>
@@ -1983,7 +1979,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <button
               type="button"
               onClick={() => setDeleteStep('warn')}
-              className="px-3 py-2 rounded-xl bg-transparent hover:bg-red-500/10 border border-red-800 text-xs font-bold text-red-400 flex items-center gap-1.5 transition cursor-pointer"
+              className="min-h-[48px] px-3 py-2 rounded-xl bg-transparent hover:bg-red-500/10 border border-red-800 text-xs font-bold text-red-400 flex items-center gap-1.5 transition cursor-pointer"
             >
               <Trash2 className="w-4 h-4" />
               <span>Delete Account</span>
@@ -2026,14 +2022,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 type="button"
                 onClick={() => setDeleteStep('idle')}
-                className="px-3 py-2 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-[#1d2b26] text-xs font-bold text-zinc-300 transition cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-[#1d2b26] text-xs font-bold text-zinc-300 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => setDeleteStep('confirm')}
-                className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white transition cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white transition cursor-pointer"
               >
                 I understand, continue
               </button>
@@ -2080,7 +2076,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 type="button"
                 onClick={() => { setDeleteStep('idle'); setDeleteInput(''); setDeletePassword(''); setDeleteError(null); }}
-                className="px-3 py-2 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-[#1d2b26] text-xs font-bold text-zinc-300 transition cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-[#05090a] hover:bg-[#1d2b26] border border-[#1d2b26] text-xs font-bold text-zinc-300 transition cursor-pointer"
               >
                 Cancel
               </button>
@@ -2088,7 +2084,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 type="button"
                 onClick={handleDeleteAccount}
                 disabled={deleteInput !== 'DELETE' || deleteDeleting || (deleteNeedsPassword && !deletePassword)}
-                className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-white transition cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-xs font-bold text-white transition cursor-pointer"
               >
                 {deleteDeleting ? 'Deleting…' : (teamIsOwner ? 'Delete everything' : 'Leave & delete my login')}
               </button>

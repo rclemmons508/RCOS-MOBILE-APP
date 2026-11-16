@@ -19,7 +19,7 @@ const VERDICT_LABEL: Record<AppCheckVerdict, string> = {
 };
 
 const verdictIcon = (verdict: AppCheckVerdict) => {
-  if (verdict === 'working') return <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />;
+  if (verdict === 'working') return <CheckCircle2 className="w-4 h-4 text-[#22ec72] shrink-0" />;
   if (verdict === 'wrong-step') return <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />;
   if (verdict === 'system-error') return <XCircle className="w-4 h-4 text-red-400 shrink-0" />;
   return <Clock className="w-4 h-4 text-zinc-400 shrink-0" />;
@@ -28,14 +28,14 @@ const verdictIcon = (verdict: AppCheckVerdict) => {
 const verdictBadge = (verdict: AppCheckVerdict) => {
   const styles =
     verdict === 'working'
-      ? 'bg-lime-500/15 text-lime-400 border-lime-500/30'
+      ? 'bg-[#22ec72]/15 text-[#22ec72] border-[#22ec72]/30'
       : verdict === 'wrong-step'
         ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
         : verdict === 'system-error'
           ? 'bg-red-500/15 text-red-400 border-red-500/30'
           : 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30';
   return (
-    <span className={`text-[9px] px-2 py-0.5 rounded-full border font-mono font-bold uppercase ${styles}`}>
+    <span className={`text-xs px-2 py-0.5 rounded-full border font-mono font-bold uppercase ${styles}`}>
       {VERDICT_LABEL[verdict]}
     </span>
   );
@@ -102,14 +102,14 @@ export const AppCheckPanel: React.FC<AppCheckPanelProps> = ({
     <div className="rounded-2xl bg-zinc-950 border border-zinc-800/80 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <ClipboardCheck className="w-4 h-4 text-lime-400" />
+          <ClipboardCheck className="w-4 h-4 text-[#22ec72]" />
           <h3 className="text-xs font-bold text-white uppercase tracking-wider">App Check</h3>
         </div>
         <button
           type="button"
           onClick={runCheck}
           disabled={checking}
-          className="px-3 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-60 text-black text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer"
+          className="min-h-[48px] px-3 py-1.5 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:opacity-60 text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
           <span>{checking ? 'Checking…' : results ? 'Run again' : 'Run app check'}</span>
@@ -117,21 +117,21 @@ export const AppCheckPanel: React.FC<AppCheckPanelProps> = ({
       </div>
 
       {!results && !error && (
-        <p className="text-[11px] text-zinc-400">
+        <p className="text-xs text-zinc-400">
           Checks each part of the app in order and tells you what is working, what step to fix, and what is a system
           error. Running it changes nothing and deletes nothing.
         </p>
       )}
 
       {error && (
-        <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">{error}</p>
+        <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">{error}</p>
       )}
 
       {results && counts && (
         <>
           <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
             <div className="text-xs font-bold text-white">{overallLine}</div>
-            <div className="text-[10.5px] text-zinc-400 mt-1">
+            <div className="text-xs text-zinc-400 mt-1">
               {counts.working} working · {counts.wrongStep} wrong step · {counts.systemError} system error ·{' '}
               {counts.notYet} not yet
               {checkedAt ? ` · Checked at ${checkedAt}` : ''}
@@ -152,11 +152,11 @@ export const AppCheckPanel: React.FC<AppCheckPanelProps> = ({
                     </div>
                     {verdictBadge(result.verdict)}
                   </div>
-                  <div className="text-[10.5px] text-zinc-400 mt-0.5">{result.detail}</div>
+                  <div className="text-xs text-zinc-400 mt-0.5">{result.detail}</div>
                   {result.fix.length > 0 && (
                     <ol className="list-decimal list-inside mt-1.5 space-y-0.5">
                       {result.fix.map((step, stepIndex) => (
-                        <li key={stepIndex} className="text-[10.5px] text-zinc-300">
+                        <li key={stepIndex} className="text-xs text-zinc-300">
                           {step}
                         </li>
                       ))}

@@ -105,26 +105,26 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
     switch (urgency) {
       case 'urgent':
         return (
-          <span className="text-[9px] px-2 py-0.5 rounded-full font-mono font-bold bg-red-500/10 text-red-400 border border-red-500/30 flex items-center gap-1">
+          <span className="text-xs px-2 py-0.5 rounded-full font-mono font-bold bg-red-500/10 text-red-400 border border-red-500/30 flex items-center gap-1">
             <AlertTriangle className="w-2.5 h-2.5" />
             URGENT
           </span>
         );
       case 'high':
         return (
-          <span className="text-[9px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+          <span className="text-xs px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
             HIGH PRIORITY
           </span>
         );
       case 'medium':
         return (
-          <span className="text-[9px] px-2 py-0.5 rounded-full font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30">
+          <span className="text-xs px-2 py-0.5 rounded-full font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30">
             STANDARD
           </span>
         );
       default:
         return (
-          <span className="text-[9px] px-2 py-0.5 rounded-full font-mono font-bold bg-zinc-800 text-zinc-400 border border-zinc-700">
+          <span className="text-xs px-2 py-0.5 rounded-full font-mono font-bold bg-zinc-800 text-zinc-400 border border-zinc-700">
             INFO
           </span>
         );
@@ -142,11 +142,11 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
           <div>
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               Voicemail & Transcriptions
-              <span className="text-[10px] px-2 py-0.2 rounded-full font-mono bg-purple-500/20 text-purple-300 border border-purple-500/40">
+              <span className="text-xs px-2 py-0.2 rounded-full font-mono bg-purple-500/20 text-purple-300 border border-purple-500/40">
                 {voicemails.length} Records
               </span>
             </h3>
-            <p className="text-[11px] text-zinc-400">AI transcribed caller messages and actionable requests</p>
+            <p className="text-xs text-zinc-400">AI transcribed caller messages and actionable requests</p>
           </div>
         </div>
       </div>
@@ -179,17 +179,17 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
                       <span className="text-xs font-bold text-white truncate">{vm.callerName}</span>
                       {getUrgencyBadge(vm.urgency)}
                       {vm.audioUrl && (
-                        <span className="text-[9px] px-2 py-0.2 rounded-full bg-lime-500/10 text-lime-400 border border-lime-500/30 font-mono font-bold">
+                        <span className="text-xs px-2 py-0.2 rounded-full bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 font-mono font-bold">
                           PSTN Recording
                         </span>
                       )}
                       {vm.department && (
-                        <span className="text-[9px] px-2 py-0.2 rounded bg-zinc-800 text-zinc-300 font-mono">
+                        <span className="text-xs px-2 py-0.2 rounded bg-zinc-800 text-zinc-300 font-mono">
                           {vm.department}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono mt-0.5">
+                    <div className="flex items-center gap-2 text-xs text-zinc-400 font-mono mt-0.5">
                       <span className="flex items-center gap-1">
                         <Phone className="w-3 h-3 text-zinc-500" />
                         {vm.callerNumber}
@@ -209,9 +209,9 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
                       type="button"
                       onClick={() => onToggleReviewed(vm.id)}
                       title={vm.reviewed ? 'Mark Unread' : 'Mark Reviewed'}
-                      className={`p-1.5 rounded-lg border transition cursor-pointer text-xs ${
+                      className={`min-h-[48px] p-1.5 rounded-lg border transition cursor-pointer text-xs ${
                         vm.reviewed 
-                          ? 'bg-zinc-900 text-lime-400 border-lime-500/30' 
+                          ? 'bg-zinc-900 text-[#22ec72] border-[#22ec72]/30' 
                           : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
                       }`}
                     >
@@ -221,7 +221,7 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
                       type="button"
                       onClick={() => onDeleteVoicemail(vm.id)}
                       title="Delete Voicemail"
-                      className="p-1.5 rounded-lg bg-zinc-900 text-zinc-500 hover:text-red-400 border border-zinc-800 hover:border-red-500/30 transition cursor-pointer"
+                      className="min-h-[48px] p-1.5 rounded-lg bg-zinc-900 text-zinc-500 hover:text-red-400 border border-zinc-800 hover:border-red-500/30 transition cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -230,7 +230,7 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
 
                 {/* Transcription Body */}
                 <div className="my-3 p-3 rounded-xl bg-black/60 border border-zinc-800/80 space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px] text-purple-400 font-mono font-bold">
+                  <div className="flex items-center justify-between text-xs text-purple-400 font-mono font-bold">
                     <span className="flex items-center gap-1">
                       <Sparkles className="w-3 h-3" />
                       <span>Live Audio Transcription:</span>
@@ -248,7 +248,7 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
                     type="button"
                     onClick={() => handlePlayVoicemail(vm)}
                     disabled={isLoadingAudio && playingId === vm.id}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                    className={`min-h-[48px] px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                       isPlaying 
                         ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse' 
                         : 'bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 border border-purple-500/30'
@@ -271,7 +271,7 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveEmailCaller(vm)}
-                      className="px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-blue-400 border border-zinc-800 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                      className="min-h-[48px] px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-blue-400 border border-zinc-800 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
                     >
                       <Mail className="w-3.5 h-3.5" />
                       <span>Email Follow-up</span>
@@ -279,7 +279,7 @@ export const VoicemailsView: React.FC<VoicemailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setActiveQuoteCaller(vm)}
-                      className="px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-zinc-800 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                      className="min-h-[48px] px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-zinc-800 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
                     >
                       <FileText className="w-3.5 h-3.5" />
                       <span>Quote Approval</span>

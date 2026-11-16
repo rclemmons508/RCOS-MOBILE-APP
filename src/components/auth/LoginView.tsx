@@ -92,7 +92,7 @@ const [joinPassword, setJoinPassword] = useState('');
     if (/[^A-Za-z0-9]/.test(pass)) score++;
     if (score <= 1) return { score: 25, label: 'Weak', color: 'bg-red-500' };
     if (score === 2 || score === 3) return { score: 65, label: 'Good', color: 'bg-amber-500' };
-    return { score: 100, label: 'Strong Security', color: 'bg-lime-500' };
+    return { score: 100, label: 'Strong Security', color: 'bg-[#22ec72]' };
   };
 
   // Google Login Handler (real Google auth only; unavailable in native builds)
@@ -318,8 +318,8 @@ const [joinPassword, setJoinPassword] = useState('');
 
         {/* Info Banner (e.g. password-reset email sent) */}
         {infoMsg && (
-          <div role="status" className="p-3 rounded-2xl bg-lime-500/10 border border-lime-500/30 text-lime-200 text-xs font-mono flex items-start gap-2">
-            <Mail className="w-4 h-4 shrink-0 text-lime-400 mt-0.5" />
+          <div role="status" className="p-3 rounded-2xl bg-[#22ec72]/10 border border-[#22ec72]/30 text-[#22ec72] text-xs font-mono flex items-start gap-2">
+            <Mail className="w-4 h-4 shrink-0 text-[#22ec72] mt-0.5" />
             <span className="break-words">{infoMsg}</span>
           </div>
         )}
@@ -331,7 +331,7 @@ const [joinPassword, setJoinPassword] = useState('');
             type="button"
             onClick={() => handleGoogleLogin()}
             disabled={isLoading}
-            className="w-full py-3 px-4 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 text-white font-bold text-xs flex items-center justify-center gap-3 shadow-md transition active:scale-98 cursor-pointer"
+            className="min-h-[48px] w-full py-3 px-4 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 text-white font-bold text-xs flex items-center justify-center gap-3 shadow-md transition active:scale-98 cursor-pointer"
           >
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
               <path
@@ -364,39 +364,39 @@ const [joinPassword, setJoinPassword] = useState('');
             type="button"
             onClick={handleBiometricsLogin}
             disabled={isLoading}
-            className={`w-full py-3 px-4 rounded-2xl border flex items-center justify-between shadow-md transition active:scale-98 cursor-pointer ${
+            className={`min-h-[48px] w-full py-3 px-4 rounded-2xl border flex items-center justify-between shadow-md transition active:scale-98 cursor-pointer ${
               isEnrolled
-                ? 'bg-gradient-to-r from-lime-500/10 to-emerald-500/10 border-lime-500/40 hover:border-lime-400 text-white'
+                ? 'bg-gradient-to-r from-[#22ec72]/10 to-[#22ec72]/10 border-[#22ec72]/40 hover:border-[#22ec72] text-white'
                 : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 text-zinc-300'
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-lime-500/20 text-lime-400">
+              <div className="p-2 rounded-xl bg-[#22ec72]/20 text-[#22ec72]">
                 {biometryType === 'face' ? <Scan className="w-5 h-5" /> : <Fingerprint className="w-5 h-5" />}
               </div>
               <div className="text-left">
                 <div className="text-xs font-bold text-white flex items-center gap-1.5">
                   <span>Sign In with {biometryLabel}</span>
                   {isEnrolled && (
-                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-lime-500 text-black font-extrabold uppercase">
+                    <span className="text-xs px-1.5 py-0.2 rounded bg-[#22ec72] text-black font-extrabold uppercase">
                       LINKED
                     </span>
                   )}
                 </div>
-                <div className="text-[10px] text-zinc-400 truncate max-w-[200px]">
+                <div className="text-xs text-zinc-400 truncate max-w-[200px]">
                   {isEnrolled ? `Linked to ${enrolledInfo.userEmail}` : 'Tap to enroll sensor for 1-touch login'}
                 </div>
               </div>
             </div>
 
-            <ArrowRight className="w-4 h-4 text-lime-400" />
+            <ArrowRight className="w-4 h-4 text-[#22ec72]" />
           </button>
 
           {!isEnrolled && (
             <button
               type="button"
               onClick={() => setIsSetupModalOpen(true)}
-              className="text-[10px] text-lime-400 hover:underline mt-1.5 text-center w-full block cursor-pointer"
+              className="min-h-[48px] text-xs text-[#22ec72] hover:underline mt-1.5 text-center w-full block cursor-pointer"
             >
               + Set Up Biometric Hardware Profile
             </button>
@@ -408,7 +408,7 @@ const [joinPassword, setJoinPassword] = useState('');
         {/* DIVIDER */}
         <div className="relative flex items-center justify-center">
           <div className="border-t border-zinc-900 w-full" />
-          <span className="bg-black px-3 text-[10px] font-mono text-zinc-500 uppercase tracking-widest shrink-0">
+          <span className="bg-black px-3 text-xs font-mono text-zinc-500 uppercase tracking-widest shrink-0">
             or sign in with email
           </span>
         </div>
@@ -424,7 +424,7 @@ const [joinPassword, setJoinPassword] = useState('');
                 setErrorMsg(null);
                 setInfoMsg(null);
               }}
-              className={`py-2 rounded-xl transition cursor-pointer ${
+              className={`min-h-[48px] py-2 rounded-xl transition cursor-pointer ${
                 tab === 'signin'
                   ? 'bg-zinc-800 text-white shadow'
                   : 'text-zinc-400 hover:text-white'
@@ -439,7 +439,7 @@ const [joinPassword, setJoinPassword] = useState('');
                 setErrorMsg(null);
                 setInfoMsg(null);
               }}
-              className={`py-2 rounded-xl transition cursor-pointer ${
+              className={`min-h-[48px] py-2 rounded-xl transition cursor-pointer ${
                 tab === 'register'
                   ? 'bg-zinc-800 text-white shadow'
                   : 'text-zinc-400 hover:text-white'
@@ -454,7 +454,7 @@ const [joinPassword, setJoinPassword] = useState('');
                 setErrorMsg(null);
                 setInfoMsg(null);
               }}
-              className={`py-2 rounded-xl transition cursor-pointer ${
+              className={`min-h-[48px] py-2 rounded-xl transition cursor-pointer ${
                 tab === 'join'
                   ? 'bg-zinc-800 text-white shadow'
                   : 'text-zinc-400 hover:text-white'
@@ -468,7 +468,7 @@ const [joinPassword, setJoinPassword] = useState('');
           {tab === 'signin' && (
             <form onSubmit={handleEmailSignIn} autoComplete="off" className="space-y-3.5">
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Operator Email:</label>
+                <label className="text-xs font-mono text-zinc-400">Operator Email:</label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-3 text-zinc-500" />
                   <input
@@ -481,13 +481,13 @@ const [joinPassword, setJoinPassword] = useState('');
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     placeholder="you@yourcompany.com"
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Password:</label>
+                <label className="text-xs font-mono text-zinc-400">Password:</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-3 text-zinc-500" />
                   <input
@@ -497,25 +497,25 @@ const [joinPassword, setJoinPassword] = useState('');
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••••••"
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-9 pr-9 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl pl-9 pr-9 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-zinc-500 hover:text-white cursor-pointer"
+                    className="min-h-[48px] absolute right-3 top-3 text-zinc-500 hover:text-white cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px]">
+              <div className="flex items-center justify-between text-xs">
                 <label className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-zinc-300">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded bg-zinc-900 border-zinc-700 text-lime-500 focus:ring-0"
+                    className="rounded bg-zinc-900 border-zinc-700 text-[#22ec72] focus:ring-0"
                   />
                   <span>Stay logged in</span>
                 </label>
@@ -523,7 +523,7 @@ const [joinPassword, setJoinPassword] = useState('');
                   type="button"
                   onClick={handleForgotPassword}
                   disabled={isSendingReset}
-                  className="text-zinc-400 hover:text-white cursor-pointer text-[11px] underline-offset-2 hover:underline disabled:opacity-60"
+                  className="min-h-[48px] text-zinc-400 hover:text-white cursor-pointer text-xs underline-offset-2 hover:underline disabled:opacity-60"
                 >
                   {isSendingReset ? 'Sending reset link…' : 'Forgot password?'}
                 </button>
@@ -532,7 +532,7 @@ const [joinPassword, setJoinPassword] = useState('');
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 rounded-2xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-lime-500/20 transition active:scale-98 cursor-pointer"
+                className="min-h-[48px] w-full py-3 rounded-2xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#22ec72]/20 transition active:scale-98 cursor-pointer"
               >
                 {isLoading ? (
                   <>
@@ -553,7 +553,7 @@ const [joinPassword, setJoinPassword] = useState('');
           {tab === 'register' && (
             <form onSubmit={handleRegisterSubmit} autoComplete="off" className="space-y-3.5">
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Full Name:</label>
+                <label className="text-xs font-mono text-zinc-400">Full Name:</label>
                 <div className="relative">
                   <UserIcon className="w-4 h-4 absolute left-3 top-3 text-zinc-500" />
                   <input
@@ -566,13 +566,13 @@ const [joinPassword, setJoinPassword] = useState('');
                     value={regFullName}
                     onChange={(e) => setRegFullName(e.target.value)}
                     placeholder="e.g. Alex Morgan"
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Work Email:</label>
+                <label className="text-xs font-mono text-zinc-400">Work Email:</label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-3 text-zinc-500" />
                   <input
@@ -585,13 +585,13 @@ const [joinPassword, setJoinPassword] = useState('');
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
                     placeholder="you@yourcompany.com"
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Create Password:</label>
+                <label className="text-xs font-mono text-zinc-400">Create Password:</label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-3 text-zinc-500" />
                   <input
@@ -601,12 +601,12 @@ const [joinPassword, setJoinPassword] = useState('');
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
                     placeholder="••••••••••••"
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl pl-9 pr-9 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl pl-9 pr-9 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-zinc-500 hover:text-white cursor-pointer"
+                    className="min-h-[48px] absolute right-3 top-3 text-zinc-500 hover:text-white cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -619,7 +619,7 @@ const [joinPassword, setJoinPassword] = useState('');
                         style={{ width: `${getPasswordStrength(regPassword).score}%` }} 
                       />
                     </div>
-                    <span className="text-[9px] font-mono text-zinc-400">
+                    <span className="text-xs font-mono text-zinc-400">
                       {getPasswordStrength(regPassword).label}
                     </span>
                   </div>
@@ -627,7 +627,7 @@ const [joinPassword, setJoinPassword] = useState('');
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-mono text-zinc-400">Organization:</label>
+                <label className="text-xs font-mono text-zinc-400">Organization:</label>
                 <input
                   type="text"
                   autoComplete="off"
@@ -637,17 +637,17 @@ const [joinPassword, setJoinPassword] = useState('');
                   value={regOrganization}
                   onChange={(e) => setRegOrganization(e.target.value)}
                   placeholder="Your Company Name"
-                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-2.5 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-1 gap-2">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-mono text-zinc-400">Operator Role:</label>
+                  <label className="text-xs font-mono text-zinc-400">Operator Role:</label>
                   <select
                     value={regRole}
                     onChange={(e) => setRegRole(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none"
                   >
                     {regRoleOptions.map((role) => (
                       <option key={role} value={role}>{role}</option>
@@ -658,18 +658,18 @@ const [joinPassword, setJoinPassword] = useState('');
 
               {/* PERSONAL PREFERENCES SETUP */}
               <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2.5">
-                <div className="text-[11px] font-bold text-white flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-lime-400" />
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-[#22ec72]" />
                   <span>Personal App Preferences</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
-                    <label className="text-[10px] text-zinc-400 block mb-1">Industry Focus:</label>
+                    <label className="text-xs text-zinc-400 block mb-1">Industry Focus:</label>
                     <select
                       value={regIndustryId}
                       onChange={(e) => handleIndustryChange(e.target.value)}
-                      className="w-full bg-black border border-zinc-800 rounded-lg px-2 py-1.5 text-[11px] text-white focus:outline-none"
+                      className="w-full bg-black border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
                     >
                       {INDUSTRY_PRESETS.map((preset) => (
                         <option key={preset.id} value={preset.id}>{preset.name}</option>
@@ -678,11 +678,11 @@ const [joinPassword, setJoinPassword] = useState('');
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-zinc-400 block mb-1">Alert Sound Profile:</label>
+                    <label className="text-xs text-zinc-400 block mb-1">Alert Sound Profile:</label>
                     <select
                       value={regRingerMode}
                       onChange={(e) => setRegRingerMode(e.target.value as any)}
-                      className="w-full bg-black border border-zinc-800 rounded-lg px-2 py-1.5 text-[11px] text-white focus:outline-none"
+                      className="w-full bg-black border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
                     >
                       <option value="sound">Sound (Full)</option>
                       <option value="vibrate">Vibrate Only</option>
@@ -695,15 +695,15 @@ const [joinPassword, setJoinPassword] = useState('');
                   <>
                 {/* Biometrics Toggle for New Account */}
                 <label className="flex items-center justify-between pt-1 cursor-pointer">
-                  <span className="text-[11px] text-zinc-300 flex items-center gap-1.5">
-                    <Fingerprint className="w-3.5 h-3.5 text-lime-400" />
+                  <span className="text-xs text-zinc-300 flex items-center gap-1.5">
+                    <Fingerprint className="w-3.5 h-3.5 text-[#22ec72]" />
                     <span>Enroll Biometric Login on this device</span>
                   </span>
                   <input
                     type="checkbox"
                     checked={regEnableBiometrics}
                     onChange={(e) => setRegEnableBiometrics(e.target.checked)}
-                    className="rounded bg-zinc-900 border-zinc-700 text-lime-500 focus:ring-0"
+                    className="rounded bg-zinc-900 border-zinc-700 text-[#22ec72] focus:ring-0"
                   />
                 </label>
                   </>
@@ -713,7 +713,7 @@ const [joinPassword, setJoinPassword] = useState('');
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 rounded-2xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-lime-500/20 transition active:scale-98 cursor-pointer"
+                className="min-h-[48px] w-full py-3 rounded-2xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#22ec72]/20 transition active:scale-98 cursor-pointer"
               >
                 {isLoading ? (
                   <>
@@ -733,11 +733,11 @@ const [joinPassword, setJoinPassword] = useState('');
           {/* TAB 3: JOIN A COMPANY */}
           {tab === 'join' && (
             <form onSubmit={handleJoinSubmit} autoComplete="off" className="space-y-3.5">
-              <p className="text-[11px] text-zinc-400">
+              <p className="text-xs text-zinc-400">
                 Got an invite code from your team owner? Enter it below to join their company instead of creating a new one.
               </p>
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Invite Code:</label>
+                <label className="text-xs font-mono text-zinc-400">Invite Code:</label>
                 <input
                   type="text"
                   required
@@ -749,12 +749,12 @@ const [joinPassword, setJoinPassword] = useState('');
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                   placeholder="e.g. K7Q2X9MZ"
                   maxLength={8}
-                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono tracking-[0.25em] text-center"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono tracking-[0.25em] text-center"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Full Name:</label>
+                <label className="text-xs font-mono text-zinc-400">Full Name:</label>
                 <input
                   type="text"
                   required
@@ -765,12 +765,12 @@ const [joinPassword, setJoinPassword] = useState('');
                   value={joinFullName}
                   onChange={(e) => setJoinFullName(e.target.value)}
                   placeholder="e.g. Alex Morgan"
-                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Work Email:</label>
+                <label className="text-xs font-mono text-zinc-400">Work Email:</label>
                 <input
                   type="email"
                   required
@@ -781,12 +781,12 @@ const [joinPassword, setJoinPassword] = useState('');
                   value={joinEmail}
                   onChange={(e) => setJoinEmail(e.target.value)}
                   placeholder="you@yourcompany.com"
-                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-mono text-zinc-400">Create Password:</label>
+                <label className="text-xs font-mono text-zinc-400">Create Password:</label>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
@@ -794,7 +794,7 @@ const [joinPassword, setJoinPassword] = useState('');
                   value={joinPassword}
                   onChange={(e) => setJoinPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-lime-500 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-[#22ec72] rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-600 focus:outline-none font-mono"
                 />
               </div>
 
@@ -803,7 +803,7 @@ const [joinPassword, setJoinPassword] = useState('');
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 rounded-2xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-lime-500/20 transition active:scale-98 cursor-pointer"
+                className="min-h-[48px] w-full py-3 rounded-2xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#22ec72]/20 transition active:scale-98 cursor-pointer"
               >
                 {isLoading ? (
                   <>
@@ -823,7 +823,7 @@ const [joinPassword, setJoinPassword] = useState('');
       </div>
 
       {/* Footer Info */}
-      <div className="w-full max-w-md mx-auto text-center text-[10px] text-zinc-600 font-mono py-2">
+      <div className="w-full max-w-md mx-auto text-center text-xs text-zinc-600 font-mono py-2">
         RC Solutions Autonomous Telecommunications & Industrial Operations • Protected by Hardware Keystore
       </div>
 

@@ -49,11 +49,11 @@ export const agentInboxService = {
 };
 
 export const AGENT_META: Record<AgentId, { name: string; color: string; bg: string }> = {
-  sales: { name: 'Sales', color: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' },
+  sales: { name: 'Sales', color: 'text-[#22ec72]', bg: 'bg-[#22ec72]/15 border-[#22ec72]/30' },
   operations: { name: 'Operations', color: 'text-sky-400', bg: 'bg-sky-500/15 border-sky-500/30' },
   marketing: { name: 'Marketing', color: 'text-fuchsia-400', bg: 'bg-fuchsia-500/15 border-fuchsia-500/30' },
   support: { name: 'Support', color: 'text-amber-400', bg: 'bg-amber-500/15 border-amber-500/30' },
-  receptionist: { name: 'Receptionist', color: 'text-lime-400', bg: 'bg-lime-500/15 border-lime-500/30' },
+  receptionist: { name: 'Receptionist', color: 'text-[#22ec72]', bg: 'bg-[#22ec72]/15 border-[#22ec72]/30' },
   system: { name: 'System', color: 'text-zinc-400', bg: 'bg-zinc-500/15 border-zinc-500/30' },
   // The main AI itself, used only for its own attention alerts.
   main: { name: 'Main AI', color: 'text-violet-400', bg: 'bg-violet-500/15 border-violet-500/30' },

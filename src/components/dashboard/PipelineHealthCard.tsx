@@ -51,7 +51,7 @@ export const PipelineHealthCard: React.FC<PipelineHealthCardProps> = ({
         </div>
         <h3 className="text-xs font-bold text-white">Pipeline health</h3>
         {flags.length > 0 && (
-          <span className="text-[10px] font-mono text-rose-300 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+          <span className="text-xs font-mono text-rose-300 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
             {flags.length} to look at
           </span>
         )}
@@ -59,7 +59,7 @@ export const PipelineHealthCard: React.FC<PipelineHealthCardProps> = ({
 
       {flags.length === 0 ? (
         <div className="flex items-center gap-2 text-xs text-zinc-400">
-          <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />
+          <CheckCircle2 className="w-4 h-4 text-[#22ec72] shrink-0" />
           <span>All clear — nothing is stalled, unpaid too long, or going quiet.</span>
         </div>
       ) : (
@@ -82,7 +82,7 @@ export const PipelineHealthCard: React.FC<PipelineHealthCardProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigateTab(flag.tab)}
-                  className="flex-1 flex items-center gap-2 text-left cursor-pointer min-w-0"
+                  className="min-h-[48px] flex-1 flex items-center gap-2 text-left cursor-pointer min-w-0"
                 >
                   <span className="flex-1 text-xs leading-relaxed text-zinc-200">{flag.text}</span>
                   <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
@@ -92,7 +92,7 @@ export const PipelineHealthCard: React.FC<PipelineHealthCardProps> = ({
                     type="button"
                     disabled={busy}
                     onClick={() => runInline(flag.id, () => onScheduleJob(action))}
-                    className="shrink-0 px-3 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-black text-[11px] font-extrabold flex items-center gap-1 cursor-pointer"
+                    className="min-h-[48px] shrink-0 px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:opacity-50 text-black text-xs font-extrabold flex items-center gap-1 cursor-pointer"
                   >
                     <Briefcase className="w-3.5 h-3.5" />
                     {busy ? 'Working…' : 'Schedule job'}
@@ -103,7 +103,7 @@ export const PipelineHealthCard: React.FC<PipelineHealthCardProps> = ({
                     type="button"
                     disabled={busy}
                     onClick={() => runInline(flag.id, () => onMarkPaid(action))}
-                    className="shrink-0 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-extrabold flex items-center gap-1 cursor-pointer"
+                    className="min-h-[48px] shrink-0 px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] disabled:opacity-50 text-black text-xs font-extrabold flex items-center gap-1 cursor-pointer"
                   >
                     <DollarSign className="w-3.5 h-3.5" />
                     {busy ? 'Working…' : 'Mark paid'}

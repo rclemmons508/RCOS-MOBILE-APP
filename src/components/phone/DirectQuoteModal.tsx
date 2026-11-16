@@ -81,28 +81,28 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">Request Quote Approval</h3>
-              <p className="text-[11px] text-zinc-400">Routes to Supervisor Decision Ledger</p>
+              <p className="text-xs text-zinc-400">Routes to Supervisor Decision Ledger</p>
             </div>
           </div>
           <button aria-label="Close"
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition cursor-pointer"
+            className="min-h-[48px] p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {submittedSuccess ? (
-          <div className="p-6 text-center space-y-2 rounded-2xl bg-lime-500/10 border border-lime-500/30">
-            <CheckCircle2 className="w-8 h-8 text-lime-400 mx-auto animate-bounce" />
+          <div className="p-6 text-center space-y-2 rounded-2xl bg-[#22ec72]/10 border border-[#22ec72]/30">
+            <CheckCircle2 className="w-8 h-8 text-[#22ec72] mx-auto animate-bounce" />
             <div className="text-sm font-bold text-white">Approval Request Created!</div>
             <p className="text-xs text-zinc-400">Logged into RCOS Approvals Queue (${amount})</p>
           </div>
         ) : (
           <div className="space-y-3">
             <div>
-              <label className="text-[11px] font-mono font-semibold text-zinc-400 block mb-1">
+              <label className="text-xs font-mono font-semibold text-zinc-400 block mb-1">
                 Client / Company Name
               </label>
               <input
@@ -114,7 +114,7 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] font-mono font-semibold text-zinc-400 block mb-1">
+              <label className="text-xs font-mono font-semibold text-zinc-400 block mb-1">
                 Service Scope
               </label>
               <input
@@ -126,7 +126,7 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] font-mono font-semibold text-zinc-400 block mb-1">
+              <label className="text-xs font-mono font-semibold text-zinc-400 block mb-1">
                 Estimated Value ($ USD)
               </label>
               <div className="relative">
@@ -139,7 +139,7 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
                 />
               </div>
               {amount > 250 && (
-                <div className="mt-1 flex items-center gap-1 text-[10px] text-amber-400 font-mono">
+                <div className="mt-1 flex items-center gap-1 text-xs text-amber-400 font-mono">
                   <ShieldAlert className="w-3 h-3 shrink-0" />
                   <span>Exceeds $250 auto-threshold: Requires Human Supervisor Approval</span>
                 </div>
@@ -147,7 +147,7 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
             </div>
 
             <div>
-              <label className="text-[11px] font-mono font-semibold text-zinc-400 block mb-1">
+              <label className="text-xs font-mono font-semibold text-zinc-400 block mb-1">
                 Quote Justification & Notes
               </label>
               <textarea
@@ -162,7 +162,7 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold cursor-pointer"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>
@@ -170,7 +170,7 @@ export const DirectQuoteModal: React.FC<DirectQuoteModalProps> = ({
                 type="button"
                 onClick={handleSubmit}
                 disabled={isSubmitting || !clientName}
-                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-md"
+                className="min-h-[48px] px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-md"
               >
                 <FileText className="w-3.5 h-3.5" />
                 <span>{isSubmitting ? 'Submitting...' : 'Submit for Approval'}</span>

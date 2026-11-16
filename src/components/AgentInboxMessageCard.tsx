@@ -81,14 +81,14 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
       }`}
     >
       <div className="flex items-center gap-2 flex-wrap">
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${agent.bg}`}>
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${agent.bg}`}>
           <span className={agent.color}>{agent.name}</span>
         </span>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${kind.chip}`}>
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${kind.chip}`}>
           <KindIcon className="w-3 h-3" />
           {kind.label}
         </span>
-        <span className="ml-auto text-[10px] text-zinc-500 flex items-center gap-1">
+        <span className="ml-auto text-xs text-zinc-500 flex items-center gap-1">
           <Clock className="w-3 h-3" />
           {timeAgo(msg.createdAt)}
         </span>
@@ -98,10 +98,10 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
       <div className="mt-1 text-xs text-zinc-400 leading-relaxed">{msg.body}</div>
 
       {msg.status === 'snoozed' && (
-        <div className="mt-2 text-[10px] text-zinc-500 italic">Snoozed — I&apos;ll bring this back tomorrow.</div>
+        <div className="mt-2 text-xs text-zinc-500 italic">Snoozed — I&apos;ll bring this back tomorrow.</div>
       )}
       {msg.status === 'answered' && msg.responseText && (
-        <div className="mt-2 text-[10px] text-zinc-500 italic">Your reply: &quot;{msg.responseText}&quot;</div>
+        <div className="mt-2 text-xs text-zinc-500 italic">Your reply: &quot;{msg.responseText}&quot;</div>
       )}
 
       {!done && (
@@ -111,7 +111,7 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
               <div className="flex gap-2">
                 <button
                   onClick={() => openSmsApp(sms?.text || '')}
-                  className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98"
+                  className="min-h-[48px] flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98"
                 >
                   <Send className="w-3.5 h-3.5" /> Send now
                 </button>
@@ -120,18 +120,18 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
                     setEditText(sms?.text || '');
                     setEditOpen(true);
                   }}
-                  className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                  className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => onRespond(msg, 'dismissed')}
-                  className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                  className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
                 >
                   Dismiss
                 </button>
               </div>
-              <div className="text-[10px] text-zinc-500">
+              <div className="text-xs text-zinc-500">
                 Nothing has been sent yet. Send it from your texting app, then tap Dismiss.
               </div>
             </div>
@@ -149,13 +149,13 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
                 <button
                   onClick={() => openSmsApp(editText)}
                   disabled={!editText.trim()}
-                  className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
+                  className="min-h-[48px] flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
                 >
                   <Send className="w-3.5 h-3.5" /> Open in SMS app
                 </button>
                 <button
                   onClick={() => setEditOpen(false)}
-                  className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                  className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
                 >
                   Cancel
                 </button>
@@ -166,13 +166,13 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={() => setReplyOpen(true)}
-                className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold active:scale-98"
+                className="min-h-[48px] flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold active:scale-98"
               >
                 Reply
               </button>
               <button
                 onClick={() => onRespond(msg, 'dismissed')}
-                className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
               >
                 Dismiss
               </button>
@@ -192,13 +192,13 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
                 <button
                   onClick={() => reply.trim() && onRespond(msg, 'answered', reply.trim())}
                   disabled={!reply.trim()}
-                  className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
+                  className="min-h-[48px] flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-40"
                 >
                   <Send className="w-3.5 h-3.5" /> Send
                 </button>
                 <button
                   onClick={() => onRespond(msg, 'dismissed')}
-                  className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                  className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
                 >
                   Dismiss
                 </button>
@@ -210,7 +210,7 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
               {msg.actionLabel && (
                 <button
                   onClick={goAction}
-                  className="flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1 active:scale-98"
+                  className="min-h-[48px] flex-1 py-2 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1 active:scale-98"
                 >
                   {msg.actionLabel} <ChevronRight className="w-3.5 h-3.5" />
                 </button>
@@ -218,14 +218,14 @@ export const AgentInboxMessageCard: React.FC<AgentInboxMessageCardProps> = ({
               {msg.kind === 'suggestion' && (
                 <button
                   onClick={() => onRespond(msg, 'snoozed')}
-                  className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                  className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
                 >
                   Tomorrow
                 </button>
               )}
               <button
                 onClick={() => onRespond(msg, 'dismissed')}
-                className="px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
+                className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold active:scale-98"
               >
                 Dismiss
               </button>

@@ -30,7 +30,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
       case 'performance_anomaly':
         return <Zap className="w-5 h-5 text-amber-400" />;
       case 'task_completion':
-        return <CheckCircle2 className="w-5 h-5 text-lime-400" />;
+        return <CheckCircle2 className="w-5 h-5 text-[#22ec72]" />;
       case 'call_event':
         return <Phone className="w-5 h-5 text-blue-400" />;
       default:
@@ -45,7 +45,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
       case 'high':
         return 'border-amber-500/60 bg-amber-950/80';
       case 'medium':
-        return 'border-lime-500/60 bg-zinc-950';
+        return 'border-[#22ec72]/60 bg-zinc-950';
       default:
         return 'border-zinc-800 bg-zinc-950';
     }
@@ -62,25 +62,25 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
 
         <div className="flex-1 space-y-1 min-w-0">
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+            <span className="text-xs font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
               {notification.module || 'RCOS System'}
             </span>
-            <span className="text-[10px] text-zinc-400">{notification.timestamp}</span>
+            <span className="text-xs text-zinc-400">{notification.timestamp}</span>
           </div>
 
           <h4 className="text-xs font-bold text-white truncate">{notification.title}</h4>
-          <p className="text-[11px] text-zinc-300 line-clamp-2 leading-tight">{notification.message}</p>
+          <p className="text-xs text-zinc-300 line-clamp-2 leading-tight">{notification.message}</p>
 
           <div className="pt-1 flex items-center justify-between">
             <button
               type="button"
               onClick={() => onView(notification)}
-              className="text-[11px] text-lime-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+              className="min-h-[48px] text-xs text-[#22ec72] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>View Details</span>
               <ArrowRight className="w-3 h-3" />
             </button>
-            <span className="text-[9px] text-zinc-500 uppercase font-mono">
+            <span className="text-xs text-zinc-500 uppercase font-mono">
               PUSH ALERT
             </span>
           </div>
@@ -89,7 +89,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="text-zinc-500 hover:text-zinc-300 p-1 shrink-0 cursor-pointer"
+          className="min-h-[48px] text-zinc-500 hover:text-zinc-300 p-1 shrink-0 cursor-pointer"
           aria-label="Dismiss Push Notification"
         >
           <X className="w-4 h-4" />

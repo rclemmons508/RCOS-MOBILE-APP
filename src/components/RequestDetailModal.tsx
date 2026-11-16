@@ -55,12 +55,12 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative w-full sm:max-w-lg bg-zinc-950 border border-zinc-800 rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col">
         <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-zinc-800">
-          <Inbox className="w-5 h-5 text-lime-400" />
+          <Inbox className="w-5 h-5 text-[#22ec72]" />
           <div className="text-base font-extrabold text-white">Request details</div>
-          <span className={`ml-1 text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${sla.className}`}>
+          <span className={`ml-1 text-xs font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${sla.className}`}>
             {sla.label}
           </span>
-          <button onClick={onClose} aria-label="Close" className="ml-auto p-2 rounded-xl bg-zinc-900 text-zinc-400 active:scale-95">
+          <button onClick={onClose} aria-label="Close" className="min-h-[48px] ml-auto p-2 rounded-xl bg-zinc-900 text-zinc-400 active:scale-95">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -71,7 +71,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
               <User className="w-4 h-4 text-zinc-500" />
               <span className="text-lg font-extrabold text-white">{request.customerName || 'Unknown'}</span>
             </div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
               <Clock className="w-3.5 h-3.5" />
               <span>Received {timeAgo(request.createdAt)}</span>
               {request.stage && <span>· {request.stage}</span>}
@@ -79,7 +79,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
           </div>
 
           <div className="space-y-2">
-            <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Contact</div>
+            <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Contact</div>
             {!hasContact && (
               <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-400">
                 No contact info was left with this request.
@@ -89,13 +89,13 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
               <a
                 href={`tel:${encodeURIComponent(phone)}`}
                 onClick={tap}
-                className="flex items-center gap-3 p-3 rounded-2xl bg-zinc-900 border border-zinc-800 active:border-lime-500/50"
+                className="flex items-center gap-3 p-3 rounded-2xl bg-zinc-900 border border-zinc-800 active:border-[#22ec72]/50"
               >
-                <span className="p-2 rounded-xl bg-lime-500/10 text-lime-400">
+                <span className="p-2 rounded-xl bg-[#22ec72]/10 text-[#22ec72]">
                   <Phone className="w-4 h-4" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Phone</span>
+                  <span className="block text-xs text-zinc-500 font-bold uppercase tracking-wider">Phone</span>
                   <span className="block text-sm font-bold text-white truncate">{phone}</span>
                 </span>
                 <ChevronRight className="w-4 h-4 text-zinc-600 ml-auto shrink-0" />
@@ -105,13 +105,13 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
               <a
                 href={`mailto:${encodeURIComponent(email)}`}
                 onClick={tap}
-                className="flex items-center gap-3 p-3 rounded-2xl bg-zinc-900 border border-zinc-800 active:border-lime-500/50"
+                className="flex items-center gap-3 p-3 rounded-2xl bg-zinc-900 border border-zinc-800 active:border-[#22ec72]/50"
               >
                 <span className="p-2 rounded-xl bg-sky-500/10 text-sky-400">
                   <Mail className="w-4 h-4" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Email</span>
+                  <span className="block text-xs text-zinc-500 font-bold uppercase tracking-wider">Email</span>
                   <span className="block text-sm font-bold text-white truncate">{email}</span>
                 </span>
                 <ChevronRight className="w-4 h-4 text-zinc-600 ml-auto shrink-0" />
@@ -121,7 +121,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
 
           {request.description && (
             <div className="space-y-2">
-              <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">What they asked for</div>
+              <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider">What they asked for</div>
               <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 leading-relaxed whitespace-pre-line">
                 {request.description}
               </div>
@@ -131,7 +131,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
           <div className="grid grid-cols-2 gap-2">
             {request.serviceType && (
               <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800">
-                <div className="flex items-center gap-1 text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+                <div className="flex items-center gap-1 text-xs text-zinc-500 font-bold uppercase tracking-wider">
                   <Tag className="w-3 h-3" /> Type
                 </div>
                 <div className="mt-1 text-xs font-bold text-white">{request.serviceType}</div>
@@ -139,7 +139,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
             )}
             {(request.preferredDateTime || request.preferredTime) && (
               <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800">
-                <div className="flex items-center gap-1 text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+                <div className="flex items-center gap-1 text-xs text-zinc-500 font-bold uppercase tracking-wider">
                   <CalendarDays className="w-3 h-3" /> Preferred time
                 </div>
                 <div className="mt-1 text-xs font-bold text-white">{request.preferredDateTime || request.preferredTime}</div>
@@ -153,7 +153,7 @@ export const RequestDetailModal: React.FC<RequestDetailModalProps> = ({ request,
                 <a
                   href={`tel:${encodeURIComponent(phone)}`}
                   onClick={tap}
-                  className="flex-1 py-2.5 rounded-xl bg-lime-500 text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                  className="flex-1 py-2.5 rounded-xl bg-[#22ec72] text-black text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-[0.98]"
                 >
                   <Phone className="w-3.5 h-3.5" /> Call
                 </a>

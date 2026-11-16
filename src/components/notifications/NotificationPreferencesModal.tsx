@@ -65,18 +65,18 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
         {/* Header */}
         <div className="p-3.5 sm:p-4 border-b border-zinc-800/80 flex items-center justify-between bg-black/60">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-lime-500/10 border border-lime-500/30 text-lime-400">
+            <div className="p-2 rounded-xl bg-[#22ec72]/10 border border-[#22ec72]/30 text-[#22ec72]">
               <Bell className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base font-bold text-white">Push Alert Preferences</h3>
-              <p className="text-[11px] text-zinc-400">Customize RCOS System Alerts & Ringer Profiles</p>
+              <p className="text-xs text-zinc-400">Customize RCOS System Alerts & Ringer Profiles</p>
             </div>
           </div>
           <button aria-label="Close"
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800 cursor-pointer"
+            className="min-h-[48px] p-1.5 rounded-xl bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -89,10 +89,10 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
           <div className="p-3.5 rounded-2xl bg-gradient-to-r from-zinc-900 to-black border border-zinc-800 flex items-center justify-between">
             <div className="space-y-0.5">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Bell className="w-4 h-4 text-lime-400" />
+                <Bell className="w-4 h-4 text-[#22ec72]" />
                 Master Push Notifications
               </span>
-              <p className="text-[10px] text-zinc-400">Receive real-time notifications for critical events</p>
+              <p className="text-xs text-zinc-400">Receive real-time notifications for critical events</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -101,7 +101,7 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                 onChange={() => handleToggle('pushEnabled')}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-lime-500"></div>
+              <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#22ec72]"></div>
             </label>
           </div>
 
@@ -117,14 +117,14 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                   <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
                   <div>
                     <div className="text-xs font-semibold text-white">Emergency Dispatches</div>
-                    <div className="text-[10px] text-zinc-400">P1 urgent field job dispatches</div>
+                    <div className="text-xs text-zinc-400">P1 urgent field job dispatches</div>
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={localPrefs.emergencyDispatches}
                   onChange={() => handleToggle('emergencyDispatches')}
-                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-lime-500 focus:ring-lime-500/20"
+                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-[#22ec72] focus:ring-[#22ec72]/20"
                 />
               </div>
 
@@ -134,31 +134,31 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                   <Cpu className="w-4 h-4 text-amber-400 shrink-0" />
                   <div>
                     <div className="text-xs font-semibold text-white">Performance Anomalies</div>
-                    <div className="text-[10px] text-zinc-400">Latency spikes, memory surges, fallback triggers</div>
+                    <div className="text-xs text-zinc-400">Latency spikes, memory surges, fallback triggers</div>
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={localPrefs.performanceAnomalies}
                   onChange={() => handleToggle('performanceAnomalies')}
-                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-lime-500 focus:ring-lime-500/20"
+                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-[#22ec72] focus:ring-[#22ec72]/20"
                 />
               </div>
 
               {/* Job Completions */}
               <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-lime-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-[#22ec72] shrink-0" />
                   <div>
                     <div className="text-xs font-semibold text-white">Job Completions</div>
-                    <div className="text-[10px] text-zinc-400">Completed jobs, invoices & cloud deployments</div>
+                    <div className="text-xs text-zinc-400">Completed jobs, invoices & cloud deployments</div>
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={localPrefs.taskCompletions}
                   onChange={() => handleToggle('taskCompletions')}
-                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-lime-500 focus:ring-lime-500/20"
+                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-[#22ec72] focus:ring-[#22ec72]/20"
                 />
               </div>
 
@@ -168,14 +168,14 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                   <Phone className="w-4 h-4 text-blue-400 shrink-0" />
                   <div>
                     <div className="text-xs font-semibold text-white">Voice AI Call Summaries</div>
-                    <div className="text-[10px] text-zinc-400">Inbound call transcripts & voicemails</div>
+                    <div className="text-xs text-zinc-400">Inbound call transcripts & voicemails</div>
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={localPrefs.callTranscripts}
                   onChange={() => handleToggle('callTranscripts')}
-                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-lime-500 focus:ring-lime-500/20"
+                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-[#22ec72] focus:ring-[#22ec72]/20"
                 />
               </div>
 
@@ -185,14 +185,14 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                   <Bell className="w-4 h-4 text-purple-400 shrink-0" />
                   <div>
                     <div className="text-xs font-semibold text-white">System & Model Updates</div>
-                    <div className="text-[10px] text-zinc-400">RCOS model weight updates & maintenance</div>
+                    <div className="text-xs text-zinc-400">RCOS model weight updates & maintenance</div>
                   </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={localPrefs.systemAlerts}
                   onChange={() => handleToggle('systemAlerts')}
-                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-lime-500 focus:ring-lime-500/20"
+                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-[#22ec72] focus:ring-[#22ec72]/20"
                 />
               </div>
             </div>
@@ -214,14 +214,14 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                     vibrationEnabled: true
                   }));
                 }}
-                className={`p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                className={`min-h-[48px] p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
                   (localPrefs.ringerMode === 'sound' || (localPrefs.soundEnabled && localPrefs.vibrationEnabled))
-                    ? 'bg-lime-500 text-black font-extrabold shadow-md shadow-lime-500/20'
+                    ? 'bg-[#22ec72] text-black font-extrabold shadow-md shadow-[#22ec72]/20'
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
                 }`}
               >
                 <Volume2 className="w-4 h-4" />
-                <span className="text-[10px]">Sound On</span>
+                <span className="text-xs">Sound On</span>
               </button>
 
               <button
@@ -234,14 +234,14 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                     vibrationEnabled: true
                   }));
                 }}
-                className={`p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                className={`min-h-[48px] p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
                   (localPrefs.ringerMode === 'vibrate' || (!localPrefs.soundEnabled && localPrefs.vibrationEnabled))
                     ? 'bg-amber-400 text-black font-extrabold shadow-md shadow-amber-400/20'
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
                 }`}
               >
                 <Smartphone className="w-4 h-4" />
-                <span className="text-[10px]">Vibrate Only</span>
+                <span className="text-xs">Vibrate Only</span>
               </button>
 
               <button
@@ -254,14 +254,14 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                     vibrationEnabled: false
                   }));
                 }}
-                className={`p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                className={`min-h-[48px] p-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
                   (localPrefs.ringerMode === 'silent' || (!localPrefs.soundEnabled && !localPrefs.vibrationEnabled))
                     ? 'bg-red-500 text-white font-extrabold shadow-md shadow-red-500/20'
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
                 }`}
               >
                 <VolumeX className="w-4 h-4" />
-                <span className="text-[10px]">Silent Mode</span>
+                <span className="text-xs">Silent Mode</span>
               </button>
             </div>
 
@@ -276,13 +276,13 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                   type="checkbox"
                   checked={localPrefs.quietHoursEnabled}
                   onChange={() => handleToggle('quietHoursEnabled')}
-                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-lime-500 focus:ring-lime-500/20"
+                  className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-[#22ec72] focus:ring-[#22ec72]/20"
                 />
               </div>
               {localPrefs.quietHoursEnabled && (
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-800/60">
                   <div>
-                    <label className="text-[10px] text-zinc-400 block mb-1">Start Time</label>
+                    <label className="text-xs text-zinc-400 block mb-1">Start Time</label>
                     <input
                       type="time"
                       value={localPrefs.quietHoursStart}
@@ -291,7 +291,7 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-zinc-400 block mb-1">End Time</label>
+                    <label className="text-xs text-zinc-400 block mb-1">End Time</label>
                     <input
                       type="time"
                       value={localPrefs.quietHoursEnd}
@@ -308,9 +308,9 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
           <button
             type="button"
             onClick={onTriggerTestPush}
-            className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+            className="min-h-[48px] w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
           >
-            <Sparkles className="w-4 h-4 text-lime-400" />
+            <Sparkles className="w-4 h-4 text-[#22ec72]" />
             <span>Send Test Push Alert</span>
           </button>
         </div>
@@ -320,14 +320,14 @@ export const NotificationPreferencesModal: React.FC<NotificationPreferencesModal
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 text-xs font-bold hover:text-white cursor-pointer"
+            className="min-h-[48px] flex-1 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 text-xs font-bold hover:text-white cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="flex-1 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-lime-500/20 cursor-pointer"
+            className="min-h-[48px] flex-1 py-2.5 rounded-xl bg-[#22ec72] hover:bg-[#22ec72] text-black font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-[#22ec72]/20 cursor-pointer"
           >
             {savedSuccess ? (
               <>

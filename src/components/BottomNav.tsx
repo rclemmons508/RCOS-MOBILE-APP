@@ -74,7 +74,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <span className="absolute -bottom-1 w-1 h-1 rounded-full bg-[#22ec72] animate-pulse" />
           )}
           {tab.id === 'inbox' && messagesBadge > 0 && (
-            <span className="absolute -top-2 -right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border border-black">
+            <span className="absolute -top-2 -right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center border border-black">
               {messagesBadge > 99 ? '99+' : messagesBadge}
             </span>
           )}

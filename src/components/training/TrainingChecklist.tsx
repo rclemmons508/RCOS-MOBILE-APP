@@ -105,21 +105,21 @@ export const TrainingChecklist: React.FC = () => {
     <div className="rounded-2xl bg-zinc-950 border border-zinc-800/80 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <GraduationCap className="w-4 h-4 text-lime-400" />
+          <GraduationCap className="w-4 h-4 text-[#22ec72]" />
           <h3 className="text-xs font-bold text-white uppercase tracking-wider">7-Day Training</h3>
         </div>
-        <span className="text-[11px] font-mono text-zinc-400">{pct}%</span>
+        <span className="text-xs font-mono text-zinc-400">{pct}%</span>
       </div>
 
       <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-        <div className="h-full rounded-full bg-lime-500 transition-all" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-[#22ec72] transition-all" style={{ width: `${pct}%` }} />
       </div>
 
       <div className="space-y-2 max-h-96 overflow-y-auto">
         {TRAINING_PLAN.map((d) => (
           <div key={d.day} className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
             <div className="text-xs font-bold text-white mb-1.5">
-              <span className="text-lime-400 font-mono mr-1.5">Day {d.day}</span>
+              <span className="text-[#22ec72] font-mono mr-1.5">Day {d.day}</span>
               {d.title}
             </div>
             <div className="space-y-1">
@@ -131,15 +131,15 @@ export const TrainingChecklist: React.FC = () => {
                     key={i}
                     type="button"
                     onClick={() => toggle(d.day, i)}
-                    className="w-full flex items-start gap-2 text-left group cursor-pointer"
+                    className="min-h-[48px] w-full flex items-start gap-2 text-left group cursor-pointer"
                   >
                     {checked ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#22ec72] shrink-0 mt-0.5" />
                     ) : (
                       <Circle className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 shrink-0 mt-0.5" />
                     )}
                     <span
-                      className={`text-[11px] ${checked ? 'text-zinc-500 line-through' : 'text-zinc-300'}`}
+                      className={`text-xs ${checked ? 'text-zinc-500 line-through' : 'text-zinc-300'}`}
                     >
                       {task}
                     </span>
