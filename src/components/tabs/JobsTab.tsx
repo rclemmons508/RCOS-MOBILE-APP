@@ -17,7 +17,10 @@ import {
   Phone,
   Eye,
   AlertCircle,
-  DollarSign
+  DollarSign,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { JobDetailModal } from '../jobs/JobDetailModal';
 import { haptic } from '../../utils/haptics';
@@ -64,6 +67,47 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const [selectedJobForDetail, setSelectedJobForDetail] = useState<Job | null>(null);
   const [smsFeedback, setSmsFeedback] = useState<string | null>(null);
 
+  // Calendar strip (Stage 5): jobs carry a real date in `createdAt` (ISO,
+  // stamped when the job is created). Older jobs have none — they show in
+  // the unfiltered list but never under a day. Never guessed or backfilled.
+  const dayKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const jobDayKey = (j: Job): string | null => {
+    if (!j.createdAt) return null;
+    const d = new Date(j.createdAt);
+    return Number.isNaN(d.getTime()) ? null : dayKey(d);
+  };
+  const startOfWeek = (d: Date) => {
+    const c = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    c.setDate(c.getDate() - c.getDay());
+    return c;
+  };
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  // No day selected by default: the list shows every job, like before.
+  // Tapping a day filters to that day's jobs.
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+  const jobsByDay = new Map<string, number>();
+  jobs.forEach((j) => {
+    const k = jobDayKey(j);
+    if (k) jobsByDay.set(k, (jobsByDay.get(k) || 0) + 1);
+  });
+  const selectedDayLabel = selectedDay
+    ? new Date(`${selectedDay}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+    : null;
+  const shiftWeek = (deltaDays: number) => {
+    haptic.selection();
+    setWeekStart((prev) => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + deltaDays);
+      return d;
+    });
+  };
+
   // New Job Form State
   const [title, setTitle] = useState('');
   const [clientName, setClientName] = useState('');
@@ -80,13 +124,19 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const filteredJobs = jobs.filter((j) => {
     const matchesCategory = filterCategory === 'All' || j.category === filterCategory;
     const matchesStatus = filterStatus === 'All' || j.status === filterStatus;
+    const matchesDay = !selectedDay || jobDayKey(j) === selectedDay;
     const matchesSearch =
       j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       j.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       j.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (j.assignedTechnician && j.assignedTechnician.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCategory && matchesStatus && matchesSearch;
+    return matchesCategory && matchesStatus && matchesSearch && matchesDay;
   });
+
+  // A selected day shows that day's jobs in booked order (earliest first).
+  const sortedJobs = selectedDay
+    ? [...filteredJobs].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+    : filteredJobs;
 
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +205,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const getStatusBadge = (st: Job['status']) => {
     switch (st) {
       case 'completed':
-        return 'bg-lime-500/10 text-lime-400 border-lime-500/30';
+        return 'bg-[#22ec72]/10 text-[#22ec72] border-[#22ec72]/30';
       case 'in_progress':
         return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
       case 'urgent':
@@ -171,28 +221,28 @@ export const JobsTab: React.FC<JobsTabProps> = ({
     <div className="space-y-4 pb-8 px-3 sm:px-4 pt-2 max-w-full overflow-x-hidden">
       {/* Toast Feedback */}
       {smsFeedback && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-lime-500 text-black px-4 py-2 rounded-full font-bold text-xs shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-[#22ec72] text-black px-4 py-2 rounded-full font-bold text-xs shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
           <Send className="w-3.5 h-3.5" />
           <span>{smsFeedback}</span>
         </div>
       )}
 
       {/* Header Banner */}
-      <div className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-between gap-2 shadow-lg">
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-[#0c1211] border border-[#1d2b26] flex items-center justify-between gap-2 shadow-lg">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0">
-            <Briefcase className="w-5 h-5" />
+          <div className="p-2.5 rounded-xl bg-[#22ec72]/10 border border-[#22ec72]/30 text-[#22ec72] shrink-0">
+            <CalendarDays className="w-5 h-5" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-1.5 truncate">
-                RCOS Operations & Jobs
+                Schedule
               </h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-lime-400 font-mono font-bold">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900 border border-[#1d2b26] text-[#22ec72] font-mono font-bold">
                 {jobs.length} Total
               </span>
             </div>
-            <p className="text-xs text-zinc-400 truncate">Smart Resource Routing, Updates & Customer Review</p>
+            <p className="text-xs text-zinc-400 truncate">Manage your team's schedule</p>
           </div>
         </div>
         <button
@@ -201,11 +251,102 @@ export const JobsTab: React.FC<JobsTabProps> = ({
             haptic.light();
             setShowCreateModal(true);
           }}
-          className="p-2 sm:px-3 sm:py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md shadow-lime-500/20 shrink-0"
+          className="p-2 sm:px-3 sm:py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black font-extrabold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md shadow-[#22ec72]/20 shrink-0"
         >
           <Plus className="w-4 h-4" />
           <span>New Job</span>
         </button>
+      </div>
+
+      {/* Calendar strip — tap a day to see that day's jobs. A dot marks a
+          day with jobs. Weeks move with the arrows; Today jumps back. */}
+      <div className="rounded-2xl bg-[#0c1211] border border-[#1d2b26] p-3 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Previous week"
+              onClick={() => shiftWeek(-7)}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900/60 cursor-pointer"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm font-bold text-white min-w-[110px] text-center">
+              {weekDays[3].toLocaleDateString([], { month: 'long', year: 'numeric' })}
+            </span>
+            <button
+              type="button"
+              aria-label="Next week"
+              onClick={() => shiftWeek(7)}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900/60 cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              haptic.light();
+              setWeekStart(startOfWeek(new Date()));
+              setSelectedDay(dayKey(new Date()));
+            }}
+            className="text-[11px] font-bold text-[#22ec72] hover:text-white px-2 py-1 rounded-lg cursor-pointer"
+          >
+            Today
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {weekDays.map((d) => {
+            const k = dayKey(d);
+            const isToday = k === dayKey(new Date());
+            const isSelected = k === selectedDay;
+            const hasJobs = jobsByDay.has(k);
+            return (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={isSelected}
+                aria-label={`${d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}${hasJobs ? `, ${jobsByDay.get(k)} job${(jobsByDay.get(k) || 0) === 1 ? '' : 's'}` : ', no jobs'}`}
+                onClick={() => {
+                  haptic.selection();
+                  setSelectedDay(isSelected ? null : k);
+                }}
+                className={`py-2 rounded-xl text-center transition-all cursor-pointer min-h-[52px] ${
+                  isSelected
+                    ? 'bg-[#22ec72] text-black'
+                    : 'bg-[#0c1211]/60 text-zinc-300 hover:bg-zinc-900/60'
+                } ${isToday && !isSelected ? 'border border-[#22ec72]/50' : 'border border-transparent'}`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wide opacity-70">
+                  {d.toLocaleDateString([], { weekday: 'short' })}
+                </div>
+                <div className="text-sm font-extrabold leading-tight">{d.getDate()}</div>
+                <div className="h-1.5 flex items-center justify-center">
+                  {hasJobs && (
+                    <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-black' : 'bg-[#22ec72]'}`} />
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {selectedDay && selectedDayLabel && (
+          <div className="flex items-center justify-between text-[11px] text-zinc-400 px-1">
+            <span>
+              Showing jobs for <span className="text-white font-semibold">{selectedDayLabel}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light();
+                setSelectedDay(null);
+              }}
+              className="text-[#22ec72] font-bold hover:text-white cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Search & Category Filter Ribbon */}
@@ -217,7 +358,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search jobs by ID, title, client, or technician..."
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-lime-500"
+            className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
           />
         </div>
 
@@ -236,8 +377,8 @@ export const JobsTab: React.FC<JobsTabProps> = ({
               }}
               className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer border ${
                 filterStatus === st
-                  ? 'bg-lime-500/20 text-lime-300 border-lime-500/50 font-bold shadow'
-                  : 'bg-zinc-950 text-zinc-400 border-zinc-800/80 hover:text-zinc-200'
+                  ? 'bg-[#22ec72]/20 text-[#22ec72] border-[#22ec72]/50 font-bold shadow'
+                  : 'bg-[#0c1211] text-zinc-400 border-[#1d2b26] hover:text-zinc-200'
               }`}
             >
               {st === 'All' ? 'All Statuses' : st.replace('_', ' ').toUpperCase()}
@@ -261,7 +402,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
               className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer border ${
                 filterCategory === cat
                   ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 font-bold'
-                  : 'bg-zinc-950 text-zinc-400 border-zinc-800/80 hover:text-zinc-200'
+                  : 'bg-[#0c1211] text-zinc-400 border-[#1d2b26] hover:text-zinc-200'
               }`}
             >
               {cat}
@@ -272,32 +413,51 @@ export const JobsTab: React.FC<JobsTabProps> = ({
 
       {/* Job Cards List */}
       <div className="space-y-3">
-        {filteredJobs.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
+        {sortedJobs.length === 0 ? (
+          <div className="p-8 text-center rounded-2xl bg-[#0c1211] border border-[#1d2b26] space-y-2">
             <Briefcase className="w-8 h-8 text-zinc-600 mx-auto" />
-            <div className="text-sm font-bold text-zinc-300">No jobs match these filters</div>
-            <p className="text-xs text-zinc-500">Try changing status filters or dispatch a new work order.</p>
-            <button
-              type="button"
-              onClick={() => {
-                setFilterCategory('All');
-                setFilterStatus('All');
-                setSearchQuery('');
-              }}
-              className="mt-2 px-3 py-1.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-semibold hover:text-white transition-colors"
-            >
-              Reset Filters
-            </button>
+            <div className="text-sm font-bold text-zinc-300">
+              {selectedDay && selectedDayLabel ? `No jobs on ${selectedDayLabel}` : 'No jobs match these filters'}
+            </div>
+            <p className="text-xs text-zinc-500">
+              {selectedDay && selectedDayLabel
+                ? 'Nothing is booked for this day yet.'
+                : 'Try changing status filters or dispatch a new work order.'}
+            </p>
+            {selectedDay ? (
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  setSelectedDay(null);
+                }}
+                className="mt-2 px-3 py-1.5 rounded-xl bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/30 text-xs font-semibold hover:bg-[#22ec72]/20 transition-colors cursor-pointer"
+              >
+                Show all jobs
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterCategory('All');
+                  setFilterStatus('All');
+                  setSearchQuery('');
+                }}
+                className="mt-2 px-3 py-1.5 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-semibold hover:text-white transition-colors"
+              >
+                Reset Filters
+              </button>
+            )}
           </div>
         ) : (
-          filteredJobs.map((job) => (
+          sortedJobs.map((job) => (
             <div
               key={job.id}
               onClick={() => {
                 haptic.light();
                 setSelectedJobForDetail(job);
               }}
-              className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-3 hover:border-lime-500/40 transition-all shadow-md cursor-pointer group"
+              className="p-3.5 sm:p-4 rounded-2xl bg-[#0c1211] border border-[#1d2b26] space-y-3 hover:border-[#22ec72]/40 transition-all shadow-md cursor-pointer group"
             >
               {/* Top Info Bar */}
               <div className="flex items-start justify-between gap-2">
@@ -307,11 +467,11 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase border font-mono ${getStatusBadge(job.status)}`}>
                       {job.status.replace('_', ' ')}
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-900 text-zinc-300 border border-zinc-800 font-mono">
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-900 text-zinc-300 border border-[#1d2b26] font-mono">
                       {job.category}
                     </span>
                   </div>
-                  <h3 className="text-sm font-bold text-white mt-1 leading-snug group-hover:text-lime-300 transition-colors">
+                  <h3 className="text-sm font-bold text-white mt-1 leading-snug group-hover:text-[#22ec72] transition-colors">
                     {job.title}
                   </h3>
                 </div>
@@ -344,21 +504,21 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-zinc-400">
                     <span className="flex items-center gap-1.5 truncate">
-                      <UserCheck className="w-3.5 h-3.5 text-lime-400 shrink-0" />
+                      <UserCheck className="w-3.5 h-3.5 text-[#22ec72] shrink-0" />
                       <strong className="text-zinc-200 truncate">{job.assignedTechnician}</strong>
                     </span>
                     <span className="text-zinc-500 text-[10px] font-mono shrink-0">{job.scheduledTime}</span>
                   </div>
                   <div className="text-[11px] text-zinc-400 font-mono">
-                    Value: <span className="text-lime-400 font-bold">${job.estimatedValue.toLocaleString()}</span>
+                    Value: <span className="text-[#22ec72] font-bold">${job.estimatedValue.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
 
               {/* AI Router Notes / Customer Insight */}
               {job.aiNotes && (
-                <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-[11px] text-zinc-300 flex items-start gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-lime-400 shrink-0 mt-0.5" />
+                <div className="p-2.5 rounded-xl bg-zinc-900/80 border border-[#1d2b26] text-[11px] text-zinc-300 flex items-start gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-[#22ec72] shrink-0 mt-0.5" />
                   <p className="leading-snug font-sans truncate">{job.aiNotes}</p>
                 </div>
               )}
@@ -381,7 +541,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     <button
                       type="button"
                       onClick={(e) => handleQuickStatusChange(e, job, 'completed')}
-                      className="px-2.5 py-1 rounded-lg bg-lime-500/10 hover:bg-lime-500/20 text-lime-300 border border-lime-500/30 text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-[#22ec72]/10 hover:bg-[#22ec72]/20 text-[#22ec72] border border-[#22ec72]/30 text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer"
                     >
                       <CheckCircle2 className="w-3 h-3" />
                       <span>Complete</span>
@@ -428,7 +588,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   <button
                     type="button"
                     onClick={(e) => handleSmsClient(e, job)}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-[11px] font-medium transition cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-[#1d2b26] text-zinc-300 hover:text-white text-[11px] font-medium transition cursor-pointer"
                   >
                     SMS Client
                   </button>
@@ -439,7 +599,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                       haptic.light();
                       setSelectedJobForDetail(job);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-lime-500/10 border border-lime-500/30 text-lime-400 hover:bg-lime-500/20 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-[#22ec72]/10 border border-[#22ec72]/30 text-[#22ec72] hover:bg-[#22ec72]/20 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
                   >
                     <Eye className="w-3 h-3" />
                     <span>Review & Update</span>
@@ -454,8 +614,8 @@ export const JobsTab: React.FC<JobsTabProps> = ({
       {/* Dispatch New Job Modal */}
       {showCreateModal && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+          <div className="w-full max-w-md bg-[#0c1211] border border-[#1d2b26] rounded-3xl p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#1d2b26] pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                 <Briefcase className="w-4 h-4 text-amber-400" />
                 <span>Dispatch New Job</span>
@@ -480,7 +640,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Chiller Loop Calibration & Sensor Overhaul"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-lime-500"
+                  className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                 />
               </div>
 
@@ -495,7 +655,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
                     placeholder="e.g. Apex Biotech"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
                 <div>
@@ -507,7 +667,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     value={clientPhone}
                     onChange={(e) => setClientPhone(e.target.value)}
                     placeholder="+1 (555) 000-0000"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-lime-500 font-mono"
+                    className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72] font-mono"
                   />
                 </div>
               </div>
@@ -521,7 +681,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="e.g. 8840 Research Blvd, Austin TX"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-lime-500"
+                  className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                 />
               </div>
 
@@ -533,7 +693,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-2 text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-2 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                   >
                     <option value="HVAC">HVAC</option>
                     <option value="Automation">Automation</option>
@@ -550,7 +710,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   <select
                     value={priority}
                     onChange={(e) => setPriority(e.target.value as any)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-2 text-white focus:outline-none focus:border-lime-500"
+                    className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-2 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                   >
                     <option value="low">Low</option>
                     <option value="normal">Normal</option>
@@ -567,7 +727,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     type="number"
                     value={estimatedValue}
                     onChange={(e) => setEstimatedValue(Number(e.target.value))}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-2 py-2 text-white focus:outline-none focus:border-lime-500 font-mono"
+                    className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-2 py-2 text-white focus:outline-none focus:border-[#22ec72] font-mono"
                   />
                 </div>
               </div>
@@ -581,7 +741,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Details of the customer request..."
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-lime-500"
+                  className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                 />
               </div>
 
@@ -596,7 +756,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                 <button
                   type="submit"
                   disabled={isCreatingJob}
-                  className="px-4 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-black font-extrabold shadow-lg shadow-lime-500/20 disabled:opacity-60"
+                  className="px-4 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black font-extrabold shadow-lg shadow-[#22ec72]/20 disabled:opacity-60"
                 >
                   {isCreatingJob ? 'Creating…' : 'Confirm & Dispatch'}
                 </button>
