@@ -34,14 +34,7 @@ import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
 import { applyLivekitEvent, getLiveCall, getLiveCalls } from './server/liveCalls';
 import { notifyCallAnswered, registerPushToken, unregisterPushToken } from './server/pushNotifications';
-import {
-  dialOutboundCall,
-  hangupOutboundCall,
-  isOutboundConfigured,
-  OUTBOUND_ROOM_PREFIX,
-  OutboundDialError,
-  OutboundNotConfiguredError,
-} from './server/outboundCalls';
+import { deleteAssistantDocument, getAssistantDocumentTexts, listAssistantDocuments, processAssistantUpload } from './server/assistantDocs';
 import { analyzeDocument, analyzeClientDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
 import { z } from 'zod';
@@ -214,9 +207,6 @@ const livekitWebhookLimiter = createRateLimiter('livekit-webhook', 600, 60000); 
 const liveCallsLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false }); // 60 live-call polls / min (Calls screen polls every 6s)
 const listenTokenLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false }); // 10 listen-token mints / min (minting is a billable LiveKit call)
 const pushLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }); // 30 push token registrations / min
-const dialLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false }); // 10 outbound dials / min (each dial is a billable PSTN call)
-const outboundStatusLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false }); // 60 outbound-status reads / min
-
 // ==================== API ROUTES ====================
 
 // Health check
@@ -516,13 +506,6 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   checks.push({
     id: 'livekit', label: 'Voice Calling (LiveKit)', status: lk ? 'pass' : 'fail',
     detail: lk ? 'LiveKit credentials configured' : 'LIVEKIT_URL / KEY / SECRET missing'
-  });
-
-  // Outbound SIP trunk (dial out from the app keypad)
-  const obTrunk = !!process.env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID;
-  checks.push({
-    id: 'outbound-trunk', label: 'Outbound Calling (SIP trunk)', status: obTrunk ? 'pass' : 'warn',
-    detail: obTrunk ? 'Outbound SIP trunk configured — the dialer can call out' : 'LIVEKIT_SIP_OUTBOUND_TRUNK_ID not set — dialing out is unavailable (see SETUP.md §4)'
   });
 
   // Voice worker secret
@@ -1133,76 +1116,6 @@ app.post('/api/calls/live/:roomName/listen-token', listenTokenLimiter, requireVe
   }
 });
 
-// Outbound calling readiness, for the dialer: true only when the server
-// has LiveKit credentials AND a stored outbound SIP trunk id
-// (LIVEKIT_SIP_OUTBOUND_TRUNK_ID). The dialer shows the setup steps
-// instead of a working keypad when this is false.
-app.get('/api/calls/outbound-status', outboundStatusLimiter, requireVerifiedAuth, (req: Request, res: Response) => {
-  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
-  const livekitConfigured = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
-  res.json({
-    configured: livekitConfigured && isOutboundConfigured(),
-    livekitConfigured,
-    trunkConfigured: isOutboundConfigured(),
-  });
-});
-
-// Dial out from the app: creates a LiveKit room, dials the number into
-// it as a SIP participant (server/outboundCalls.ts), and returns a
-// publish-capable token so the owner can talk. Destination policy is
-// the same as every other dial-out path (strict E.164, US/Canada by
-// default, premium-rate blocked, daily cap). A missing trunk is a 503
-// with code `outbound_trunk_not_configured`, never a fake connected call.
-app.post('/api/calls/dial', dialLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
-  const business = resolveBodyBusiness(req, req.body?.businessId);
-  if (!business) {
-    return res.status(403).json({ error: 'You are not on this team.' });
-  }
-  const caller = verifiedCaller(req);
-  if (!caller) {
-    return res.status(401).json({ error: 'Please sign in to use this feature.' });
-  }
-  const to = typeof req.body?.to === 'string' ? req.body.to : '';
-  try {
-    const result = await dialOutboundCall({
-      to,
-      businessId: business.id,
-      callerUid: caller.uid || 'guest',
-      callerEmail: caller.email || '',
-    });
-    res.json(result);
-  } catch (err: any) {
-    if (err instanceof OutboundNotConfiguredError) {
-      return res.status(503).json({ error: err.message, code: 'outbound_trunk_not_configured' });
-    }
-    if (err instanceof OutboundDialError) {
-      return res.status(err.status || 500).json({ error: err.message });
-    }
-    console.error('[outbound-dial] failed:', err?.message || err);
-    res.status(500).json({ error: 'Could not place the call. Please try again.' });
-  }
-});
-
-// Hang up an outbound call: deleting the room drops the SIP leg and
-// disconnects the app. Idempotent — hanging up a room that already
-// finished (callee hung up, ring timeout) still answers ok.
-app.post('/api/calls/dial/:roomName/hangup', dialLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
-  const roomName = req.params.roomName || '';
-  if (!roomName.startsWith(OUTBOUND_ROOM_PREFIX)) {
-    return res.status(400).json({ error: 'Not an outbound call room.' });
-  }
-  // The room name embeds the business id (outbound-<businessId>-<ts>):
-  // only a caller on that business may hang it up.
-  const rest = roomName.slice(OUTBOUND_ROOM_PREFIX.length);
-  const businessId = rest.slice(0, rest.lastIndexOf('-'));
-  const business = resolveBodyBusiness(req, businessId);
-  if (!business) {
-    return res.status(403).json({ error: 'You are not on this team.' });
-  }
-  await hangupOutboundCall(roomName);
-  res.json({ ok: true });
-});
-
 // Push registration: the phone app sends its FCM device token here after
 // sign-in, so the server can alert the owner when the receptionist
 // answers a call (see server/pushNotifications.ts). Tokens live in
@@ -1241,6 +1154,59 @@ app.post('/api/push/unregister', pushLimiter, requireVerifiedAuth, async (req: R
     return res.status(400).json({ error: 'A device token is required.' });
   }
   await unregisterPushToken(token);
+  res.json({ ok: true });
+});
+
+// Assistant documents --------------------------------------------------------
+// Files the owner uploads to the AI Assistant page (server/assistantDocs.ts):
+// stored in Firestore so they survive redeploys. Upload runs the document
+// parser + client-detail extraction (a Gemini call), so it uses the AI rate
+// limiter; list/delete are cheap reads under the push limiter.
+app.post('/api/assistant/documents', aiRateLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
+  const caller = verifiedCaller(req);
+  const business = resolveBodyBusiness(req, req.body?.businessId);
+  if (!caller || !business) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  const name = typeof req.body?.name === 'string' ? req.body.name : 'Document';
+  const mimeType = typeof req.body?.mimeType === 'string' ? req.body.mimeType : '';
+  const fileBase64 = typeof req.body?.fileBase64 === 'string' ? req.body.fileBase64 : '';
+  if (!fileBase64) {
+    return res.status(400).json({ error: 'No file was uploaded.' });
+  }
+  try {
+    const saved = await processAssistantUpload({
+      businessId: business.id,
+      uploadedBy: caller.email || caller.uid || '',
+      name,
+      mimeType,
+      fileBase64,
+    });
+    res.status(201).json(saved);
+  } catch (err: any) {
+    const message = err?.message || 'Could not save the document.';
+    const status = /too big|already have|No readable text/.test(message) ? 422 : 500;
+    res.status(status).json({ error: message });
+  }
+});
+
+app.get('/api/assistant/documents', pushLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
+  const business = resolveBodyBusiness(req, typeof req.query.businessId === 'string' ? req.query.businessId : undefined);
+  if (!business) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  res.json(await listAssistantDocuments(business.id));
+});
+
+app.delete('/api/assistant/documents/:id', pushLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
+  const business = resolveBodyBusiness(req, typeof req.query.businessId === 'string' ? req.query.businessId : undefined);
+  if (!business) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  const ok = await deleteAssistantDocument(business.id, req.params.id || '');
+  if (!ok) {
+    return res.status(404).json({ error: 'That document was not found.' });
+  }
   res.json({ ok: true });
 });
 
@@ -2269,8 +2235,30 @@ Return ONLY valid JSON:
 });
 
 // Multi-turn Gemini Chat with Role-Specific System Instructions
+// Uploaded documents the chat may read (Assistant page "attach" toggle).
+// Only when the caller is a member of the named business — a documentId
+// for another business's file is silently skipped, never leaked. No
+// business named, or no membership, means no documents. Total context is
+// capped so one huge file cannot crowd out the conversation.
+async function assistantDocumentContext(req: Request, business: BusinessAccount | null, documentIds: unknown): Promise<string> {
+  if (!business || !Array.isArray(documentIds) || documentIds.length === 0) return '';
+  const caller = verifiedCaller(req);
+  if (!caller || !businessIsMember(business, caller)) return '';
+  const docs = await getAssistantDocumentTexts(business.id, documentIds);
+  if (docs.length === 0) return '';
+  let budget = 20_000;
+  const blocks: string[] = [];
+  for (const d of docs) {
+    if (budget <= 0) break;
+    const text = d.text.slice(0, budget);
+    budget -= text.length;
+    blocks.push(`--- Document: ${d.name} ---\n${text}`);
+  }
+  return `\n\nThe owner uploaded these documents for this conversation. Answer questions about them from their text, and when the owner asks to create a job, client, or quote from one, use the details in it (names, scope, amounts) — never invent details the document does not state. If a document does not contain what was asked for, say so plainly.\n${blocks.join('\n')}`;
+}
+
 app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
-  const { messages, roleId = 'executive_assistant', modelTier = 'general', businessId, behaviorProtocol } = req.body;
+  const { messages, roleId = 'executive_assistant', modelTier = 'general', businessId, behaviorProtocol, documentIds } = req.body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'Messages array is required' });
@@ -2304,7 +2292,7 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
       behaviorProtocol
     ),
     business?.businessKnowledge
-  );
+  ) + await assistantDocumentContext(req, business ?? null, documentIds);
 
   // Model selection per user instructions:
   // - gemini-3.1-pro-preview for particularly complex tasks

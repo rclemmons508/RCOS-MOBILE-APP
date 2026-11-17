@@ -400,6 +400,7 @@ export interface IndustryOptimizationSuggestion {
 
 export type TabType =
   | 'dashboard'
+  | 'assistant'
   | 'phone'
   | 'jobs'
   | 'clients'

@@ -103,6 +103,7 @@ const ServiceManagerModal = lazy(() => import('./components/ServiceManagerModal'
 const ProactiveIndustrySuggestionModal = lazy(() => import('./components/ProactiveIndustrySuggestionModal').then((m) => ({ default: m.ProactiveIndustrySuggestionModal })));
 const SettingsTab = lazy(() => import('./components/tabs/SettingsTab').then((m) => ({ default: m.SettingsTab })));
 const ReportsTab = lazy(() => import('./components/tabs/ReportsTab').then((m) => ({ default: m.ReportsTab })));
+const AssistantTab = lazy(() => import('./components/tabs/AssistantTab').then((m) => ({ default: m.AssistantTab })));
 
 
 /** Shown while a code-split tab or modal downloads (usually a few ms). */
@@ -2259,6 +2260,29 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'assistant' && (
+            <AssistantTab
+              business={activeBusiness}
+              currentUser={currentUser}
+              jobs={jobs}
+              actions={actions}
+              customerRequests={customerRequests}
+              calls={calls}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onClientAdded={handleAddClient}
+              onBusinessRefresh={async () => {
+                const businesses = await apiFetch<BusinessAccount[]>('/api/businesses');
+                const fresh = Array.isArray(businesses)
+                  ? businesses.find((b) => b.id === activeBusiness.id)
+                  : undefined;
+                if (fresh) {
+                  setBusinessAccount(fresh);
+                  if (currentUser) setCachedBusiness(currentUser, fresh);
+                }
+              }}
+            />
+          )}
+
           {activeTab === 'inbox' && (
             <InboxView
               agentMessages={agentMessages}
@@ -2592,7 +2616,7 @@ export default function App() {
           }}
           onAskAI={() => {
             setIsQuickActionsOpen(false);
-            setActiveTab('chat');
+            setActiveTab('assistant');
           }}
         />
 

@@ -18,6 +18,7 @@ interface MoreMenuProps {
  */
 export const MoreMenu: React.FC<MoreMenuProps> = ({ onOpenSettings, onNavigateTab }) => {
   const items: { label: string; subtitle: string; icon: any; section?: SettingsSection; tab?: TabType }[] = [
+    { label: 'Assistant', subtitle: 'Your AI assistant — chat, documents, voice', icon: Bot, tab: 'assistant' },
     { label: 'AI Team', subtitle: 'Your AI employees', icon: Bot, tab: 'team' },
     { label: 'AI Chat', subtitle: 'Talk to your AI team', icon: MessageSquare, tab: 'chat' },
     { label: 'Settings', subtitle: 'App settings, profile, team', icon: Settings2, section: 'user' },

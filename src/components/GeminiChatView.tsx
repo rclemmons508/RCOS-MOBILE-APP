@@ -11,7 +11,8 @@ import {
   RefreshCw,
   Trash2,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Paperclip
 } from 'lucide-react';
 import { BusinessAccount } from '../types';
 import { AI_EMPLOYEES } from '../data/employees';
@@ -55,6 +56,10 @@ interface GeminiChatViewProps {
    * When absent, the refresh button falls back to returning to the Dashboard.
    */
   onBusinessRefresh?: () => Promise<void>;
+  /** Documents the chat may read (Assistant page "attach" toggle): their ids go to /api/chat. */
+  attachedDocuments?: { id: string; name: string }[];
+  /** Parent-driven send: when nonce changes, this text is sent as the user's message. */
+  sendSignal?: { text: string; nonce: number };
 }
 
 const DEFAULT_BIZ: BusinessAccount = {
@@ -152,7 +157,9 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
   onClose,
   senderEmail = '',
   senderName = '',
-  onBusinessRefresh
+  onBusinessRefresh,
+  attachedDocuments = [],
+  sendSignal
 }) => {
   const business = propBusiness || DEFAULT_BIZ;
   // One thread per signed-in user AND business: teammates sharing a device
@@ -265,7 +272,8 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
           roleId: selectedRole,
           modelTier,
           businessId: business.id,
-          behaviorProtocol: resolveBehaviorProtocol(customized?.behaviorProtocol)
+          behaviorProtocol: resolveBehaviorProtocol(customized?.behaviorProtocol),
+          ...(attachedDocuments.length > 0 ? { documentIds: attachedDocuments.map(d => d.id) } : {})
         })
       });
 
@@ -312,6 +320,18 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
       setLoading(false);
     }
   };
+
+  // Parent-driven send (Assistant page "Create job from document"): when
+  // the parent bumps the nonce, this text goes through the normal send
+  // path — including the confirmation card for actions — exactly as if
+  // the user had typed it.
+  const lastSignalNonce = useRef(0);
+  useEffect(() => {
+    if (!sendSignal || sendSignal.nonce === lastSignalNonce.current) return;
+    lastSignalNonce.current = sendSignal.nonce;
+    if (sendSignal.text.trim()) void handleSend(sendSignal.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendSignal?.nonce]);
 
   const handleConfirmCard = async (msg: ChatMessageItem) => {
     if (!msg.actionCard || msg.actionCard.status !== 'pending' || cardBusy[msg.id]) return;
@@ -703,6 +723,24 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
           </button>
         ))}
       </div>
+
+      {/* Attached documents — Morgan can read these in this conversation */}
+      {attachedDocuments.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <span className="text-xs font-bold text-zinc-500 mr-0.5 shrink-0 flex items-center gap-1">
+            <Paperclip className="w-3.5 h-3.5" />
+            Reading:
+          </span>
+          {attachedDocuments.map((d) => (
+            <span
+              key={d.id}
+              className="min-h-[32px] px-2.5 py-1 rounded-full bg-zinc-950 border border-[#22ec72]/40 text-xs text-[#22ec72] whitespace-nowrap flex items-center"
+            >
+              {d.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Input Composer */}
       <div className="flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-2xl p-2 shadow-xl">
