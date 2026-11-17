@@ -88,11 +88,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-            - name: Add google-services.json for push notifications
-              run: printf '%s' "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
-              env:
-                GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-            - name: Sync Capacitor Android Assets
+      - name: Add google-services.json for push notifications
+        run: printf '%s' "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+      - name: Sync Capacitor Android Assets
         run: npx cap sync android
 
       - name: Grant Execute Permission to Gradle Wrapper
