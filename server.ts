@@ -736,7 +736,7 @@ app.post('/api/business/:id/delete-account', deleteAccountLimiter, requireVerifi
     // every other business with the same owner id — with several
     // companies per owner, deleting one account wiped all of them.
     const { deletedBusinessIds } = db.deleteBusinessData([businessId]);
-    for (const id of deletedBusinessIds) deleteGmailTokens(id);
+    for (const id of deletedBusinessIds) await deleteGmailTokens(id);
     return res.json({ ok: true, deletedBusinessIds });
   } catch (e) {
     console.error('[delete-account] failed:', (e as Error)?.message);
@@ -1580,7 +1580,9 @@ app.delete('/api/business/:id', (req: Request, res: Response) => {
   // Same full cleanup as delete-account (audit #25): requests, actions,
   // chat, agent inbox, team data, calls/voicemails, and Gmail tokens.
   const deleted = db.deleteBusiness(req.params.id);
-  if (deleted) deleteGmailTokens(req.params.id);
+  // Fire-and-forget here: this handler is synchronous, and the delete
+  // itself swallows and logs its own errors, so no promise can escape.
+  if (deleted) void deleteGmailTokens(req.params.id);
   res.json({ success: deleted });
 });
 

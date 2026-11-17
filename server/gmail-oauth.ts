@@ -29,6 +29,19 @@
  * record stored under the bare businessId is honored ONLY for the user whose
  * email matches the address recorded on it (see getGmailAccessToken).
  *
+ * WHERE THE TOKENS LIVE (Gmail stay-logged-in fix): the encrypted token
+ * store lives in Cloud Firestore (collection `serverState`, document
+ * `gmailTokens`), so it survives Railway redeploys — the old
+ * `gmail_tokens.json` file under DATA_DIR was wiped on every redeploy
+ * (every merge), which logged Gmail out after every release. The same
+ * AES-256-GCM envelope and TOKEN_ENCRYPTION_KEY protect the Firestore
+ * copy, and the same record shape and per-user keying apply. When the
+ * Firebase Admin SDK is not initialized (local dev without a service
+ * account) the store falls back to the file, exactly as before. On the
+ * first Firestore read, if the Firestore store is empty and the legacy
+ * file still has records, those records are migrated once into
+ * Firestore; the file is left alone (never deleted here).
+ *
  * Needs in the environment:
  *   GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET  (Google Cloud, "Web application" client)
  *   APP_URL  (already used elsewhere, e.g. https://rcos-mobile-app-production.up.railway.app)
@@ -38,6 +51,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'node:crypto';
+import admin from 'firebase-admin';
 import type { Express, Request, Response } from 'express';
 
 const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
@@ -158,16 +172,65 @@ function getOAuthConfig() {
 // ---- Token store encryption at rest (audit #21) ----
 // With TOKEN_ENCRYPTION_KEY set (32 bytes as 64 hex chars or base64 —
 // generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"),
-// gmail_tokens.json is written as one AES-256-GCM envelope:
+// the token store is written as one AES-256-GCM envelope:
 //   { "__enc": "aes-256-gcm", "v": 1, "iv": b64, "tag": b64, "data": b64 }
-// A legacy plaintext file is read transparently and re-written encrypted on
-// the next save. Without the key the file stays plaintext (warned once).
-// An encrypted file that cannot be decrypted (key missing/wrong) or a
-// corrupt file is NEVER replaced: reads throw and writes are refused, so
+// A legacy plaintext store is read transparently and re-written encrypted on
+// the next save. Without the key the store stays plaintext (warned once).
+// An encrypted store that cannot be decrypted (key missing/wrong) or a
+// corrupt store is NEVER replaced: reads throw and writes are refused, so
 // a config mistake cannot wipe everyone's Gmail connections (audit #23).
 type EncryptedEnvelope = { __enc: 'aes-256-gcm'; v: 1; iv: string; tag: string; data: string };
 
 let warnedNoKey = false;
+function warnNoKeyOnce(): void {
+  if (warnedNoKey) return;
+  warnedNoKey = true;
+  console.warn('[gmail-oauth] TOKEN_ENCRYPTION_KEY is not set — Gmail tokens are stored UNENCRYPTED. Set it to a 32-byte key (64 hex chars).');
+}
+
+/** Turns parsed store JSON (envelope or legacy plaintext) into records. */
+function parseStoredJson(parsed: any): Record<string, GmailTokenRecord> {
+  if (parsed && typeof parsed === 'object' && parsed.__enc === 'aes-256-gcm') {
+    const key = tokenKeyBytes();
+    if (!key) throw new GmailTokenStoreError('Gmail token store is encrypted but TOKEN_ENCRYPTION_KEY is not set.');
+    try {
+      return decryptStore(parsed as EncryptedEnvelope, key);
+    } catch {
+      throw new GmailTokenStoreError('Gmail token store could not be decrypted with TOKEN_ENCRYPTION_KEY (wrong key?).');
+    }
+  }
+  return (parsed && typeof parsed === 'object') ? parsed : {}; // legacy plaintext
+}
+
+/** Serializes the store for storage: the envelope object, or the raw store. */
+function serializeStore(store: Record<string, GmailTokenRecord>): EncryptedEnvelope | Record<string, GmailTokenRecord> {
+  const key = tokenKeyBytes();
+  if (!key) warnNoKeyOnce();
+  return key ? encryptStore(store, key) : store;
+}
+
+// ---- Where the store lives: Firestore first, file fallback ----
+// Firestore (when the Firebase Admin SDK is initialized — the normal
+// production case) is the durable home: Railway redeploys wipe the
+// container filesystem, so a file-only store logged Gmail out after
+// every release. Without Admin (local dev, no service account) the
+// store falls back to gmail_tokens.json, exactly as before. The Admin
+// SDK bypasses Firestore security rules; clients can never reach this
+// document through Firestore — firestore.rules denies it explicitly,
+// and the app only ever gets a token through the authenticated
+// /api/business/:id/gmail-token endpoint.
+const TOKEN_STORE_COLLECTION = 'serverState';
+const TOKEN_STORE_DOC = 'gmailTokens';
+
+/** The Firestore client when Admin is initialized, else null (file fallback). */
+function getTokenStoreDb(): admin.firestore.Firestore | null {
+  try {
+    return admin.apps.length > 0 ? admin.firestore() : null;
+  } catch {
+    return null;
+  }
+}
+
 function tokenKeyBytes(): Buffer | null {
   const raw = (process.env.TOKEN_ENCRYPTION_KEY || '').trim();
   if (!raw) return null;
@@ -197,7 +260,9 @@ function decryptStore(env: EncryptedEnvelope, key: Buffer): Record<string, Gmail
 
 export class GmailTokenStoreError extends Error {}
 
-function loadTokens(): Record<string, GmailTokenRecord> {
+// ---- File backend (fallback + one-time migration source) ----
+
+function loadTokensFromFile(): Record<string, GmailTokenRecord> {
   if (!fs.existsSync(TOKEN_FILE)) return {};
   let parsed: any;
   try {
@@ -205,25 +270,11 @@ function loadTokens(): Record<string, GmailTokenRecord> {
   } catch (e) {
     throw new GmailTokenStoreError(`gmail_tokens.json is unreadable (${(e as Error)?.message}); refusing to overwrite it.`);
   }
-  if (parsed && typeof parsed === 'object' && parsed.__enc === 'aes-256-gcm') {
-    const key = tokenKeyBytes();
-    if (!key) throw new GmailTokenStoreError('gmail_tokens.json is encrypted but TOKEN_ENCRYPTION_KEY is not set.');
-    try {
-      return decryptStore(parsed as EncryptedEnvelope, key);
-    } catch {
-      throw new GmailTokenStoreError('gmail_tokens.json could not be decrypted with TOKEN_ENCRYPTION_KEY (wrong key?).');
-    }
-  }
-  return (parsed && typeof parsed === 'object') ? parsed : {}; // legacy plaintext
+  return parseStoredJson(parsed);
 }
 
-function saveTokens(store: Record<string, GmailTokenRecord>) {
-  const key = tokenKeyBytes();
-  if (!key && !warnedNoKey) {
-    warnedNoKey = true;
-    console.warn('[gmail-oauth] TOKEN_ENCRYPTION_KEY is not set — Gmail tokens are stored UNENCRYPTED. Set it to a 32-byte key (64 hex chars).');
-  }
-  const body = JSON.stringify(key ? encryptStore(store, key) : store, null, 2);
+function saveTokensToFile(store: Record<string, GmailTokenRecord>) {
+  const body = JSON.stringify(serializeStore(store), null, 2);
   // Atomic write (temp file + rename), owner-only permissions. Errors are
   // rethrown so callers report failure instead of a false success.
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -238,11 +289,83 @@ function saveTokens(store: Record<string, GmailTokenRecord>) {
   }
 }
 
-// Load-modify-save on the CURRENT file contents (no stale whole-store writes).
-function updateTokens(mutate: (store: Record<string, GmailTokenRecord>) => void): void {
-  const store = loadTokens();
+// ---- Firestore backend ----
+
+// One-time migration guard: the legacy file is only consulted until the
+// Firestore document exists (or until one empty check proves there is
+// nothing to migrate); after that Firestore is the only source of truth.
+let migrationChecked = false;
+
+async function loadTokensFromFirestore(
+  db: admin.firestore.Firestore
+): Promise<Record<string, GmailTokenRecord>> {
+  let snap;
+  try {
+    snap = await db.collection(TOKEN_STORE_COLLECTION).doc(TOKEN_STORE_DOC).get();
+  } catch (e) {
+    throw new GmailTokenStoreError(`Could not read the Gmail token store from Firestore (${(e as Error)?.message}).`);
+  }
+  if (snap.exists) {
+    const data = snap.data() as { payload?: unknown } | undefined;
+    if (typeof data?.payload !== 'string' || !data.payload) {
+      throw new GmailTokenStoreError('Gmail token store in Firestore is missing its payload; refusing to overwrite it.');
+    }
+    let parsed: any;
+    try {
+      parsed = JSON.parse(data.payload);
+    } catch (e) {
+      throw new GmailTokenStoreError(`Gmail token store in Firestore is unreadable (${(e as Error)?.message}); refusing to overwrite it.`);
+    }
+    return parseStoredJson(parsed);
+  }
+  // No Firestore store yet: migrate the legacy file once, if it has
+  // anything. The file is left alone — a later redeploy wipes it, but
+  // by then Firestore already holds the records.
+  if (!migrationChecked) {
+    migrationChecked = true;
+    const legacy = loadTokensFromFile(); // throws on a corrupt file: refuse, don't overwrite
+    if (Object.keys(legacy).length > 0) {
+      await saveTokensToFirestore(db, legacy);
+      console.log(`[gmail-oauth] Migrated ${Object.keys(legacy).length} Gmail token record(s) from gmail_tokens.json into Firestore.`);
+      return legacy;
+    }
+  }
+  return {};
+}
+
+async function saveTokensToFirestore(
+  db: admin.firestore.Firestore,
+  store: Record<string, GmailTokenRecord>
+): Promise<void> {
+  try {
+    await db.collection(TOKEN_STORE_COLLECTION).doc(TOKEN_STORE_DOC).set({
+      payload: JSON.stringify(serializeStore(store)),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('[gmail-oauth] could not save tokens to Firestore:', (e as Error)?.message);
+    throw e;
+  }
+}
+
+// ---- Store entry points (backend chosen per call) ----
+
+async function loadTokens(): Promise<Record<string, GmailTokenRecord>> {
+  const db = getTokenStoreDb();
+  return db ? loadTokensFromFirestore(db) : loadTokensFromFile();
+}
+
+async function saveTokens(store: Record<string, GmailTokenRecord>): Promise<void> {
+  const db = getTokenStoreDb();
+  if (db) await saveTokensToFirestore(db, store);
+  else saveTokensToFile(store);
+}
+
+// Load-modify-save on the CURRENT store contents (no stale whole-store writes).
+async function updateTokens(mutate: (store: Record<string, GmailTokenRecord>) => void): Promise<void> {
+  const store = await loadTokens();
   mutate(store);
-  saveTokens(store);
+  await saveTokens(store);
 }
 
 function setupMissingPage(): string {
@@ -381,7 +504,7 @@ export function registerGmailOAuthPublic(app: Express) {
         throw new Error('mailbox mismatch');
       }
 
-      updateTokens((store) => {
+      await updateTokens((store) => {
         const key = tokenKey(pending.businessId, pending.userEmail);
         const prev = store[key];
         // Refresh-token continuity: Google only sends a refresh token on some
@@ -434,14 +557,14 @@ export function registerGmailOAuthPublic(app: Express) {
 /** Remove the stored Gmail tokens for one business (used by account deletion).
  * Deletes the pre-fix business-only record AND every per-user record for
  * the business, so nobody's Gmail token is left behind. */
-export function deleteGmailTokens(businessId: string): void {
+export async function deleteGmailTokens(businessId: string): Promise<void> {
   try {
-    const store = loadTokens();
+    const store = await loadTokens();
     const prefix = `${businessId}::`;
     const keys = Object.keys(store).filter((k) => k === businessId || k.startsWith(prefix));
     if (keys.length === 0) return;
     for (const k of keys) delete store[k];
-    saveTokens(store);
+    await saveTokens(store);
   } catch (e) {
     console.error('[gmail-oauth] could not delete Gmail tokens for a deleted business:', (e as Error)?.message);
   }
@@ -476,7 +599,7 @@ async function freshAccessToken(
     const t = (await r.json()) as any;
     rec.accessToken = t.access_token;
     rec.expiresAt = Date.now() + (t.expires_in || 3600) * 1000;
-    updateTokens((current) => {
+    await updateTokens((current) => {
       current[key] = { ...(current[key] || rec), accessToken: rec.accessToken, expiresAt: rec.expiresAt };
     });
   } catch (e) {
@@ -500,7 +623,7 @@ export async function getGmailAccessToken(
 ): Promise<{ accessToken: string; email: string } | null> {
   const requester = normalizeEmail(userEmail);
   if (!requester) return null;
-  const store = loadTokens();
+  const store = await loadTokens();
   const perUser = store[tokenKey(businessId, requester)];
   if (perUser && perUser.accessToken) {
     return freshAccessToken(store, tokenKey(businessId, requester), perUser);

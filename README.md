@@ -19,7 +19,7 @@ It is built by RC Solutions and sold to other business owners, not just used in-
 - **Automations + follow-ups.** Rules for welcome texts to new customers, sorry-we-missed-you after a missed call, and review requests after a finished job. A master switch pauses everything, non-urgent automations hold during quiet hours, and a Recently Fired log shows what ran.
 - **Teach Your Team.** In Settings, each business can paste its own reference notes — services, prices, policies, FAQs — and the assistants use them when answering. Those notes can never override the honesty rule or approval rules.
 - **Team Messenger + Join Company.** Owners invite teammates by email with an 8-character code (7-day expiry). Team Chat sits one tap from the main screen.
-- **Per-user Gmail.** Every teammate connects and sees only their own Gmail. Nobody ever sees, or gets preloaded with, another user's inbox.
+- **Per-user Gmail.** Every teammate connects and sees only their own Gmail. Nobody ever sees, or gets preloaded with, another user's inbox. Gmail login tokens are stored encrypted in Firestore (not in a file on the server), so a server restart or new release never logs Gmail out — the Gmail tab also retries once if its first check after a page change fails, instead of flashing "not connected".
 - **Simple by design.** New builds always open at the login menu, signed out, with nothing pre-filled. Biometrics login is removed for now.
 
 ## Pricing (as published on the product site)

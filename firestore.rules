@@ -204,5 +204,15 @@ service cloud.firestore {
     match /jobPacks/{jobPackId} {
       allow read, write: if false;
     }
+
+    // Server-only state (Gmail OAuth tokens) — the server's Admin SDK
+    // keeps the encrypted token store here so it survives Railway
+    // redeploys. No client may read or write it through Firestore: the
+    // app reaches its own token only through the authenticated
+    // /api/business/:id/gmail-token endpoint. Deny explicitly rather
+    // than relying on the default-deny above, so the intent is visible.
+    match /serverState/{docId} {
+      allow read, write: if false;
+    }
   }
 }
