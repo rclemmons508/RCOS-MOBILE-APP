@@ -2354,7 +2354,17 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
       preferredModel: selectedModel,
       contents,
       config: {
-        systemInstruction,
+        // Accepted risk (see below): the system instruction is assembled
+        // ONLY from business-owner-configured data — business name, tone
+        // and services, Teach Your Team notes, and the agent's behavior
+        // protocol — set through authenticated, gated endpoints by the
+        // owner/members of that business. It cannot grant permissions or
+        // bypass the approval gates, which are enforced in backend code
+        // rather than by the prompt (see src/utils/agentBehavior.ts).
+        // The genuinely untrusted input — uploaded document text — is
+        // deliberately kept OUT of the system prompt and sent as a user
+        // message instead (docContext above).
+        systemInstruction, // codeql[js/system-prompt-injection]: owner-configured data only; documents excluded — see note above
         temperature: 0.3,
       },
       fallbackFn: fallbackChatReply
