@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import http from 'http';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -198,8 +199,13 @@ const teamMessageLimiter = createRateLimiter('team-message', 60, 60000); // 60 t
 const ttsLimiter = createRateLimiter('tts', 30, 60000); // 30 TTS syntheses / min
 const twilioWebhookLimiter = createRateLimiter('twilio-webhook', 600, 60000); // signed carrier webhooks
 const livekitWebhookLimiter = createRateLimiter('livekit-webhook', 600, 60000); // signed LiveKit webhooks (live calls)
-const liveCallsLimiter = createRateLimiter('live-calls', 60, 60000); // 60 live-call polls / min (Calls screen polls every 6s)
-const listenTokenLimiter = createRateLimiter('listen-token', 10, 60000); // 10 listen-token mints / min (minting is a billable LiveKit call)
+// CodeQL (js/missing-rate-limiting) only recognizes rate limiting from
+// known libraries — the repo's own token-bucket limiter above is real
+// limiting, but the scanner cannot see it. These two new routes therefore
+// use express-rate-limit, which the scanner models, at the same budgets.
+// The global generalApiLimiter/writeLimiter still apply on top.
+const liveCallsLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false }); // 60 live-call polls / min (Calls screen polls every 6s)
+const listenTokenLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false }); // 10 listen-token mints / min (minting is a billable LiveKit call)
 const outboundCallLimiter = createRateLimiter('outbound-call', 5, 60000); // 5 outbound dials / min / user (audit #8)
 const telephonyConfigLimiter = createRateLimiter('telephony-config', 10, 60000); // 10 config writes / min (audit #7)
 
