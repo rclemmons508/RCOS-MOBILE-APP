@@ -9,15 +9,18 @@
  *
  * Native Android only — on the web this module is a no-op (there is no
  * FCM web push wired up, and the in-app toast path already covers the
- * foreground case there). Everything here fails soft: no
- * google-services.json yet, permission denied, or a plugin error just
- * means no push — the app, the Calls screen, and the live-call view keep
- * working, and the failure is logged, never thrown.
+ * foreground case there).
  *
  * Setup requirement (see SETUP.md): the Android app must be registered
  * in the Firebase console (project rcos-mobile, package
  * com.rcsolutions.rcosmobile) and its google-services.json placed in
- * android/app/ — without it, register() fails and no token is ever sent.
+ * android/app/. Until then there is no native FirebaseApp, and calling
+ * PushNotifications.register() throws on the native side and CRASHES the
+ * app — a native crash the JS try/catch below cannot stop. That is why
+ * PUSH_CONFIGURED below gates every native call: push stays completely
+ * off until the Firebase setup is done. Permission denied, on the other
+ * hand, fails soft: setup returns before register() and the app, the
+ * Calls screen, and the live-call view keep working.
  */
 
 import { apiFetch } from './api';
@@ -27,6 +30,16 @@ export const LIVE_CALL_CHANNEL_ID = 'rcos_calls';
 
 const STORED_TOKEN_KEY = 'rcos_push_token';
 const STORED_BUSINESS_KEY = 'rcos_push_token_business';
+
+/**
+ * Flip to true ONLY as the last step of the Firebase setup in SETUP.md
+ * (google-services.json in android/app/ + the GOOGLE_SERVICES_JSON repo
+ * secret + the workflow step). Until then there is no native FirebaseApp
+ * and register() crashes the app on the native side — see the header
+ * comment. When this is false, setup and teardown never touch the
+ * native push plugin at all, so the app opens and runs normally.
+ */
+const PUSH_CONFIGURED = false;
 
 export interface LiveCallPush {
   title: string;
@@ -107,6 +120,9 @@ async function sendTokenToServer(token: string, businessId: string): Promise<voi
  * re-sent only when it changed or the business changed.
  */
 export async function setupPushNotifications(options: PushSetupOptions): Promise<void> {
+  // Push is not configured yet (no google-services.json) — never touch
+  // the native plugin: register() would crash the app (see header).
+  if (!PUSH_CONFIGURED) return;
   latestCallbacks = {
     onForegroundLiveCall: options.onForegroundLiveCall,
     onLiveCallTap: options.onLiveCallTap,
@@ -190,13 +206,17 @@ export async function teardownPushNotifications(): Promise<void> {
     } catch { /* the token row is pruned when FCM next rejects it */ }
     clearStoredToken();
   }
-  try {
-    const { Capacitor } = await import('@capacitor/core');
-    if (!Capacitor.isNativePlatform()) return;
-    const { PushNotifications } = await import('@capacitor/push-notifications');
-    await PushNotifications.removeAllListeners().catch(() => {});
-    await PushNotifications.unregister().catch(() => {});
-  } catch { /* nothing to tear down */ }
+  // Never touch the native plugin while push is unconfigured:
+  // unregister() calls FirebaseMessaging too and would crash the same way.
+  if (PUSH_CONFIGURED) {
+    try {
+      const { Capacitor } = await import('@capacitor/core');
+      if (!Capacitor.isNativePlatform()) return;
+      const { PushNotifications } = await import('@capacitor/push-notifications');
+      await PushNotifications.removeAllListeners().catch(() => {});
+      await PushNotifications.unregister().catch(() => {});
+    } catch { /* nothing to tear down */ }
+  }
   listenersAttached = false;
   setupBusinessId = null;
   latestCallbacks = null;
