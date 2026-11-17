@@ -269,7 +269,15 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
               </div>
             )}
 
-            {/* Email Body Rendering — sanitized HTML, or escaped plain text */}
+            {/* Email Body Rendering — sanitized HTML, or escaped plain text.
+                Readability is forced here, not left to the sender: the
+                sanitizer strips sender colors (bgcolor / font color), and
+                these overrides neutralize anything that survives — every
+                descendant gets a transparent background and inherits the
+                modal's light text, links get a readable green, quoted
+                sections get a dimmed left border. (`prose` used to sit
+                here, but the typography plugin is not installed, so it
+                did nothing and raw sender colors showed through.) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/30 border border-zinc-800/80 min-h-[160px] text-zinc-200 text-xs sm:text-sm leading-relaxed overflow-x-auto">
               {isPlainTextFallback ? (
                 <pre className="whitespace-pre-wrap break-words font-sans text-zinc-200 text-xs sm:text-sm">
@@ -277,7 +285,7 @@ export const GmailMessageDetailModal: React.FC<GmailMessageDetailModalProps> = (
                 </pre>
               ) : (
                 <div
-                  className="prose prose-invert max-w-none text-zinc-200 text-xs sm:text-sm [&_img]:max-w-full [&_img]:h-auto"
+                  className="max-w-none text-zinc-200 text-xs sm:text-sm leading-relaxed [&_img]:max-w-full [&_img]:h-auto [&_*]:bg-transparent [&_a]:text-[#4ade80] [&_a]:underline [&_font]:text-inherit [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-700 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-400 [&_hr]:border-zinc-800"
                   onClick={handleBodyClick}
                   dangerouslySetInnerHTML={{ __html: sanitizedBodyHtml }}
                 />
