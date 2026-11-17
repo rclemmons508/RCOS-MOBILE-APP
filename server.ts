@@ -32,6 +32,7 @@ import { sendVonageSms, isVonageConfigured } from './server/vonage';
 import { checkDestination, envInt, normalizeE164, takeDailyQuota } from './server/phone-policy';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
+import { applyLivekitEvent, getLiveCall, getLiveCalls } from './server/liveCalls';
 import { analyzeDocument, analyzeClientDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
 import { z } from 'zod';
@@ -103,8 +104,11 @@ app.use((req: Request, res: Response, next) => {
   next();
 });
 
-// Request body limits
-app.use(express.json({ limit: '10mb' }));
+// Request body limits. The verify hook stashes the raw body string so the
+// LiveKit webhook handler can check the request signature (the HMAC is
+// computed over the raw bytes, which the JSON parser would otherwise
+// discard). It changes nothing about parsing for any other route.
+app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { (req as any).rawBody = buf.toString('utf8'); } }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // In-Memory Token Bucket Rate Limiter (H8)
@@ -193,6 +197,7 @@ const quoteInvoiceLimiter = createRateLimiter('quote-invoice', 30, 60000); // 30
 const teamMessageLimiter = createRateLimiter('team-message', 60, 60000); // 60 team-chat posts / min (H10)
 const ttsLimiter = createRateLimiter('tts', 30, 60000); // 30 TTS syntheses / min
 const twilioWebhookLimiter = createRateLimiter('twilio-webhook', 600, 60000); // signed carrier webhooks
+const livekitWebhookLimiter = createRateLimiter('livekit-webhook', 600, 60000); // signed LiveKit webhooks (live calls)
 const outboundCallLimiter = createRateLimiter('outbound-call', 5, 60000); // 5 outbound dials / min / user (audit #8)
 const telephonyConfigLimiter = createRateLimiter('telephony-config', 10, 60000); // 10 config writes / min (audit #7)
 
@@ -274,6 +279,11 @@ app.use('/api', (req: Request, res: Response, next) => {
   // user-facing /twilio/config, /twilio/test-carrier and
   // /twilio/voice/outbound-call routes stay gated.
   if (req.method === 'POST' && isTwilioWebhookPath(req.path)) return next();
+  // LiveKit webhooks: LiveKit cannot sign in as a user either — the
+  // Authorization header (a signed JWT over the raw body, checked
+  // fail-closed inside the /api/livekit/webhook handler) is the
+  // credential. Only this exact path skips the gate.
+  if (req.method === 'POST' && req.path === '/livekit/webhook') return next();
   // The voice-agent worker also posts proactive inbox messages with VOICE_AGENT_SECRET.
   if (req.method === 'POST' && /^\/business\/[^/]+\/agent-messages$/.test(req.path)) {
     if (voiceSecretMatches(req.headers['x-voice-secret'])) return next();
@@ -292,11 +302,14 @@ app.use('/api', (req: Request, res: Response, next) => {
   // Signed Twilio webhooks get their own, larger bucket (keyed by Twilio's
   // egress IP) so a busy phone line cannot exhaust the user limiters.
   if (req.method === 'POST' && isTwilioWebhookPath(req.path)) return twilioWebhookLimiter(req, res, next);
+  // Signed LiveKit webhooks get the same treatment.
+  if (req.method === 'POST' && req.path === '/livekit/webhook') return livekitWebhookLimiter(req, res, next);
   return generalApiLimiter(req, res, next);
 });
 app.use('/api', (req: Request, res: Response, next) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   if (isTwilioWebhookPath(req.path)) return next();
+  if (req.method === 'POST' && req.path === '/livekit/webhook') return next();
   return writeLimiter(req, res, next);
 });
 
@@ -1039,6 +1052,101 @@ app.get('/api/voice/routing-log', (req: Request, res: Response) => {
   const scope = resolvePhoneScope(req, res);
   if (!scope) return;
   res.json(voiceRoutingLog.filter(phoneScopeFilter(scope)));
+});
+
+// Live receptionist calls ----------------------------------------------------
+// Inbound calls to the business number go straight to the LiveKit voice
+// agent, so the app used to show nothing while she was on a call. These
+// three routes fix that: LiveKit posts webhook events here, the server
+// tracks the calls that are live right now, and the app polls them.
+//
+// SETUP (manual, after merging): in the LiveKit Cloud dashboard, project
+// rcos-mobile → Settings → Webhooks, register this URL:
+//   https://rcos-mobile-app-production.up.railway.app/api/livekit/webhook
+// Until that is registered, no events arrive and the Calls screen honestly
+// shows "No live calls right now".
+
+// LiveKit webhook: verifies the Authorization signature with the LiveKit
+// API secret (fail-closed: a bad or missing signature is a 401) and
+// applies the event to the live-call registry. Always answers 200 for a
+// verified event, even one it does not track, so LiveKit never retries
+// a healthy delivery.
+app.post('/api/livekit/webhook', async (req: Request, res: Response) => {
+  const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+    return res.status(503).json({ error: 'LiveKit is not configured on this server.' });
+  }
+  const rawBody = (req as any).rawBody as string | undefined;
+  if (!rawBody) {
+    return res.status(400).json({ error: 'Missing request body.' });
+  }
+  try {
+    const { WebhookReceiver } = await import('livekit-server-sdk');
+    const receiver = new WebhookReceiver(LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+    const event = await receiver.receive(rawBody, req.headers.authorization);
+    applyLivekitEvent(event as any);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.warn('[livekit-webhook] rejected:', err?.message || err);
+    res.status(401).json({ error: 'Invalid webhook signature.' });
+  }
+});
+
+// Live calls right now, for the caller's business (?businessId=<id>, same
+// scoping as the phone call log). Live-only data: the registry lives in
+// memory and resets on a server restart/redeploy.
+app.get('/api/calls/live', requireVerifiedAuth, (req: Request, res: Response) => {
+  const scope = resolvePhoneScope(req, res);
+  if (!scope) return;
+  res.json(getLiveCalls().filter(phoneScopeFilter(scope)));
+});
+
+// Listen-in token: mints a subscribe-only LiveKit token for a live call's
+// room, so the owner can hear the call without being heard. The grant has
+// canPublish: false, so the server enforces silence even if the app
+// tried to publish a microphone track. The room is checked fresh with
+// LiveKit first — a call that already ended answers 404, never a token
+// for a dead room.
+app.post('/api/calls/live/:roomName/listen-token', requireVerifiedAuth, async (req: Request, res: Response) => {
+  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+    return res.status(503).json({ error: 'Voice calling is not configured yet (LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET).' });
+  }
+  const roomName = req.params.roomName || '';
+  if (!roomName) {
+    return res.status(400).json({ error: 'A room name is required.' });
+  }
+  const business = resolveBodyBusiness(req, req.body?.businessId);
+  if (!business) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  const call = getLiveCall(roomName);
+  if (!call) {
+    return res.status(404).json({ error: 'That call has ended.' });
+  }
+  const allowed = phoneScopeFilter({ all: false, businessIds: [business.id] });
+  if (!allowed(call)) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  try {
+    const { AccessToken, RoomServiceClient } = await import('livekit-server-sdk');
+    const roomClient = new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+    const participants = await roomClient.listParticipants(roomName);
+    const sipStillThere = participants.some((p: any) => Number((p as any).kind) === 3);
+    if (!sipStillThere) {
+      return res.status(404).json({ error: 'That call has ended.' });
+    }
+    const caller = verifiedCaller(req);
+    const token = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+      identity: `owner-listen-${caller?.uid || 'guest'}-${Date.now()}`,
+      name: caller?.email || 'Owner (listening in)',
+    });
+    token.addGrant({ roomJoin: true, room: roomName, canPublish: false, canSubscribe: true });
+    res.json({ token: await token.toJwt(), url: LIVEKIT_URL, room: roomName });
+  } catch (err: any) {
+    console.error('[live-calls] listen token failed:', err?.message || err);
+    res.status(500).json({ error: 'Could not join the call to listen in. Please try again.' });
+  }
 });
 
 // Proactive Agent Inbox ------------------------------------------------------
