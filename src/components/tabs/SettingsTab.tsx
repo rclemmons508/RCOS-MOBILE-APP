@@ -1031,7 +1031,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="e.g. Bright Path Plumbing"
+                  placeholder="e.g. Acme Services"
                   className="w-full bg-[#05090a] border border-[#1d2b26] focus:border-[#22ec72] rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                 />
               </div>

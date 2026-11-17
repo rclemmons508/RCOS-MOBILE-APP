@@ -270,7 +270,7 @@ export default function App() {
     ? userPreferencesService.getUserPreferences(currentUser.email)
     : null;
 
-  const [industryProfile, setIndustryProfile] = useState(initialPrefs?.industryProfile || 'Commercial HVAC');
+  const [industryProfile, setIndustryProfile] = useState(initialPrefs?.industryProfile || 'General Business');
   const [autoDispatchThreshold, setAutoDispatchThreshold] = useState<'all' | 'critical' | 'high' | 'manual'>(
     initialPrefs?.autoDispatchThreshold || 'all'
   );
@@ -1927,7 +1927,7 @@ export default function App() {
 
     // Load and apply that specific operator's personal preferences
     const prefs = userPreferencesService.getUserPreferences(user.email || user.id);
-    setIndustryProfile(prefs.industryProfile || 'Commercial HVAC');
+    setIndustryProfile(prefs.industryProfile || 'General Business');
     setAutoDispatchThreshold(prefs.autoDispatchThreshold || 'all');
     if (prefs.notificationPreferences) {
       setNotifPreferences(prefs.notificationPreferences);
@@ -2365,7 +2365,7 @@ export default function App() {
                   title: jobData.title || 'Email Dispatch Request',
                   clientName: jobData.clientName || 'Gmail Client',
                   clientPhone: jobData.clientPhone || '',
-                  address: jobData.address || 'Facility Mechanical Room',
+                  address: jobData.address || '',
                   status: jobData.status || 'unassigned',
                   priority: jobData.priority || 'high',
                   description: jobData.description || 'Origin: Gmail message',
@@ -2373,8 +2373,10 @@ export default function App() {
                   scheduledTime: 'Immediate Response',
                   estimatedValue: 850,
                   // Filed under the business's own first service, not a
-                  // hardcoded trade category.
-                  category: getJobCategories(activeBusiness.industry, activeBusiness.services)[0] ?? 'HVAC',
+                  // hardcoded trade category. When the business has no
+                  // services set up, the category stays empty — never
+                  // another trade's work.
+                  category: getJobCategories(activeBusiness.industry, activeBusiness.services)[0] ?? '',
                   // Creation stamp — see handleAddJob; the weekly card
                   // counts jobs booked in the last 7 days from this.
                   createdAt: new Date().toISOString(),

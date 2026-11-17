@@ -89,7 +89,7 @@ class EmployeeCustomizationService {
       ],
       autonomyLevel: 'autonomous',
       maxApprovalAmount: 1500,
-      assignedCategories: ['HVAC', 'Automation', 'Electrical']
+      assignedCategories: []
     }));
   }
 

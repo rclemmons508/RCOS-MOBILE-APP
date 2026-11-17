@@ -132,7 +132,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [category, setCategory] = useState<Job['category']>(jobCategories[0] ?? 'HVAC');
+  const [category, setCategory] = useState<Job['category']>(jobCategories[0] ?? '');
   const [priority, setPriority] = useState<Job['priority']>('high');
   const [estimatedValue, setEstimatedValue] = useState<number>(1850);
   const [description, setDescription] = useState('');
@@ -711,7 +711,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Chiller Loop Calibration & Sensor Overhaul"
+                  placeholder="e.g. Describe the work needed"
                   className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                 />
               </div>
@@ -762,15 +762,26 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
                     Category
                   </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-2 py-2 text-white focus:outline-none focus:border-[#22ec72]"
-                  >
-                    {jobCategories.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                  {jobCategories.length > 0 ? (
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value as any)}
+                      className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-2 py-2 text-white focus:outline-none focus:border-[#22ec72]"
+                    >
+                      {jobCategories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      disabled
+                      value=""
+                      aria-label="No services set up yet"
+                      className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-2 py-2 text-zinc-500 focus:outline-none opacity-60"
+                    >
+                      <option value="">No services set up — add services in Settings</option>
+                    </select>
+                  )}
                 </div>
 
                 <div>

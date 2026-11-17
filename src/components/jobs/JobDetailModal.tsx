@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Job } from '../../types';
 import { haptic } from '../../utils/haptics';
-import { FALLBACK_JOB_CATEGORIES } from '../../lib/jobCategories';
 import { 
   X, 
   Briefcase, 
@@ -405,12 +404,14 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   >
                     {(() => {
-                      const options = categories && categories.length > 0
-                        ? categories
-                        : FALLBACK_JOB_CATEGORIES;
+                      // Industry-only: only the business's own services.
+                      // When the business has none set up, the list is
+                      // empty — never another trade's categories.
+                      const options = categories ?? [];
                       // Keep the job's stored category visible even if it
-                      // predates the industry list (e.g. an old 'HVAC'
-                      // job), so opening the editor never blanks it out.
+                      // predates the business's service list (e.g. a job
+                      // filed before services were set up), so opening
+                      // the editor never blanks it out.
                       const visible = options.includes(category)
                         ? options
                         : [category, ...options];

@@ -1,27 +1,16 @@
 import { INDUSTRY_PRESETS } from '../data/presets';
 
 /**
- * The old generic trade list, kept only as a fallback when the business
- * has no industry preset and no services of its own. It is never the
- * first choice — a business's jobs should be filed under its own work.
- */
-export const FALLBACK_JOB_CATEGORIES = [
-  'HVAC',
-  'Automation',
-  'Security',
-  'Software AI',
-  'Electrical',
-  'Plumbing',
-];
-
-/**
  * Job categories for a business, taken from the business itself — never a
- * hardcoded trade list.
+ * hardcoded trade list, and never another company's work.
  *
- * Order: the business's own services first (these come from its industry
- * preset when the business is set up, and stay editable in Settings), then
- * the industry preset's default services, then the generic fallback when
- * the business has neither.
+ * Industry-only rule: the ONLY sources are the business's own services
+ * (these come from its industry preset when the business is set up, and
+ * stay editable in Settings) and the industry preset's default services.
+ * When the business has neither, the honest answer is an empty list —
+ * the caller shows an empty state that points at Settings — not a
+ * generic trade list. A software company must never see plumbing,
+ * electrical, or HVAC options, and a plumber must never see IT work.
  *
  * The same list feeds the Dispatch New Job picker, the Jobs list filter,
  * and the job detail editor, so a category picked in one place always
@@ -45,5 +34,7 @@ export function getJobCategories(
     .filter(Boolean);
   if (presetServices.length > 0) return [...new Set(presetServices)];
 
-  return [...FALLBACK_JOB_CATEGORIES];
+  // No services of the business's own and no industry preset: no
+  // categories. Never fall back to another trade's list.
+  return [];
 }
