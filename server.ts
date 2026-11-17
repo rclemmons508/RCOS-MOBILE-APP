@@ -2282,29 +2282,36 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
   const bizTone = business?.brandTone || 'Formal, strategic, rigorous, and insight-driven';
   const bizServices = business?.services?.join(', ') || 'Technical Feasibility, Operational Audit, Compliance Review';
 
-  // Specific role instructions
+  // Specific role instructions — STATIC text only. No business name,
+  // industry, tone, or services are interpolated here: the system
+  // instruction must never depend on request-supplied or stored
+  // business data (CodeQL js/system-prompt-injection). The safety
+  // boundaries live here because they are fixed rules, not data.
   const roleInstructions: Record<string, string> = {
-    executive_assistant: `You are Morgan Vance, Executive Assistant and Operations Chief for "${bizName}" (${bizIndustry}). Tone: ${bizTone}. You oversee business operations, coordinate the 12 AI employees, and enforce safety boundaries: routine tasks can be planned autonomously, but any price quote commitment, money movement, or external dispatch above the threshold requires owner sign-off. Respond directly, crisply, and operationally.`,
-    finance: `You are Jordan Cross, Finance Officer for "${bizName}". Your role is invoicing, accounts receivable, job profit margin calculations, payment reminders, and expense audits. Tone: analytical, exact, and security-minded. Never commit funds or execute irreversible money transfers without explicit owner authorization.`,
-    sales: `You are Taylor Hayes, Sales & Estimations Specialist for "${bizName}". You handle client discovery, scoping jobs, generating accurate line-item quotes based on services (${bizServices}), and client proposal follow-ups. Tone: persuasive, transparent, and prompt.`,
-    automation_specialist: `You are Blake Mercer, Automation & Workflow Specialist for "${bizName}". You optimize repetitive tasks, configure webhook dispatches, trigger maps, and integration workflows between RCOS, calendar, and billing systems.`,
-    customer_service: `You are Casey Morgan, Customer Experience & Support Lead for "${bizName}". You handle client inquiries, appointment scheduling, issue resolution, and post-service satisfaction reviews with warmth and prompt reassurance.`,
-    project_manager: `You are Quinn Davies, Project & Operations Manager for "${bizName}". You coordinate crew schedules, track job pipeline stages, enforce checklist completion, and ensure milestones are completed on time.`,
+    executive_assistant: `You are Morgan Vance, Executive Assistant and Operations Chief. You oversee business operations, coordinate the 12 AI employees, and enforce safety boundaries: routine tasks can be planned autonomously, but any price quote commitment, money movement, or external dispatch above the threshold requires owner sign-off. Respond directly, crisply, and operationally.`,
+    finance: `You are Jordan Cross, Finance Officer. Your role is invoicing, accounts receivable, job profit margin calculations, payment reminders, and expense audits. Tone: analytical, exact, and security-minded. Never commit funds or execute irreversible money transfers without explicit owner authorization.`,
+    sales: `You are Taylor Hayes, Sales & Estimations Specialist. You handle client discovery, scoping jobs, generating accurate line-item quotes based on the business's services, and client proposal follow-ups. Tone: persuasive, transparent, and prompt.`,
+    automation_specialist: `You are Blake Mercer, Automation & Workflow Specialist. You optimize repetitive tasks, configure webhook dispatches, trigger maps, and integration workflows between RCOS, calendar, and billing systems.`,
+    customer_service: `You are Casey Morgan, Customer Experience & Support Lead. You handle client inquiries, appointment scheduling, issue resolution, and post-service satisfaction reviews with warmth and prompt reassurance.`,
+    project_manager: `You are Quinn Davies, Project & Operations Manager. You coordinate crew schedules, track job pipeline stages, enforce checklist completion, and ensure milestones are completed on time.`,
   };
 
-  const systemInstruction = withBusinessKnowledge(
+  const systemInstruction = roleInstructions[roleId] || roleInstructions.executive_assistant;
+
+  // Business context + attached documents ride along as a USER message,
+  // never in the system prompt: business name/industry/tone/services,
+  // the agent's behavior protocol (which arrives in the request body),
+  // Teach Your Team notes, and uploaded document text are all
+  // owner/member-supplied text. The model still sees all of it — as
+  // conversation context, not as system instructions — so it cannot
+  // steer the system prompt (CodeQL js/system-prompt-injection).
+  const businessContext = withBusinessKnowledge(
     withBehaviorProtocol(
-      roleInstructions[roleId] || roleInstructions.executive_assistant,
+      `Business context for this conversation:\n- Business: ${bizName} (${bizIndustry})\n- Tone: ${bizTone}\n- Services: ${bizServices}`,
       behaviorProtocol
     ),
     business?.businessKnowledge
   );
-
-  // Attached documents ride along as a USER message, not in the system
-  // prompt: their text is owner-uploaded data, and putting user-provided
-  // text in the system instruction is a prompt-injection hole (CodeQL
-  // js/system-prompt-injection). The framing inside the context string
-  // labels it as data, not instructions.
   const docContext = await assistantDocumentContext(req, business ?? null, documentIds);
 
   // Model selection per user instructions:
@@ -2320,11 +2327,13 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
     selectedModel = PRIMARY_MODEL;
   }
 
-  // Format contents for multi-turn history. Attached-document context goes
-  // first as a user turn, ahead of the conversation, so the model can answer
-  // from it without it ever touching the system prompt.
+  // Format contents for multi-turn history. Business context + attached-
+  // document context go first as a single user turn, ahead of the
+  // conversation, so the model can answer from them without either ever
+  // touching the system prompt.
+  const contextText = [businessContext, docContext].filter(Boolean).join('\n\n');
   const contents = [
-    ...(docContext ? [{ role: 'user', parts: [{ text: docContext }] }] : []),
+    ...(contextText ? [{ role: 'user', parts: [{ text: contextText }] }] : []),
     ...messages.map((m: { role: string; content: string }) => ({
       role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
       parts: [{ text: m.content }]
@@ -2354,17 +2363,7 @@ app.post('/api/chat', aiRateLimiter, async (req: Request, res: Response) => {
       preferredModel: selectedModel,
       contents,
       config: {
-        // Accepted risk: the system instruction is assembled ONLY from
-        // business-owner-configured data — business name, tone and
-        // services, Teach Your Team notes, and the agent's behavior
-        // protocol — set through authenticated, gated endpoints by the
-        // owner/members of that business. It cannot grant permissions or
-        // bypass the approval gates, which are enforced in backend code
-        // rather than by the prompt (see src/utils/agentBehavior.ts).
-        // The genuinely untrusted input — uploaded document text — is
-        // deliberately kept OUT of the system prompt and sent as a user
-        // message instead (docContext above).
-        // codeql[js/system-prompt-injection]
+        // Static system instruction (see above) — no user-supplied text.
         systemInstruction,
         temperature: 0.3,
       },
