@@ -171,28 +171,21 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   // AI Detecting Animation Progression State
   const [detectingStageIndex, setDetectingStageIndex] = useState(0);
 
-  // AI Detected & Deciphered Specifications
-  const [detectedIndustryId, setDetectedIndustryId] = useState<string>('hvac');
-  const [detectedIndustryName, setDetectedIndustryName] = useState<string>('HVAC Services');
-  const [confidenceScore, setConfidenceScore] = useState<number>(0.96);
+  // AI Detected & Deciphered Specifications — neutral until detection
+  // runs. Nothing here may name another trade's work before the company
+  // is actually analyzed: detection (LLM, local match, or the user's
+  // manual pick) fills every one of these in first.
+  const [detectedIndustryId, setDetectedIndustryId] = useState<string>('');
+  const [detectedIndustryName, setDetectedIndustryName] = useState<string>('');
+  const [confidenceScore, setConfidenceScore] = useState<number>(0);
   const [agentReasoning, setAgentReasoning] = useState<string>(
-    'AI detected extensive heating, cooling, and ventilation terminology from your company profile.'
+    'Analyzing your company profile to detect your industry.'
   );
-  const [keyInsights, setKeyInsights] = useState<string[]>([
-    'Identified seasonal tune-up and emergency repair demand',
-    'Detected field technician workflow with safety pressure limits',
-    'Optimized for rapid diagnostics and instant voice answering'
-  ]);
-  const [detectedServices, setDetectedServices] = useState<string[]>([
-    'AC Diagnostic & Repair',
-    'Furnace Seasonal Tune-up',
-    'Heat Pump System Install',
-    'Duct Inspection & Air Quality',
-    'Thermostat Smart Setup'
-  ]);
+  const [keyInsights, setKeyInsights] = useState<string[]>([]);
+  const [detectedServices, setDetectedServices] = useState<string[]>([]);
   const [brandTone, setBrandTone] = useState<string>('Technical, reassuring, precise, and safety-rigorous');
   const [dollarThreshold, setDollarThreshold] = useState<number>(1250);
-  const [technicianRoleName, setTechnicianRoleName] = useState<string>('HVAC Certified Technician');
+  const [technicianRoleName, setTechnicianRoleName] = useState<string>('Field Specialist');
 
   // Alternatives + provenance for the detected preset (Bug 1: never trust a
   // fake confidence — the server must say whether this came from the LLM).

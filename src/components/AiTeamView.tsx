@@ -81,12 +81,15 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
   const [talkPersona, setTalkPersona] = useState<TalkPersona | null>(null);
   const detailRef = useRef<HTMLDivElement>(null);
 
-  // Identify the business's detected industry preset
-  const activePreset = INDUSTRY_PRESETS.find(p => 
-    p.id === business.industry || 
+  // Identify the business's detected industry preset. No preset matches
+  // a business that has no industry set — in that case there is no
+  // industry to derive from, so activePreset stays undefined instead of
+  // falling back to some other trade's preset.
+  const activePreset = INDUSTRY_PRESETS.find(p =>
+    p.id === business.industry ||
     p.name.toLowerCase() === business.industry.toLowerCase() ||
     business.industry.toLowerCase().includes(p.id)
-  ) || INDUSTRY_PRESETS[5]; // Default HVAC fallback
+  );
 
   // Strictly filter only trade-relevant operational AI employees for this industry
   const relevantEmployeeIds = [
@@ -348,7 +351,7 @@ export const AiTeamView: React.FC<AiTeamViewProps> = ({
             {activeCount} Active · {pausedCount} Paused
           </p>
           <p className="text-xs text-zinc-400 mt-0.5">
-            AI assistants for {activePreset.name} — tap one to see its settings.
+            AI assistants for {activePreset?.name ?? 'your industry'} — tap one to see its settings.
           </p>
         </div>
 

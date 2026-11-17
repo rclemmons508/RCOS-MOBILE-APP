@@ -65,9 +65,11 @@ interface GeminiChatViewProps {
 const DEFAULT_BIZ: BusinessAccount = {
   id: 'biz_rc_solutions',
   name: 'RC Solutions',
-  industry: 'Commercial Operations & Automation',
+  // Industry-neutral fallback: this placeholder is only used when no real
+  // business is passed in, so it must not name another trade's work.
+  industry: 'General Business',
   size: '10-50',
-  services: ['HVAC Emergency', 'Automation', 'Electrical Systems', 'Jobs & Follow-ups'],
+  services: [],
   pricingApproach: 'value_based',
   brandTone: 'Professional, responsive, precise',
   painPoints: ['Manual dispatch delays', 'Off-hours emergency intake'],

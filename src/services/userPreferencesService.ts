@@ -2,7 +2,7 @@ import { UserPreferences, NotificationPreferences, TabType } from '../types';
 import { INITIAL_NOTIFICATION_PREFERENCES } from '../data/mockData';
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
-  industryProfile: 'Commercial HVAC',
+  industryProfile: 'General Business',
   telemetryIntervalMs: 3500,
   autoDispatchThreshold: 'all',
   ringerMode: 'sound',
