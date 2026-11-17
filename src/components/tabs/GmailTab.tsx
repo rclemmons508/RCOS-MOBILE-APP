@@ -86,6 +86,11 @@ export const GmailTab: React.FC<GmailTabProps> = ({
   // for a mailbox that is still there.
   const [isRestoringGmail, setIsRestoringGmail] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Pagination: the Gmail list call already returns a nextPageToken, but
+  // nothing ever used it — a folder could never show more than its first
+  // page, and older mail was unreachable. Load more appends the next page.
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>(undefined);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Selected message for detail view
   const [selectedMessage, setSelectedMessage] = useState<GmailMessageDetail | null>(null);
@@ -150,9 +155,13 @@ export const GmailTab: React.FC<GmailTabProps> = ({
     return () => { cancelled = true; };
   }, [token, businessId]);
 
-  const loadLiveMailbox = useCallback(async (authToken: string) => {
-    setIsLoading(true);
-    setLoadError(null);
+  const loadLiveMailbox = useCallback(async (authToken: string, opts?: { append?: boolean; pageToken?: string }) => {
+    const appending = !!opts?.append;
+    if (appending) setIsLoadingMore(true);
+    else {
+      setIsLoading(true);
+      setLoadError(null);
+    }
     try {
       let query = searchQuery.trim();
       let labelIds: string[] = [];
@@ -167,6 +176,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
         query: query || undefined,
         labelIds: labelIds.length > 0 ? labelIds : undefined,
         maxResults: 15,
+        pageToken: opts?.pageToken,
       });
 
       if (result.messages && result.messages.length > 0) {
@@ -184,23 +194,38 @@ export const GmailTab: React.FC<GmailTabProps> = ({
             }
           })
         );
-        setMessages(detailedList);
+        // Appending dedupes by id so a retry never shows a message twice.
+        setMessages((prev) => {
+          if (!appending) return detailedList;
+          const seen = new Set(prev.map((m) => m.id));
+          return [...prev, ...detailedList.filter((m) => !seen.has(m.id))];
+        });
+        setNextPageToken(result.nextPageToken);
       } else {
-        setMessages([]);
+        if (!appending) setMessages([]);
+        setNextPageToken(result.nextPageToken);
       }
     } catch (err: any) {
       console.warn('Live Gmail fetch note:', err.message);
       // A failed load must never fall back to invented mail: clear the
       // list and surface the error in the empty state instead (M5).
-      setMessages([]);
-      setLoadError('Couldn\u2019t load your mail. Check your connection and try again.');
-      // If unauthorized, token expired
-      if (err.message?.includes('401') || err.message?.includes('token')) {
-        setCachedAccessToken(null);
-        setIsLiveConnected(false);
+      // A failed Load more keeps what is already shown.
+      if (!appending) {
+        setMessages([]);
+        setNextPageToken(undefined);
+        setLoadError('Couldn\u2019t load your mail. Check your connection and try again.');
+        // If unauthorized, token expired
+        if (err.message?.includes('401') || err.message?.includes('token')) {
+          setCachedAccessToken(null);
+          setIsLiveConnected(false);
+        }
+      } else {
+        setStatusNotice('Couldn\u2019t load more mail. Check your connection and try again.');
+        setTimeout(() => setStatusNotice(null), 4000);
       }
     } finally {
-      setIsLoading(false);
+      if (appending) setIsLoadingMore(false);
+      else setIsLoading(false);
     }
   }, [activeFolder, searchQuery]);
 
@@ -418,6 +443,14 @@ export const GmailTab: React.FC<GmailTabProps> = ({
     }
   };
 
+  // Load the next page of the current folder and append it. A folder
+  // used to stop at its first page (the list call's nextPageToken was
+  // returned but never used), so older mail was unreachable.
+  const handleLoadMore = () => {
+    if (!token || !nextPageToken || isLoadingMore) return;
+    void loadLiveMailbox(token, { append: true, pageToken: nextPageToken });
+  };
+
   // Filter messages based on activeFolder and search
   const filteredMessages = messages.filter((msg) => {
     // Folder filter
@@ -440,10 +473,11 @@ export const GmailTab: React.FC<GmailTabProps> = ({
   });
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-black text-zinc-100">
+    <div className="flex flex-col bg-black text-zinc-100">
       
-      {/* Top Controls & Auth Bar */}
-      <div className="px-3.5 py-2.5 border-b border-zinc-800/80 bg-zinc-950/90 shrink-0 space-y-2">
+      {/* Top Controls & Auth Bar — sticky, so search and folders stay
+          visible while the list scrolls with the tab. */}
+      <div className="sticky top-0 z-10 px-3.5 py-2.5 border-b border-zinc-800/80 bg-zinc-950/90 shrink-0 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <div className="p-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 shrink-0">
@@ -714,8 +748,14 @@ export const GmailTab: React.FC<GmailTabProps> = ({
         </div>
       </div>
 
-      {/* Email List Scroll Container */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-2">
+      {/* Email List — renders in the tab's normal flow and scrolls with
+          the app shell's <main>, which is the single scroller. The list
+          used to be its own nested `flex-1 overflow-y-auto` scroller
+          inside a `h-full` tab: on the phone only the ~3 cards that fit
+          the visible list area showed, and the rest sat below the fold
+          behind a nested scroller that never engaged — a folder looked
+          like it held 3 emails when it held 15. */}
+      <div className="px-3 sm:px-4 py-3 space-y-2">
         {isLoading && (
           <div className="flex items-center justify-center py-8 text-zinc-400 text-xs gap-2">
             <Loader2 className="w-4 h-4 animate-spin text-[#22ec72]" />
@@ -865,6 +905,23 @@ export const GmailTab: React.FC<GmailTabProps> = ({
 
           </div>
         ))}
+
+        {/* How many are shown, and the next page when there is one. */}
+        {!isLoading && filteredMessages.length > 0 && (
+          <p className="text-center text-xs text-zinc-500 pt-1">
+            Showing {filteredMessages.length} email{filteredMessages.length === 1 ? '' : 's'}
+          </p>
+        )}
+        {!isLoading && nextPageToken && filteredMessages.length > 0 && (
+          <button
+            type="button"
+            onClick={handleLoadMore}
+            disabled={isLoadingMore}
+            className="min-h-[48px] w-full py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-white font-semibold transition cursor-pointer disabled:opacity-50"
+          >
+            {isLoadingMore ? 'Loading more…' : 'Load more emails'}
+          </button>
+        )}
       </div>
 
       {/* Compose Email Modal */}

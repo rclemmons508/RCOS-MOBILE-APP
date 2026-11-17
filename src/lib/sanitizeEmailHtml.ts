@@ -9,6 +9,14 @@ import createDOMPurify from 'dompurify';
  * - NO styling from the sender: `style` attributes and <style> tags are
  *   removed, and so are `class` / `id` (they could reuse the app's own
  *   Tailwind classes such as "fixed inset-0" to overlay and spoof app UI).
+ * - NO sender colors either: `bgcolor` / `color` / `text` / `link` /
+ *   `vlink` / `alink` are forbidden too. DOMPurify allows those legacy
+ *   presentational attributes by default, and a typical newsletter ships
+ *   `<table bgcolor="#ffffff">` with `<font color="#999999">` — which
+ *   rendered light-gray text on a white box inside the dark modal
+ *   (unreadable). With them stripped, the body inherits the modal's own
+ *   light-on-dark text; the modal also forces transparent backgrounds on
+ *   descendants as a second layer, so no sender color can survive.
  * - Remote images are BLOCKED by default (tracking pixels leak opens and
  *   the user's IP). Their URL is kept in `data-blocked-src` only to count
  *   them; the caller re-sanitizes with `loadImages: true` when the user
@@ -67,7 +75,11 @@ export function sanitizeEmailHtml(html: string, opts: { loadImages?: boolean } =
         // Remote media / vector content that can fetch or position itself.
         'svg', 'math', 'video', 'audio', 'source', 'track', 'picture',
       ],
-      FORBID_ATTR: ['style', 'class', 'id', 'background', 'srcset', 'sizes', 'poster', 'ping', 'formaction'],
+      FORBID_ATTR: ['style', 'class', 'id', 'background', 'srcset', 'sizes', 'poster', 'ping', 'formaction',
+        // Sender presentational colors (see header comment): a white
+        // bgcolor or light font color would make the body unreadable in
+        // the dark modal, so they are stripped at the source.
+        'bgcolor', 'color', 'text', 'link', 'vlink', 'alink'],
       ALLOW_DATA_ATTR: false,
       ADD_ATTR: ['target', 'data-blocked-src'],
     }) as unknown as string;
