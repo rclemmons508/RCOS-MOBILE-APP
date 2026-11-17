@@ -107,8 +107,19 @@ export const onTokenChange = (listener: (token: string | null) => void) => {
  * localStorage or sessionStorage, same as every other token in this file.
  * Returns the token, or null when this user has not connected Gmail or the
  * restore failed. Never throws: callers treat null as "show the Connect flow".
+ *
+ * One retry after a short pause: a page change or app reopen can race a
+ * network or sign-in flicker, and a single failed attempt must not log the
+ * user out of Gmail. A 404 is the server's final answer ("this user has
+ * not connected Gmail") — retrying it only burns the rate limit.
  */
-export async function restoreGmailToken(businessId: string, userEmail: string): Promise<string | null> {
+const RESTORE_RETRY_DELAY_MS = 1500;
+
+export async function restoreGmailToken(
+  businessId: string,
+  userEmail: string,
+  opts?: { retries?: number }
+): Promise<string | null> {
   const requester = normalizeGmailEmail(userEmail);
   if (!businessId || !requester) return null;
   const cached = cachedGmailToken;
@@ -123,18 +134,27 @@ export async function restoreGmailToken(businessId: string, userEmail: string): 
   // A cached token for someone else must never ride along into this user's
   // session — drop it before asking the server for this user's own.
   if (cachedGmailToken) setCachedAccessToken(null);
-  try {
-    const tok = await apiFetch<{ accessToken: string; email: string }>(
-      `/api/business/${encodeURIComponent(businessId)}/gmail-token`,
-      { headers: teamHeaders(requester) }
-    );
-    if (!tok?.accessToken) return null;
-    setCachedAccessToken(tok.accessToken, { businessId, userEmail: requester });
-    return tok.accessToken;
-  } catch (e) {
-    console.warn('[GmailAuth] Silent token restore failed:', (e as any)?.message);
-    return null;
+  const maxAttempts = 1 + (opts?.retries ?? 1);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const tok = await apiFetch<{ accessToken: string; email: string }>(
+        `/api/business/${encodeURIComponent(businessId)}/gmail-token`,
+        { headers: teamHeaders(requester) }
+      );
+      if (!tok?.accessToken) return null;
+      setCachedAccessToken(tok.accessToken, { businessId, userEmail: requester });
+      return tok.accessToken;
+    } catch (e) {
+      // 404 = not connected. Final answer, not a flicker — don't retry.
+      if ((e as any)?.status === 404) return null;
+      if (attempt >= maxAttempts) {
+        console.warn('[GmailAuth] Silent token restore failed:', (e as any)?.message);
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, RESTORE_RETRY_DELAY_MS));
+    }
   }
+  return null;
 }
 
 // Clear token on sign out

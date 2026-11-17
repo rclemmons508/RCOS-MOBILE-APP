@@ -79,6 +79,12 @@ export const GmailTab: React.FC<GmailTabProps> = ({
   const [messages, setMessages] = useState<GmailMessageDetail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
+  // While a silent restore is running (first attempt + its one retry),
+  // the tab is neither connected nor "not connected" yet — the Connect
+  // banner and "Not connected" badge only appear once the restore has
+  // genuinely failed, so a page change never flashes "not connected"
+  // for a mailbox that is still there.
+  const [isRestoringGmail, setIsRestoringGmail] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Selected message for detail view
@@ -128,14 +134,20 @@ export const GmailTab: React.FC<GmailTabProps> = ({
 
   // Silent restore: if the in-memory Gmail token is empty (app restarted,
   // tab remounted, auth state flickered), fetch a fresh one from the
-  // server instead of forcing full OAuth. One attempt per mount — no
-  // retry loops. If the server has no Gmail token, the Connect banner
-  // stays up, exactly as before.
+  // server instead of forcing full OAuth. One restore per mount (the
+  // restore itself retries once on a flicker). While it runs the tab
+  // shows "Reconnecting…" — it only falls back to the Connect banner
+  // once the restore has genuinely failed.
   const restoreAttemptedRef = useRef(false);
   useEffect(() => {
     if (token || !businessId || restoreAttemptedRef.current) return;
     restoreAttemptedRef.current = true;
-    restoreGmailToken(businessId, currentUser?.email || '');
+    let cancelled = false;
+    setIsRestoringGmail(true);
+    restoreGmailToken(businessId, currentUser?.email || '')
+      .catch(() => null)
+      .finally(() => { if (!cancelled) setIsRestoringGmail(false); });
+    return () => { cancelled = true; };
   }, [token, businessId]);
 
   const loadLiveMailbox = useCallback(async (authToken: string) => {
@@ -446,6 +458,11 @@ export const GmailTab: React.FC<GmailTabProps> = ({
                     <span className="w-1.5 h-1.5 rounded-full bg-[#22ec72] animate-pulse" />
                     <span>Live</span>
                   </span>
+                ) : isRestoringGmail ? (
+                  <span className="text-xs font-mono text-zinc-300 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800 flex items-center gap-1 shrink-0">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Reconnecting…</span>
+                  </span>
                 ) : (
                   <span className="text-xs font-mono text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded-full border border-zinc-800 shrink-0">
                     Not connected
@@ -455,7 +472,9 @@ export const GmailTab: React.FC<GmailTabProps> = ({
               <p className="text-xs text-zinc-400 truncate">
                 {isLiveConnected 
                   ? `Authenticated: ${currentUser?.email || 'your Google account'}`
-                  : 'Connect Google account to sync live mail'}
+                  : isRestoringGmail
+                    ? 'Reconnecting to your Gmail…'
+                    : 'Connect Google account to sync live mail'}
               </p>
             </div>
           </div>
@@ -486,7 +505,7 @@ export const GmailTab: React.FC<GmailTabProps> = ({
         </div>
 
         {/* Official Google Sign-In Banner if Not Live Connected */}
-        {!isLiveConnected && (
+        {!isLiveConnected && !isRestoringGmail && (
           <div className="p-3 rounded-2xl bg-[#0e121a] border border-[#1e2538] space-y-2.5">
             <div className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
@@ -713,14 +732,14 @@ export const GmailTab: React.FC<GmailTabProps> = ({
             <div>
               <h3 className="text-sm font-semibold text-zinc-300">
                 {!isLiveConnected
-                  ? 'Gmail is not connected'
+                  ? (isRestoringGmail ? 'Reconnecting to Gmail…' : 'Gmail is not connected')
                   : loadError
                     ? 'Couldn\u2019t load your mail'
                     : `No emails in ${activeFolder.toLowerCase()}`}
               </h3>
               <p className="text-xs text-zinc-500 mt-0.5">
                 {!isLiveConnected
-                  ? 'Connect Gmail to see your mail — no messages are shown until you connect.'
+                  ? (isRestoringGmail ? 'Checking your saved Gmail connection…' : 'Connect Gmail to see your mail — no messages are shown until you connect.')
                   : loadError || (searchQuery ? 'Try clearing your search query' : 'Your mailbox folder is empty')}
               </p>
             </div>
