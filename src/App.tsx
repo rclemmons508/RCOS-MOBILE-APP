@@ -77,6 +77,7 @@ import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automat
 import { haptic } from './utils/haptics';
 import { tabForDeepLink } from './utils/deepLinks';
 import { withBusinessId, filterToBusiness, uniqueId } from './lib/businessScope';
+import { getJobCategories } from './lib/jobCategories';
 import { loadRoutingSeen, saveRoutingSeen, ROUTING_SEEN_CAP } from './lib/routingSeen';
 import {
   detectMainAiAlerts,
@@ -2342,7 +2343,9 @@ export default function App() {
                   assignedTechnician: jobData.assignedTechnician || 'Lead Field Specialist',
                   scheduledTime: 'Immediate Response',
                   estimatedValue: 850,
-                  category: 'HVAC',
+                  // Filed under the business's own first service, not a
+                  // hardcoded trade category.
+                  category: getJobCategories(activeBusiness.industry, activeBusiness.services)[0] ?? 'HVAC',
                   // Creation stamp — see handleAddJob; the weekly card
                   // counts jobs booked in the last 7 days from this.
                   createdAt: new Date().toISOString(),
@@ -2364,6 +2367,8 @@ export default function App() {
           {activeTab === 'jobs' && (
             <JobsTab
               jobs={jobs}
+              industry={activeBusiness.industry}
+              businessServices={activeBusiness.services}
               onAddJob={handleAddJob}
               openCreateSignal={jobCreateSignal}
               onUpdateJob={handleUpdateJob}

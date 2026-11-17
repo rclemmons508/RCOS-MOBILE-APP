@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Job } from '../../types';
 import { haptic } from '../../utils/haptics';
+import { FALLBACK_JOB_CATEGORIES } from '../../lib/jobCategories';
 import { 
   X, 
   Briefcase, 
@@ -32,6 +33,9 @@ interface JobDetailModalProps {
   onUpdateJob: (updated: Job) => void;
   onDeleteJob?: (id: string) => void;
   onTriggerNotification?: (title: string, message: string) => void;
+  /** Job categories from the business's industry (same list as the Jobs
+      tab). Falls back to the generic list when not provided. */
+  categories?: string[];
 }
 
 export const JobDetailModal: React.FC<JobDetailModalProps> = ({
@@ -40,7 +44,8 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
   job,
   onUpdateJob,
   onDeleteJob,
-  onTriggerNotification
+  onTriggerNotification,
+  categories
 }) => {
   if (!isOpen || !job) return null;
 
@@ -399,12 +404,20 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                     onChange={(e) => setCategory(e.target.value as any)}
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#22ec72]"
                   >
-                    <option value="HVAC">HVAC</option>
-                    <option value="Automation">Automation</option>
-                    <option value="Electrical">Electrical</option>
-                    <option value="Security">Security</option>
-                    <option value="Software AI">Software AI</option>
-                    <option value="Plumbing">Plumbing</option>
+                    {(() => {
+                      const options = categories && categories.length > 0
+                        ? categories
+                        : FALLBACK_JOB_CATEGORIES;
+                      // Keep the job's stored category visible even if it
+                      // predates the industry list (e.g. an old 'HVAC'
+                      // job), so opening the editor never blanks it out.
+                      const visible = options.includes(category)
+                        ? options
+                        : [category, ...options];
+                      return visible.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ));
+                    })()}
                   </select>
                 </div>
               </div>
