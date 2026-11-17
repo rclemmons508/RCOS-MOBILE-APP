@@ -73,6 +73,20 @@ When the AI receptionist answers a call, the server sends the business owner a p
 
 Without `google-services.json`, the APK still builds and the app still works — push registration just fails quietly (logged) and the owner gets no alert; the Calls screen's live-call view still shows the call.
 
+### Outbound calling (dial out from the app)
+
+The Calls tab's **Dial out** keypad calls a real phone number from the app: the server creates a LiveKit room and dials the number into it as a SIP participant (`POST /api/calls/dial`), and the owner talks through the room. LiveKit cannot dial out on its own number alone — it needs a stored **outbound SIP trunk** from a SIP provider. The business already has a Vonage account (SMS + number), so Vonage is the trunk provider — no new signup and no work email needed.
+
+1. **Create a Vonage SIP trunk.** In the Vonage developer dashboard, go to **Build → Voice → SIP** and run the SIP Trunking wizard. Vonage creates a domain (e.g. `yourcompany`), a digest username, and a password — note all three. Link a Vonage number to the trunk (buy one in the dashboard if the account has none) so it can be used as the outbound caller ID. (If outbound calling is off on the account — Vonage disables it for new members — enable it in the trunk's Outbound Calling settings.)
+2. **Create the outbound trunk in LiveKit.** In the LiveKit Cloud dashboard (project **rcos-mobile** → **Telephony → SIP trunks**), create a new **Outbound** trunk:
+   - **Address:** your Vonage SIP endpoint, e.g. `yourcompany.sip-us.vonage.com:5061` (TLS; use `5060` for UDP). Use the region nearest you (`sip-us`, `sip-eu`).
+   - **Authentication:** username + password from step 1.
+   - **Numbers:** the Vonage number(s) from step 1, in E.164 format (e.g. `+14705550100`).
+   - Copy the trunk **id** LiveKit shows after creating it.
+3. **Set the server variable.** In Railway (service `RCOS-MOBILE-APP` → Variables), set `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` to the trunk id from step 2 and redeploy. Optional: `LIVEKIT_SIP_OUTBOUND_CALLER_ID` overrides the caller ID shown to the callee (defaults to the trunk's own number). Optional: `OUTBOUND_CALLS_DAILY_CAP` caps outbound calls per business per day (default 100); `OUTBOUND_ALLOWED_COUNTRY_CODES` widens the destination allow-list (default `1`, US/Canada only — Caribbean and premium-rate +1 numbers are always blocked).
+
+Until the trunk id is set, `POST /api/calls/dial` answers 503 (`outbound_trunk_not_configured`) and the dialer shows these setup steps instead of a working Call button — it never pretends a call went out. Settings → Diagnostics shows the trunk state (`Outbound Calling (SIP trunk)`), and `GET /api/calls/outbound-status` reports it to the app. Calls are billed by the SIP provider (Vonage) at its voice rates; hanging up deletes the LiveKit room, which drops the SIP leg. The receptionist never joins an outbound room, and outbound rooms never appear in the live-receptionist-calls list.
+
 ---
 
 ## 5. Security & API Endpoints
