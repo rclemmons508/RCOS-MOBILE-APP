@@ -79,6 +79,7 @@ import { tabForDeepLink } from './utils/deepLinks';
 import { setupPushNotifications, teardownPushNotifications } from './lib/pushNotifications';
 import { withBusinessId, filterToBusiness, uniqueId } from './lib/businessScope';
 import { getJobCategories } from './lib/jobCategories';
+import { buildClientPrefillFromCall, type CallerPrefillSource, type ClientPrefill } from './lib/callToClient';
 import { loadRoutingSeen, saveRoutingSeen, ROUTING_SEEN_CAP } from './lib/routingSeen';
 import {
   detectMainAiAlerts,
@@ -185,6 +186,9 @@ export default function App() {
   // Customer, so the target tab opens its real create form on arrival.
   const [jobCreateSignal, setJobCreateSignal] = useState(0);
   const [clientAddSignal, setClientAddSignal] = useState(0);
+  // Call-to-CRM prefill: set when the Calls screen asks to add a caller
+  // as a customer, read by the Clients tab when the open signal fires.
+  const [clientPrefill, setClientPrefill] = useState<ClientPrefill | null>(null);
   // Receptionist signal: bumped when the Dashboard's AI Receptionist
   // card is tapped, so the Calls tab opens on the detail screen.
   const [receptionistSignal, setReceptionistSignal] = useState(0);
@@ -1683,6 +1687,20 @@ export default function App() {
     });
   };
 
+  // Call-to-CRM Stage 2: add a caller as a customer from the Calls
+  // screen. Builds the prefill from what the call record actually
+  // carries (number, and for log entries the caller name, AI summary,
+  // and the service when the call's department is one of the business's
+  // own), then opens the Clients tab on the Add Client form. Saving
+  // goes through the normal handleAddClient path (local list +
+  // Firestore), so a caller added this way is a real client record.
+  const handleAddCallerAsClient = (source: CallerPrefillSource) => {
+    const serviceOptions = getJobCategories(activeBusiness.industry, activeBusiness.services);
+    setClientPrefill(buildClientPrefillFromCall(source, serviceOptions));
+    setClientAddSignal((s) => s + 1);
+    setActiveTab('clients');
+  };
+
   const handleEditClient = (updatedClient: Client) => {
     setClients((prev) => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
     if (businessAccount?.id) {
@@ -2341,6 +2359,7 @@ export default function App() {
                 setMessages(prev => [...prev, newMessage]);
               }}
               onNavigateTab={(tab) => setActiveTab(tab)}
+              onAddCallerAsClient={handleAddCallerAsClient}
               onTriggerNotification={(title, message) => {
                 sendPushNotification({
                   type: 'call_event',
@@ -2440,6 +2459,9 @@ export default function App() {
               onEditClient={handleEditClient}
               onDeleteClient={handleDeleteClient}
               openAddSignal={clientAddSignal}
+              industry={activeBusiness.industry}
+              businessServices={activeBusiness.services}
+              clientPrefill={clientPrefill}
             />
           )}
 
