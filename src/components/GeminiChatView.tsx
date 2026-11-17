@@ -123,6 +123,15 @@ function loadThread(key: string, businessName: string): ChatMessageItem[] {
   return saved && saved.length > 0 ? saved : welcomeThread(businessName);
 }
 
+/** The agent a saved thread is actually with: the last assistant reply's role. */
+function lastAssistantRoleId(messages: ChatMessageItem[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const id = messages[i]?.roleId;
+    if (id && AI_EMPLOYEES.some(e => e.id === id)) return id;
+  }
+  return 'executive_assistant';
+}
+
 /** Persist the newest messages; a full or blocked storage never crashes the chat. */
 function saveThread(key: string, messages: ChatMessageItem[]): void {
   const capped = messages.slice(-MAX_THREAD_MESSAGES);
@@ -152,17 +161,23 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
   const threadKey = chatThreadKey(business.id, senderEmail);
 
   const [messages, setMessages] = useState<ChatMessageItem[]>(() => loadThread(threadKey, business.name));
+  // Start on the agent the saved thread is actually with, not always the
+  // Executive Assistant: the thread survives a remount but the picker state
+  // did not, so the message box (and banner) named the wrong agent while
+  // the visible replies came from another one.
+  const [selectedRole, setSelectedRole] = useState<string>(() => lastAssistantRoleId(messages));
   // The key the on-screen `messages` belong to. When the key changes
   // (user/business switch), load that thread before anything is saved.
   const [threadOwnerKey, setThreadOwnerKey] = useState(threadKey);
   if (threadOwnerKey !== threadKey) {
     setThreadOwnerKey(threadKey);
-    setMessages(loadThread(threadKey, business.name));
+    const nextThread = loadThread(threadKey, business.name);
+    setMessages(nextThread);
+    setSelectedRole(lastAssistantRoleId(nextThread));
   }
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState('executive_assistant');
   const [modelTier, setModelTier] = useState<'fast' | 'general' | 'complex'>('general');
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [appRefreshBusy, setAppRefreshBusy] = useState(false);
@@ -238,8 +253,13 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
       // server builds this agent's prompt with it (missing custom value
       // resolves to the standard protocol).
       const customized = employeeCustomizationService.getEmployees(business.id).find(e => e.id === selectedRole);
+      // The chat call gets 60s, not the 15s apiFetch default: the server
+      // allows its AI up to 45s to answer (25s per attempt), so the phone
+      // was aborting with "couldn't reach the server" while the server was
+      // still waiting on the AI. Other calls keep the 15s default.
       const data = await apiFetch<any>('/api/chat', {
         method: 'POST',
+        timeoutMs: 60000,
         body: JSON.stringify({
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
           roleId: selectedRole,
