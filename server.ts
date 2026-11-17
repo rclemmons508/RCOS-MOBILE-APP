@@ -33,6 +33,7 @@ import { checkDestination, envInt, normalizeE164, takeDailyQuota } from './serve
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
 import { applyLivekitEvent, getLiveCall, getLiveCalls } from './server/liveCalls';
+import { notifyCallAnswered, registerPushToken, unregisterPushToken } from './server/pushNotifications';
 import { analyzeDocument, analyzeClientDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
 import { z } from 'zod';
@@ -204,6 +205,7 @@ const livekitWebhookLimiter = createRateLimiter('livekit-webhook', 600, 60000); 
 // The global generalApiLimiter/writeLimiter still apply on top.
 const liveCallsLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false }); // 60 live-call polls / min (Calls screen polls every 6s)
 const listenTokenLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false }); // 10 listen-token mints / min (minting is a billable LiveKit call)
+const pushLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }); // 30 push token registrations / min
 
 // ==================== API ROUTES ====================
 
@@ -1044,7 +1046,12 @@ app.post('/api/livekit/webhook', async (req: Request, res: Response) => {
     const { WebhookReceiver } = await import('livekit-server-sdk');
     const receiver = new WebhookReceiver(LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
     const event = await receiver.receive(rawBody, req.headers.authorization);
-    applyLivekitEvent(event as any);
+    const answered = applyLivekitEvent(event as any);
+    if (answered) {
+      // Fire-and-forget: a push failure must never fail the webhook.
+      // notifyCallAnswered never throws and dedupes by room.
+      void notifyCallAnswered(answered);
+    }
     res.json({ ok: true });
   } catch (err: any) {
     console.warn('[livekit-webhook] rejected:', err?.message || err);
@@ -1107,6 +1114,47 @@ app.post('/api/calls/live/:roomName/listen-token', listenTokenLimiter, requireVe
     console.error('[live-calls] listen token failed:', err?.message || err);
     res.status(500).json({ error: 'Could not join the call to listen in. Please try again.' });
   }
+});
+
+// Push registration: the phone app sends its FCM device token here after
+// sign-in, so the server can alert the owner when the receptionist
+// answers a call (see server/pushNotifications.ts). Tokens live in
+// Firestore (collection `pushTokens`), never in the server file store —
+// they must survive redeploys. Any team member may register a token;
+// only the business owner's tokens ever get a call alert.
+app.post('/api/push/register', pushLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
+  const caller = verifiedCaller(req);
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  const platform = typeof req.body?.platform === 'string' ? req.body.platform.trim() : 'android';
+  if (!caller || !token) {
+    return res.status(400).json({ error: 'A device token is required.' });
+  }
+  const business = resolveBodyBusiness(req, req.body?.businessId);
+  if (!business) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  const ok = await registerPushToken({
+    businessId: business.id,
+    userId: caller.uid || '',
+    email: caller.email || '',
+    token,
+    platform,
+  });
+  if (!ok) {
+    return res.status(503).json({ error: 'Push notifications are not configured on this server yet.' });
+  }
+  res.json({ ok: true });
+});
+
+// Push unregistration: forget this device's token (sign-out). Always
+// answers ok — a missing or already-forgotten token is not an error.
+app.post('/api/push/unregister', pushLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
+  const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+  if (!token) {
+    return res.status(400).json({ error: 'A device token is required.' });
+  }
+  await unregisterPushToken(token);
+  res.json({ ok: true });
 });
 
 // Proactive Agent Inbox ------------------------------------------------------
