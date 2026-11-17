@@ -28,6 +28,8 @@ import { VoiceCallButton } from '../phone/VoiceCallButton';
 import { AiReceptionistDetail, receptionistStatus } from '../phone/AiReceptionistDetail';
 import { sidebarCard } from '../ui/cards';
 import { apiFetch } from '../../lib/api';
+import { fetchLiveCalls, type LiveCall } from '../../lib/liveCalls';
+import { LiveCallsCard } from '../phone/LiveCallsCard';
 import { withBusinessId, filterToBusiness } from '../../lib/businessScope';
 import { firestoreService } from '../../services/firestoreService';
 import { safeHref } from '../../lib/safeOpen';
@@ -117,6 +119,11 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   // Active Live Call state
   const [activeLiveCall, setActiveLiveCall] = useState<PhoneCall | null>(null);
 
+  // Live receptionist calls from the server (LiveKit webhook) — the
+  // real inbound calls the agent is on right now. Starts empty; a
+  // failed poll keeps the last good list, never invented calls.
+  const [liveCalls, setLiveCalls] = useState<LiveCall[]>([]);
+
   // Incoming Ringing Call state
   const [incomingCall, setIncomingCall] = useState<{
     callerName: string;
@@ -180,6 +187,13 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
               return Array.from(map.values());
             });
           }
+        })
+        .catch(() => {});
+
+      // Live receptionist calls (same 6s poll as the call log above).
+      fetchLiveCalls(scopedBusinessId)
+        .then(data => {
+          if (Array.isArray(data)) setLiveCalls(filterToBusiness(data, scopedBusinessId));
         })
         .catch(() => {});
     };
@@ -485,6 +499,10 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                 <h2 className="text-xl font-extrabold text-white tracking-tight">Calls</h2>
                 <p className="text-xs text-zinc-400 mt-0.5">AI-Powered Communication</p>
               </div>
+
+              {/* Live receptionist calls — the real inbound calls the AI
+                  is on right now, with Listen in. Empty state when none. */}
+              <LiveCallsCard calls={liveCalls} businessId={scopedBusinessId} />
 
               {/* Phone status bar — no carrier line is connected; calls run in-app. */}
               <div className={`p-3 ${sidebarCard} flex items-center justify-between gap-2 flex-wrap`}>
