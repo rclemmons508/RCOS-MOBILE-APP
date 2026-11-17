@@ -27,7 +27,7 @@ import { availableDepartmentsFor, normalizeDepartments } from './src/utils/depar
 import { withBehaviorProtocol, withBusinessKnowledge, resolveBusinessKnowledge } from './src/utils/agentBehavior';
 import { AI_EMPLOYEES } from './src/data/employees';
 
-import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails, explicitOperatorBusinessId, operatorBusinessId } from './server/tenancy';
+import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails, canAdoptOwnerlessBusiness, explicitOperatorBusinessId, operatorBusinessId } from './server/tenancy';
 import { sendVonageSms, isVonageConfigured } from './server/vonage';
 import { checkDestination, envInt, normalizeE164, takeDailyQuota } from './server/phone-policy';
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
@@ -1417,7 +1417,11 @@ app.post('/api/businesses', (req: Request, res: Response) => {
   // the same record). Gate ON: owner = verified token. Gate OFF: owner =
   // the same X-User-Email identity the other gate-off owner checks use,
   // and an existing business with no owner identity at all is never
-  // overwritten through this route.
+  // overwritten through this route. Gate ON only: an existing business
+  // with NO owner identity at all may be ADOPTED by a caller naming
+  // their own verified uid as its owner (canAdoptOwnerlessBusiness) —
+  // this repairs ownerless records created by the pre-fix onboarding
+  // flow; a record with any owner identity still 409s.
   let businessId: string;
   let existingBusiness: BusinessAccount | undefined;
   if (data?.id !== undefined && data?.id !== null && data?.id !== '') {
@@ -1437,7 +1441,19 @@ app.post('/api/businesses', (req: Request, res: Response) => {
         );
       }
       if (!callerOwnsIt) {
-        return res.status(409).json({ error: 'A business with this id already exists.' });
+        // Adopt an ownerless record (gate ON only): a business created
+        // with no owner identity at all — see canAdoptOwnerlessBusiness
+        // in server/tenancy.ts — may be claimed by the caller adopting
+        // it as THEMSELVES (their own verified token uid). Nothing is
+        // displaced: the record had no owner. A record with any owner
+        // identity still 409s, exactly as before. When adopted, execution
+        // falls through to the normal upsert below, which stores the
+        // caller's owner linkage from the request body.
+        if (isGateOn() && canAdoptOwnerlessBusiness(existingBusiness, verifiedCaller(req)?.uid, data?.ownerId, data?.members)) {
+          // fall through to the upsert below
+        } else {
+          return res.status(409).json({ error: 'A business with this id already exists.' });
+        }
       }
     }
   } else {

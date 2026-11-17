@@ -1273,6 +1273,28 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
     const businessPayload: BusinessAccount = {
       id: initialBusiness?.id || `biz_${Date.now()}`,
+      // Owner linkage: name the signed-in user as this company's owner
+      // on the record the server receives, so the server copy is never
+      // ownerless. An ownerless server record 403s every gated call and
+      // the client restore cannot repair it (see
+      // canAdoptOwnerlessBusiness in server/tenancy.ts). Only when
+      // someone is actually signed in — when nobody is, these fields
+      // stay unset, exactly as before. Never a fabricated owner.
+      ...(user?.uid ? { ownerId: user.uid } : {}),
+      ...(user?.uid
+        ? {
+            members: [
+              {
+                userId: user.uid,
+                email: user.email || '',
+                name: user.displayName || '',
+                role: 'owner',
+                joinedAt: new Date().toISOString(),
+              },
+            ],
+          }
+        : {}),
+      ...(user?.email ? { contactEmail: user.email } : {}),
       name: finalName,
       industry: detectedIndustryId,
       size: 'Solo Operator / Small Team (1-5)',

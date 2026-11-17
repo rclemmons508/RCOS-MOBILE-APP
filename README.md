@@ -116,5 +116,6 @@ There is no automated test suite in this repo — verification is typecheck + pr
 - **External-number transfer is unproven.** Department transfers today are handoffs between AI personas inside the app, not transfers to a real outside phone number.
 - **Stripe billing is intentionally out of scope for now.** Pricing above is the published plan; checkout and subscription billing are still to come.
 - **New builds start signed out.** If a build opens already logged in, that is a bug, not a feature.
+- **Company setup names the owner on the server record.** Onboarding sends `ownerId`, an owner `members` entry, and `contactEmail` from the signed-in user, so the server copy of a business is never ownerless. Older setups created ownerless server records, which 403'd every gated call and could not be repaired by the client restore (it 409'd). The server now lets a caller *adopt* a record that has no owner identity at all — only as themselves, by their own verified token uid (`canAdoptOwnerlessBusiness` in `server/tenancy.ts`); a record with any owner identity still 409s. After this change ships, opening the app once repairs an ownerless record automatically via the restore-on-foreground.
 
 See `PRODUCTION_CHECKLIST.md` for the full release criteria.
