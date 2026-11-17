@@ -531,6 +531,8 @@ export interface RCOSNotification {
   priority: 'low' | 'medium' | 'high' | 'critical';
   module?: 'Orchestrator' | 'Phone System' | 'Jobs Dispatcher' | 'Tasks Routing' | 'CRM' | 'Core' | string;
   actionTaken?: string;
+  /** Tab to open when the toast is tapped (e.g. a live-call alert opens Calls). Default: the Operations feed. */
+  openTab?: TabType;
 }
 
 // A proactive message from one of the AI agents to the owner. Agents post

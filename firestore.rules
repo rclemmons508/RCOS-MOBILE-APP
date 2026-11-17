@@ -214,5 +214,14 @@ service cloud.firestore {
     match /serverState/{docId} {
       allow read, write: if false;
     }
+
+    // Server-only push tokens (FCM device tokens) — same treatment as
+    // the Gmail token store: the server's Admin SDK writes them, no
+    // client may read or write them through Firestore. The app registers
+    // its token only through the authenticated /api/push/register
+    // endpoint, and the server alerts only the business owner's tokens.
+    match /pushTokens/{docId} {
+      allow read, write: if false;
+    }
   }
 }

@@ -22,3 +22,8 @@ data/*.json
 data/*.json.*
 data/*.bak
 data/*.tmp
+
+# Firebase Android config (google-services.json) — per-project file from
+# the Firebase console; it is placed in android/app/ by hand (see
+# SETUP.md §4) and must never be committed.
+android/app/google-services.json

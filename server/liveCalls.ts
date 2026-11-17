@@ -108,17 +108,21 @@ function sweepStale(now = Date.now()): void {
   }
 }
 
-/** Apply one verified LiveKit webhook event to the live-call registry. */
-export function applyLivekitEvent(ev: LivekitWebhookPayload): void {
+/** Apply one verified LiveKit webhook event to the live-call registry.
+ * Returns the call when this event newly marks it ANSWERED (the
+ * receptionist agent just joined a ringing call), so the caller can alert
+ * the owner — null for every other event, including a duplicate agent
+ * join for a call that is already answered. */
+export function applyLivekitEvent(ev: LivekitWebhookPayload): LiveCall | null {
   const roomName = ev.room?.name || '';
-  if (!roomName) return;
+  if (!roomName) return null;
   const now = Date.now();
   const participant = ev.participant;
   const kind = participant ? Number(participant.kind) : NaN;
 
   switch (ev.event) {
     case 'participant_joined': {
-      if (!participant) return;
+      if (!participant) return null;
       if (kind === PARTICIPANT_KIND_SIP) {
         // An inbound phone call just arrived in this room.
         const startedMs =
@@ -139,16 +143,17 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): void {
       } else if (kind === PARTICIPANT_KIND_AGENT && isReceptionist(participant)) {
         // The receptionist answered.
         const existing = liveCalls.get(roomName);
-        if (existing) {
+        if (existing && existing.status !== 'answered') {
           existing.status = 'answered';
           existing.lastSeenAt = now;
+          return { ...existing };
         }
       }
-      return;
+      return null;
     }
     case 'participant_left':
     case 'participant_connection_aborted': {
-      if (!participant) return;
+      if (!participant) return null;
       if (kind === PARTICIPANT_KIND_SIP) {
         // The caller hung up — the call is over.
         liveCalls.delete(roomName);
@@ -161,15 +166,15 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): void {
           existing.lastSeenAt = now;
         }
       }
-      return;
+      return null;
     }
     case 'room_finished': {
       liveCalls.delete(roomName);
-      return;
+      return null;
     }
     default:
       // room_started, track_*, egress_*, ingress_*: nothing to track.
-      return;
+      return null;
   }
 }
 

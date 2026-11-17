@@ -76,6 +76,7 @@ import {
 import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automation';
 import { haptic } from './utils/haptics';
 import { tabForDeepLink } from './utils/deepLinks';
+import { setupPushNotifications, teardownPushNotifications } from './lib/pushNotifications';
 import { withBusinessId, filterToBusiness, uniqueId } from './lib/businessScope';
 import { getJobCategories } from './lib/jobCategories';
 import { loadRoutingSeen, saveRoutingSeen, ROUTING_SEEN_CAP } from './lib/routingSeen';
@@ -1469,6 +1470,41 @@ export default function App() {
     }
   };
 
+  // Push notifications (native Android only — a no-op on the web): register
+  // this device's FCM token so the server can alert the owner when the
+  // receptionist answers a call. A tap on the alert opens the Calls screen;
+  // an alert that arrives while the app is open becomes an in-app toast
+  // instead (through sendPushNotification, so the call-alert preference
+  // and quiet hours still apply to the toast — the phone still buzzes
+  // from the FCM notification itself). Re-runs when the business changes;
+  // the module attaches its listeners once and re-sends the token only
+  // when it changed.
+  useEffect(() => {
+    const businessId = businessAccount?.id;
+    if (!currentUser || !businessId) return;
+    let cancelled = false;
+    void setupPushNotifications({
+      businessId,
+      onForegroundLiveCall: (call) => {
+        if (cancelled) return;
+        sendPushNotification({
+          type: 'call_event',
+          title: call.title,
+          message: call.body,
+          priority: 'high',
+          module: 'Phone System',
+          openTab: 'phone',
+        });
+      },
+      onLiveCallTap: () => {
+        if (cancelled) return;
+        setActiveTab('phone');
+      },
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, businessAccount?.id]);
+
   // Handlers
 
   // Agent Inbox actions
@@ -2083,6 +2119,9 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    // Forget this device for push first, while the session is still live
+    // — the unregister call needs the Firebase token.
+    await teardownPushNotifications();
     await authService.logout();
     biometricService.setLocked(false);
     // Remove the device's biometric enrollment too, so the login screen never
@@ -2114,6 +2153,7 @@ export default function App() {
       throw new Error('No team to leave.');
     }
     await teamService.leaveTeam(activeBusiness.id, email);
+    await teardownPushNotifications();
     try {
       authService.updateStoredUser(email, { businessId: undefined });
     } catch { /* login record already gone */ }
@@ -2152,6 +2192,12 @@ export default function App() {
           onClose={() => setActivePushToast(null)}
           onView={(notif) => {
             setActivePushToast(null);
+            // A toast that names its tab opens that tab (a live-call
+            // alert opens Calls); everything else keeps its old route.
+            if (notif.openTab) {
+              setActiveTab(notif.openTab);
+              return;
+            }
             // A team-message toast opens Team Chat, not the feed.
             if (notif.type === 'team_message') {
               setActiveTab('team-chat');
