@@ -198,6 +198,8 @@ const teamMessageLimiter = createRateLimiter('team-message', 60, 60000); // 60 t
 const ttsLimiter = createRateLimiter('tts', 30, 60000); // 30 TTS syntheses / min
 const twilioWebhookLimiter = createRateLimiter('twilio-webhook', 600, 60000); // signed carrier webhooks
 const livekitWebhookLimiter = createRateLimiter('livekit-webhook', 600, 60000); // signed LiveKit webhooks (live calls)
+const liveCallsLimiter = createRateLimiter('live-calls', 60, 60000); // 60 live-call polls / min (Calls screen polls every 6s)
+const listenTokenLimiter = createRateLimiter('listen-token', 10, 60000); // 10 listen-token mints / min (minting is a billable LiveKit call)
 const outboundCallLimiter = createRateLimiter('outbound-call', 5, 60000); // 5 outbound dials / min / user (audit #8)
 const telephonyConfigLimiter = createRateLimiter('telephony-config', 10, 60000); // 10 config writes / min (audit #7)
 
@@ -1095,7 +1097,7 @@ app.post('/api/livekit/webhook', async (req: Request, res: Response) => {
 // Live calls right now, for the caller's business (?businessId=<id>, same
 // scoping as the phone call log). Live-only data: the registry lives in
 // memory and resets on a server restart/redeploy.
-app.get('/api/calls/live', requireVerifiedAuth, (req: Request, res: Response) => {
+app.get('/api/calls/live', liveCallsLimiter, requireVerifiedAuth, (req: Request, res: Response) => {
   const scope = resolvePhoneScope(req, res);
   if (!scope) return;
   res.json(getLiveCalls().filter(phoneScopeFilter(scope)));
@@ -1107,7 +1109,7 @@ app.get('/api/calls/live', requireVerifiedAuth, (req: Request, res: Response) =>
 // tried to publish a microphone track. The room is checked fresh with
 // LiveKit first — a call that already ended answers 404, never a token
 // for a dead room.
-app.post('/api/calls/live/:roomName/listen-token', requireVerifiedAuth, async (req: Request, res: Response) => {
+app.post('/api/calls/live/:roomName/listen-token', listenTokenLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
     return res.status(503).json({ error: 'Voice calling is not configured yet (LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET).' });
