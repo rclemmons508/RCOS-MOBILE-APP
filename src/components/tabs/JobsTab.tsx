@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Job, InvoicePrefill } from '../../types';
+import { Client, Job, InvoicePrefill } from '../../types';
 import { 
   Briefcase, 
   MapPin, 
@@ -25,6 +25,7 @@ import {
 import { JobDetailModal } from '../jobs/JobDetailModal';
 import { haptic } from '../../utils/haptics';
 import { getJobCategories } from '../../lib/jobCategories';
+import { buildClientDropdownOptions, JobPrefill } from '../../lib/jobClientLink';
 
 interface JobsTabProps {
   jobs: Job[];
@@ -42,6 +43,13 @@ interface JobsTabProps {
       getJobCategories — never from a hardcoded trade list. */
   industry?: string;
   businessServices?: string[];
+  /** Saved customers, for the customer dropdown on the Dispatch New Job
+      form. Optional — the form works without it, with free-text
+      name/phone only. */
+  clients?: Client[];
+  /** Pre-filled details for the next Dispatch open (e.g. "Start a job"
+      from a customer profile). Read when openCreateSignal fires. */
+  jobPrefill?: JobPrefill | null;
 }
 
 export const JobsTab: React.FC<JobsTabProps> = ({
@@ -53,7 +61,9 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   onCreateInvoice,
   openCreateSignal = 0,
   industry,
-  businessServices
+  businessServices,
+  clients = [],
+  jobPrefill,
 }) => {
   // Job categories come from the business itself (its own services, then
   // its industry preset's default services). The same list feeds the
@@ -70,16 +80,76 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // New Job Form State
+  const [title, setTitle] = useState('');
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  // The saved customer this job is for (Client.id), or null for a
+  // walk-in typed in by hand. Set by the customer dropdown or by a
+  // "Start a job" prefill; cleared the moment the name or phone is
+  // edited by hand, so a job never carries a link to a customer whose
+  // details no longer match.
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [address, setAddress] = useState('');
+  const [category, setCategory] = useState<Job['category']>(jobCategories[0] ?? '');
+  const [priority, setPriority] = useState<Job['priority']>('high');
+  const [estimatedValue, setEstimatedValue] = useState<number>(1850);
+  const [description, setDescription] = useState('');
+
+  // Saved customers for the dropdown, in the order the list is given.
+  const clientOptions = buildClientDropdownOptions(clients);
+
+  // Open the Dispatch form: blank for a walk-in, or pre-filled from a
+  // saved customer (name, phone, link, and the category from the
+  // customer's service when it is one of the business's own services).
+  const openCreateForm = (prefill?: JobPrefill | null) => {
+    setTitle('');
+    setAddress('');
+    setDescription('');
+    setPriority('high');
+    setEstimatedValue(1850);
+    if (prefill) {
+      setClientName(prefill.name);
+      setClientPhone(prefill.phone);
+      setSelectedClientId(prefill.clientId);
+      setCategory(
+        prefill.serviceType && jobCategories.includes(prefill.serviceType)
+          ? prefill.serviceType
+          : (jobCategories[0] ?? ''),
+      );
+    } else {
+      setClientName('');
+      setClientPhone('');
+      setSelectedClientId(null);
+      setCategory(jobCategories[0] ?? '');
+    }
+    setShowCreateModal(true);
+  };
+
   // Quick-action signal from the bottom bar's + button: a new value
   // opens the create form. The ref stops a re-render from reopening
   // it after the user closes it.
   const lastCreateSignalRef = useRef(0);
+  // Identity of the last prefill object this tab consumed. App keeps
+  // its copy until the next start-a-job action, so a later manual
+  // Dispatch (same signal family, same object) must not re-apply a
+  // stale customer's details — only a fresh prefill object is applied.
+  const lastJobPrefillRef = useRef<JobPrefill | null>(null);
   useEffect(() => {
     if (openCreateSignal && openCreateSignal !== lastCreateSignalRef.current) {
       lastCreateSignalRef.current = openCreateSignal;
-      setShowCreateModal(true);
+      if (jobPrefill && jobPrefill !== lastJobPrefillRef.current) {
+        lastJobPrefillRef.current = jobPrefill;
+        openCreateForm(jobPrefill);
+      } else {
+        openCreateForm();
+      }
     }
-  }, [openCreateSignal]);
+    // openCreateForm is stable in practice (it only sets state); the
+    // signal + prefill are the real triggers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCreateSignal, jobPrefill]);
   // Stage 2 assembly (L5): one create at a time — double-click used to
   // create two jobs (random RC-#### ids, no dedupe).
   const [isCreatingJob, setIsCreatingJob] = useState(false);
@@ -127,16 +197,6 @@ export const JobsTab: React.FC<JobsTabProps> = ({
     });
   };
 
-  // New Job Form State
-  const [title, setTitle] = useState('');
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [category, setCategory] = useState<Job['category']>(jobCategories[0] ?? '');
-  const [priority, setPriority] = useState<Job['priority']>('high');
-  const [estimatedValue, setEstimatedValue] = useState<number>(1850);
-  const [description, setDescription] = useState('');
-
   const categories = ['All', ...jobCategories];
   const statuses = ['All', 'urgent', 'dispatched', 'in_progress', 'completed'];
   // In the Completed view the status filter has nothing to narrow — a
@@ -163,6 +223,37 @@ export const JobsTab: React.FC<JobsTabProps> = ({
     ? [...filteredJobs].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
     : filteredJobs;
 
+  // Pick a saved customer: fill in their details, link the job to
+  // them, and default the category to the service they use when it is
+  // one of the business's own. Picking "New customer" keeps whatever
+  // is typed — a walk-in is never blocked.
+  const handleSelectClient = (id: string) => {
+    if (!id) {
+      setSelectedClientId(null);
+      return;
+    }
+    const client = clients.find((c) => c.id === id);
+    if (!client) return;
+    setSelectedClientId(client.id);
+    setClientName(client.name);
+    setClientPhone(client.phone);
+    if (client.serviceType && jobCategories.includes(client.serviceType)) {
+      setCategory(client.serviceType);
+    }
+  };
+
+  // A hand edit to the name or phone means the job is no longer exactly
+  // that saved customer's record — drop the link so it saves as free
+  // text instead of pointing at the wrong customer.
+  const handleClientNameChange = (value: string) => {
+    setClientName(value);
+    if (selectedClientId) setSelectedClientId(null);
+  };
+  const handleClientPhoneChange = (value: string) => {
+    setClientPhone(value);
+    if (selectedClientId) setSelectedClientId(null);
+  };
+
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isCreatingJob) return;
@@ -180,6 +271,10 @@ export const JobsTab: React.FC<JobsTabProps> = ({
       title,
       clientName,
       clientPhone: clientPhone.trim(),
+      // Only present when the job was started for a saved customer —
+      // the key is left off entirely for walk-ins, so nothing
+      // undefined ever reaches the save path.
+      ...(selectedClientId ? { clientId: selectedClientId } : {}),
       address: address.trim(),
       status: priority === 'critical' ? 'urgent' : 'dispatched',
       priority,
@@ -194,6 +289,8 @@ export const JobsTab: React.FC<JobsTabProps> = ({
     setShowCreateModal(false);
     setTitle('');
     setClientName('');
+    setClientPhone('');
+    setSelectedClientId(null);
     setAddress('');
     setDescription('');
     if (onTriggerNotification) {
@@ -274,7 +371,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
           type="button"
           onClick={() => {
             haptic.light();
-            setShowCreateModal(true);
+            openCreateForm();
           }}
           className="min-h-[48px] p-2 sm:px-3 sm:py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black font-extrabold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md shadow-[#22ec72]/20 shrink-0"
         >
@@ -716,6 +813,37 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                 />
               </div>
 
+              {/* Saved customer — pick one to fill in their details and
+                  link the job to them, or leave it on "New customer" and
+                  type the details in by hand. */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
+                  Saved Customer
+                </label>
+                {clientOptions.length > 0 ? (
+                  <select
+                    value={selectedClientId ?? ''}
+                    onChange={(e) => handleSelectClient(e.target.value)}
+                    aria-label="Saved customer"
+                    className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72]"
+                  >
+                    <option value="">New customer — enter details below</option>
+                    {clientOptions.map((o) => (
+                      <option key={o.id} value={o.id}>{o.label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    disabled
+                    value=""
+                    aria-label="No saved customers yet"
+                    className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-zinc-500 focus:outline-none opacity-60"
+                  >
+                    <option value="">No saved customers yet — enter details below</option>
+                  </select>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
@@ -725,7 +853,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     type="text"
                     required
                     value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
+                    onChange={(e) => handleClientNameChange(e.target.value)}
                     placeholder="e.g. Acme Corp"
                     className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                   />
@@ -737,12 +865,19 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                   <input
                     type="text"
                     value={clientPhone}
-                    onChange={(e) => setClientPhone(e.target.value)}
+                    onChange={(e) => handleClientPhoneChange(e.target.value)}
                     placeholder="+1 (555) 000-0000"
                     className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72] font-mono"
                   />
                 </div>
               </div>
+
+              {selectedClientId ? (
+                <p className="flex items-center gap-1.5 text-xs text-[#22ec72]">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>Linked to a saved customer — editing the name or phone unlinks the job.</span>
+                </p>
+              ) : null}
 
               <div>
                 <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">

@@ -246,6 +246,13 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({
                   <div className="text-sm font-bold text-white flex items-center gap-1.5">
                     <User className="w-4 h-4 text-purple-400" />
                     <span>{clientName}</span>
+                    {/* Linked to a saved customer record (Call-to-CRM
+                        Stage 3). Walk-in and older jobs have no link. */}
+                    {job.clientId ? (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#22ec72]/10 text-[#22ec72] border border-[#22ec72]/25 font-bold whitespace-nowrap">
+                        Saved customer
+                      </span>
+                    ) : null}
                   </div>
                   <div className="text-zinc-400 flex items-center gap-1 text-xs">
                     <Phone className="w-3 h-3 text-zinc-500" />
