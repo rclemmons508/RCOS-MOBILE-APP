@@ -223,5 +223,15 @@ service cloud.firestore {
     match /pushTokens/{docId} {
       allow read, write: if false;
     }
+
+    // Server-only assistant documents (files uploaded to the Assistant
+    // page) — same treatment: the server's Admin SDK stores them, no
+    // client may read or write them through Firestore. The app reaches
+    // them only through the authenticated /api/assistant/documents
+    // endpoints, and /api/chat only reads a document for a business the
+    // caller is a member of.
+    match /assistantDocuments/{docId} {
+      allow read, write: if false;
+    }
   }
 }

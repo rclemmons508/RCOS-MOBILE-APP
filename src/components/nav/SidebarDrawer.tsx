@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
+  Bot,
   ClipboardList,
   Users,
   Zap,
@@ -36,7 +37,7 @@ interface SidebarDrawerProps {
 
 /**
  * Sidebar drawer from the sidebar-design reference: RC Solutions logo,
- * Dashboard / Operations / Customers / Automation / Calls / Schedule /
+ * Dashboard / Assistant / Operations / Customers / Automation / Calls / Schedule /
  * Invoices / Reports / Settings, and the signed-in user at the bottom.
  *
  * Every item goes to a real screen — the mapping is the Stage 1 mapping
@@ -80,6 +81,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   // More (no drawer row of their own — the drawer stays unhighlighted).
   const activeItem: string | null =
     activeTab === 'dashboard' ? 'dashboard'
+    : activeTab === 'assistant' ? 'assistant'
     : activeTab === 'inbox' || activeTab === 'team-chat' || activeTab === 'gmail' || activeTab === 'requests' ? 'operations'
     : activeTab === 'clients' ? 'customers'
     : activeTab === 'phone' ? 'calls'
@@ -91,6 +93,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 
   const items: { id: string; label: string; icon: any; run: () => void }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, run: () => go('dashboard') },
+    { id: 'assistant', label: 'Assistant', icon: Bot, run: () => go('assistant') },
     { id: 'operations', label: 'Operations', icon: ClipboardList, run: () => go('inbox') },
     { id: 'customers', label: 'Customers', icon: Users, run: () => go('clients') },
     { id: 'automation', label: 'Automation', icon: Zap, run: () => goSettings('agents') },
