@@ -54,6 +54,9 @@ interface ClientsTabProps {
   /** Pre-filled details for the next Add Client open (e.g. from a call
       on the Calls screen). Read when openAddSignal fires. */
   clientPrefill?: ClientPrefill | null;
+  /** Start a job for this customer, from their profile. Optional —
+      the button is not shown without it. */
+  onStartJob?: (client: Client) => void;
 }
 
 type Filter = 'all' | 'leads' | 'active';
@@ -80,6 +83,7 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
   industry,
   businessServices,
   clientPrefill,
+  onStartJob,
 }) => {
   const [profileClientId, setProfileClientId] = useState<string | null>(null);
   const [profileTab, setProfileTab] = useState<ProfileTab>('overview');
@@ -164,11 +168,14 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
       .map((part) => part[0]?.toUpperCase() || '')
       .join('') || '?';
 
-  // Jobs are matched by company, contact name, or phone — the app stores
-  // the client name on a job as free text, so all three are checked. The
-  // app keeps jobs newest-first (new jobs are added to the front of the
+  // Jobs are matched by their stored customer link first — a job
+  // started from the dropdown or the profile carries the customer's
+  // id — then by company, contact name, or phone, the way older jobs
+  // (free-text client name, no link) have always matched. The app
+  // keeps jobs newest-first (new jobs are added to the front of the
   // list), so the first match is the latest job.
   const matchesClient = (job: Job, client: Client) =>
+    job.clientId === client.id ||
     (client.company && job.clientName === client.company) ||
     job.clientName === client.name ||
     (client.phone && job.clientPhone === client.phone);
@@ -537,6 +544,22 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
               )}
             </div>
           )}
+
+          {/* Start a job — opens the Dispatch form pre-filled with
+              this customer and linked to them. */}
+          {onStartJob ? (
+            <button
+              type="button"
+              onClick={() => {
+                haptic.medium();
+                onStartJob(profileClient);
+              }}
+              className="min-h-[48px] w-full py-3 rounded-2xl bg-[#22ec72] text-black font-extrabold text-sm transition cursor-pointer shadow-md shadow-[#22ec72]/20 hover:brightness-110 flex items-center justify-center gap-2"
+            >
+              <Briefcase className="w-4 h-4" />
+              <span>Start a job</span>
+            </button>
+          ) : null}
 
           {/* Convert to Customer — leads only, never shown otherwise. */}
           {profileClient.status === 'lead' && (

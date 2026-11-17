@@ -737,6 +737,15 @@ export interface Job {
   title: string;
   clientName: string;
   clientPhone: string;
+  /**
+   * The saved customer this job is for (Client.id), set when the job is
+   * started from the customer dropdown or from a customer profile.
+   * Walk-in jobs — typed in by hand for a customer who is not saved
+   * yet — have none. Older jobs have none. Persisted with the rest of
+   * the job record (saveJob stores the whole object), and read back
+   * through the same normalizeDoc path.
+   */
+  clientId?: string;
   address: string;
   status: 'unassigned' | 'dispatched' | 'in_progress' | 'completed' | 'urgent';
   priority: 'low' | 'medium' | 'high' | 'critical';

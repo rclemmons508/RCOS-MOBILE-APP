@@ -80,6 +80,7 @@ import { setupPushNotifications, teardownPushNotifications } from './lib/pushNot
 import { withBusinessId, filterToBusiness, uniqueId } from './lib/businessScope';
 import { getJobCategories } from './lib/jobCategories';
 import { buildClientPrefillFromCall, type CallerPrefillSource, type ClientPrefill } from './lib/callToClient';
+import { buildJobPrefillFromClient, type JobPrefill } from './lib/jobClientLink';
 import { loadRoutingSeen, saveRoutingSeen, ROUTING_SEEN_CAP } from './lib/routingSeen';
 import {
   detectMainAiAlerts,
@@ -189,6 +190,9 @@ export default function App() {
   // Call-to-CRM prefill: set when the Calls screen asks to add a caller
   // as a customer, read by the Clients tab when the open signal fires.
   const [clientPrefill, setClientPrefill] = useState<ClientPrefill | null>(null);
+  // Call-to-CRM Stage 3 prefill: set when a customer profile asks to
+  // start a job, read by the Jobs tab when the create signal fires.
+  const [jobPrefill, setJobPrefill] = useState<JobPrefill | null>(null);
   // Receptionist signal: bumped when the Dashboard's AI Receptionist
   // card is tapped, so the Calls tab opens on the detail screen.
   const [receptionistSignal, setReceptionistSignal] = useState(0);
@@ -1701,6 +1705,19 @@ export default function App() {
     setActiveTab('clients');
   };
 
+  // Call-to-CRM Stage 3: start a job for a saved customer from their
+  // profile. Builds the prefill from the customer record (name, phone,
+  // id, and the service when it is one of the business's own), then
+  // opens the Jobs tab on the Dispatch form. Saving goes through the
+  // normal handleAddJob path (local list + Firestore), so the job is a
+  // real record linked to the customer by clientId.
+  const handleStartJobForClient = (client: Client) => {
+    const serviceOptions = getJobCategories(activeBusiness.industry, activeBusiness.services);
+    setJobPrefill(buildJobPrefillFromClient(client, serviceOptions));
+    setJobCreateSignal((s) => s + 1);
+    setActiveTab('jobs');
+  };
+
   const handleEditClient = (updatedClient: Client) => {
     setClients((prev) => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
     if (businessAccount?.id) {
@@ -2417,10 +2434,12 @@ export default function App() {
           {activeTab === 'jobs' && (
             <JobsTab
               jobs={jobs}
+              clients={clients}
               industry={activeBusiness.industry}
               businessServices={activeBusiness.services}
               onAddJob={handleAddJob}
               openCreateSignal={jobCreateSignal}
+              jobPrefill={jobPrefill}
               onUpdateJob={handleUpdateJob}
               onDeleteJob={handleDeleteJob}
               onCreateInvoice={handleCreateInvoiceFromJob}
@@ -2462,6 +2481,7 @@ export default function App() {
               industry={activeBusiness.industry}
               businessServices={activeBusiness.services}
               clientPrefill={clientPrefill}
+              onStartJob={handleStartJobForClient}
             />
           )}
 
