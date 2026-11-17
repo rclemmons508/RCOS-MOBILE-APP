@@ -19,24 +19,12 @@ Optional server overrides can be defined in `.env`:
 
 ---
 
-## 2. Authentication & Demo Mode Policy
-
-- **Production Mode (`VITE_ENABLE_DEMO_AUTH=false`):**
-  - Form input fields default to empty strings requiring explicit operator credentials.
-  - Silent Google OAuth fallbacks are disabled. If Google authentication is closed or cancelled by the user, a descriptive error message is presented.
-  - Direct backdoor bypass links are disabled.
-- **Development Demo Mode (`VITE_ENABLE_DEMO_AUTH=true`):**
-  - Displays a visible top security banner: `DEMO MODE - Development Data Only`.
-  - Enables pre-seeded development shortcuts for offline UI testing without internet access.
-
----
-
 ## 3. Running the Application
 
 ### Web Development Server
 ```bash
 # Install dependencies
-bun install   # or npm install
+npm install
 
 # Start development server on port 3000
 npm run dev

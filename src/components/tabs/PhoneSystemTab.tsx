@@ -3,7 +3,6 @@ import { PhoneCall, ChatMessage, User, VoicemailRecord, BusinessAccount, Job, Cu
 import {
   Phone,
   PhoneCall as PhoneIcon,
-  PhoneIncoming,
   PhoneMissed,
   PhoneOutgoing,
   AudioWaveform,
@@ -20,8 +19,6 @@ import {
   Play
 } from 'lucide-react';
 import { MessagesTab } from './MessagesTab';
-import { LiveCallConsole } from '../phone/LiveCallConsole';
-import { IncomingCallModal } from '../phone/IncomingCallModal';
 import { VoicemailsView } from '../phone/VoicemailsView';
 import { RealPhoneSetupModal } from '../phone/RealPhoneSetupModal';
 import { VoiceCallButton } from '../phone/VoiceCallButton';
@@ -36,12 +33,9 @@ import { safeHref } from '../../lib/safeOpen';
 
 interface PhoneSystemTabProps {
   calls: PhoneCall[];
-  onSimulateCall: () => void;
   messages: ChatMessage[];
   currentUser: User | null;
   businessId: string;
-  /** Transfer departments this business offers — passed to the call console's transfer picker. */
-  availableDepartments?: string[];
   onSendMessage: (text: string) => void;
   onNavigateTab?: (tab: any) => void;
   onTriggerNotification?: (title: string, message: string) => void;
@@ -72,11 +66,9 @@ interface PhoneSystemTabProps {
 
 export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   calls: propCalls,
-  onSimulateCall,
   messages,
   currentUser,
   businessId,
-  availableDepartments,
   onSendMessage,
   onNavigateTab,
   onTriggerNotification,
@@ -112,41 +104,16 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     }
   }, [openReceptionistSignal]);
 
-  // Real Phone System state (no carrier line connected — Twilio parked)
-  const [carrierLive, setCarrierLive] = useState(false);
+  // Real Phone System state (no carrier line connected — calls run in-app).
   const [isPbxModalOpen, setIsPbxModalOpen] = useState(false);
-
-  // Active Live Call state
-  const [activeLiveCall, setActiveLiveCall] = useState<PhoneCall | null>(null);
 
   // Live receptionist calls from the server (LiveKit webhook) — the
   // real inbound calls the agent is on right now. Starts empty; a
   // failed poll keeps the last good list, never invented calls.
   const [liveCalls, setLiveCalls] = useState<LiveCall[]>([]);
 
-  // Incoming Ringing Call state
-  const [incomingCall, setIncomingCall] = useState<{
-    callerName: string;
-    callerNumber: string;
-    callerTopic: string;
-    initialSpeech?: string;
-  } | null>(null);
-
-  // Manual simulator form fields — start empty. The old defaults were
-  // a fake caller (a 555 number shown as a real business), and the
-  // ring handler fell back to one when the fields were blank.
-  const [customName, setCustomName] = useState('');
-  const [customPhone, setCustomPhone] = useState('');
-  const [customTopic, setCustomTopic] = useState('');
-  const [customSpeech, setCustomSpeech] = useState('');
-
   // Load the saved answering mode from the business record on mount.
-  // (The old code read it from the parked Twilio telephony config, which
-  // 503s — so the saved mode was never loaded.)
   useEffect(() => {
-    apiFetch<{ telephonyProvider?: string }>('/api/firebase-config')
-      .then(cfg => { if (cfg?.telephonyProvider === 'twilio') setCarrierLive(true); })
-      .catch(() => {});
     const effectiveBusinessId = businessId || currentUser?.businessId;
     if (!effectiveBusinessId) return;
     apiFetch<BusinessAccount>(`/api/business/${effectiveBusinessId}`)
@@ -210,19 +177,8 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     }
   }, [propCalls]);
 
-  const defaultUser: User = currentUser || {
-    id: 'usr-guest',
-    fullName: 'Operations Operator',
-    email: 'rcsoulutions@gmail.com',
-    role: 'Operations Lead',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80',
-    organization: 'RC Solutions',
-    authenticated: true
-  };
-
   // Save the answering mode to the business record — the real store for
-  // this preference now (the parked Twilio telephony config never saved
-  // it). Every tap saves and confirms; a failed save reverts the toggle
+  // this preference now. Every tap saves and confirms; a failed save reverts the toggle
   // so the UI never claims a mode that isn't stored.
   const handleSetAnsweringMode = async (mode: 'ai' | 'manual') => {
     if (isSavingMode || mode === answeringMode) return;
@@ -258,106 +214,6 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
     }
   };
 
-  // Trigger Inbound Call — blank fields stay blank labels, never a
-  // fake caller. Answering a call closes the receptionist detail screen
-  // so the live call console (rendered in the phone view) is visible.
-  const handleTriggerIncomingCall = (
-    name = customName,
-    phone = customPhone,
-    topic = customTopic,
-    speech = customSpeech
-  ) => {
-    setIncomingCall({
-      callerName: name || 'Unknown Caller',
-      callerNumber: phone || 'Unknown number',
-      callerTopic: topic || 'General Inquiry',
-      initialSpeech: speech
-    });
-  };
-
-  // Answer as AI Receptionist
-  const handleAnswerAsAI = () => {
-    if (!incomingCall) return;
-    const newCall: PhoneCall = {
-      id: `call_${Date.now()}`,
-      callerName: incomingCall.callerName,
-      callerNumber: incomingCall.callerNumber,
-      type: 'inbound',
-      status: 'active',
-      timestamp: 'Just now',
-      duration: '0m 01s',
-      answeredBy: 'ai_receptionist',
-      summary: `Inbound inquiry regarding ${incomingCall.callerTopic}. Handled by Voice Receptionist Kore.`,
-      transcript: [
-        {
-          speaker: 'RCOS AI',
-          text: `Thank you for calling RC Solutions! My name is Kore, your voice concierge. How may I assist you or direct your call today?`,
-          time: '00:01'
-        },
-        ...(incomingCall.initialSpeech ? [{
-          speaker: 'Caller',
-          text: incomingCall.initialSpeech,
-          time: '00:04'
-        }] : [])
-      ]
-    };
-
-    setIncomingCall(null);
-    setShowReceptionist(false);
-    setActiveLiveCall(newCall);
-  };
-
-  // Answer as Human Operator
-  const handleAnswerAsHuman = () => {
-    if (!incomingCall) return;
-    const newCall: PhoneCall = {
-      id: `call_${Date.now()}`,
-      callerName: incomingCall.callerName,
-      callerNumber: incomingCall.callerNumber,
-      type: 'inbound',
-      status: 'active',
-      timestamp: 'Just now',
-      duration: '0m 01s',
-      answeredBy: 'human_operator',
-      summary: `Inbound inquiry regarding ${incomingCall.callerTopic}. Answered directly by live human operator.`,
-      transcript: [
-        {
-          speaker: 'Human Operator',
-          text: `Hello, this is ${defaultUser.fullName} at RC Solutions. How can I assist you today?`,
-          time: '00:01'
-        },
-        ...(incomingCall.initialSpeech ? [{
-          speaker: 'Caller',
-          text: incomingCall.initialSpeech,
-          time: '00:04'
-        }] : [])
-      ]
-    };
-
-    setIncomingCall(null);
-    setShowReceptionist(false);
-    setActiveLiveCall(newCall);
-  };
-
-  // End Call Callback
-  const handleEndLiveCall = (finalCall: PhoneCall) => {
-    setActiveLiveCall(null);
-    setCallsList(prev => [finalCall, ...prev]);
-
-    // Persist to server
-    apiFetch(withBusinessId('/api/phone/calls', scopedBusinessId), {
-      method: 'POST',
-      body: JSON.stringify(finalCall)
-    }).catch(() => {});
-
-    // Sync voicemails
-    apiFetch<VoicemailRecord[]>(withBusinessId('/api/phone/voicemails', scopedBusinessId))
-      .then(data => {
-        if (Array.isArray(data)) setVoicemails(filterToBusiness(data, scopedBusinessId));
-      })
-      .catch(() => {});
-  };
-
   const handleDeleteVoicemail = async (id: string) => {
     try {
       await apiFetch(withBusinessId(`/api/phone/voicemails/${encodeURIComponent(id)}`, scopedBusinessId), { method: 'DELETE' });
@@ -370,7 +226,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   };
 
   const unreviewedVoicemailCount = voicemails.filter(v => !v.reviewed).length;
-  // No carrier line is connected (Twilio parked), so no carrier number is shown.
+  // No carrier line is connected, so no carrier number is shown.
 
   // Receptionist detail stats — same honesty rules as the Dashboard
   // tiles and the WeeklyCard: a timestamp that does not parse simply
@@ -415,16 +271,6 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
           callsToday={callsToday}
           leadsCaptured={leadsCaptured}
           appointmentsBooked={appointmentsBooked}
-          testName={customName}
-          onTestNameChange={setCustomName}
-          testPhone={customPhone}
-          onTestPhoneChange={setCustomPhone}
-          testTopic={customTopic}
-          onTestTopicChange={setCustomTopic}
-          testSpeech={customSpeech}
-          onTestSpeechChange={setCustomSpeech}
-          onRingTest={() => handleTriggerIncomingCall()}
-          onDialRealPhone={() => setIsPbxModalOpen(true)}
           onClose={() => setShowReceptionist(false)}
           onOpenCallFlow={() => onNavigateTab?.('team')}
           onOpenKnowledgeBase={() => onOpenSettingsSection?.('user')}
@@ -483,18 +329,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
 
       {activeSubTab === 'phone' && (
         <div className="space-y-4 pb-12 px-3 sm:px-4 pt-3 max-w-full overflow-x-hidden">
-          {/* Active Live Call Console (If In Call) */}
-          {activeLiveCall ? (
-            <LiveCallConsole
-              activeCall={activeLiveCall}
-              onEndCall={handleEndLiveCall}
-              onUpdateCall={(updated) => setActiveLiveCall(updated)}
-              onTriggerNotification={onTriggerNotification}
-              availableDepartmentIds={availableDepartments}
-            />
-          ) : (
-            <>
-              {/* Header — as in the reference. */}
+          {/* Header — as in the reference. */}
               <div className="px-1">
                 <h2 className="text-xl font-extrabold text-white tracking-tight">Calls</h2>
                 <p className="text-xs text-zinc-400 mt-0.5">AI-Powered Communication</p>
@@ -523,7 +358,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                   </div>
                 </div>
 
-                {carrierLive && (
+                {/* Phone setup — the real Vonage / LiveKit setup modal. */}
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
@@ -531,21 +366,12 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                     className="min-h-[48px] px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono font-bold text-white flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <Settings className="w-3.5 h-3.5 text-[#22ec72]" />
-                    <span>Carrier PBX Settings</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsPbxModalOpen(true)}
-                    className="min-h-[48px] px-3 py-1.5 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-[#22ec72]/20"
-                  >
-                    <PhoneIcon className="w-3.5 h-3.5" />
-                    <span>Call Real Phone</span>
+                    <span>Phone setup</span>
                   </button>
                 </div>
-                )}
               </div>
 
-              {/* Free in-app voice call (WebRTC) — used while the Twilio carrier is parked */}
+              {/* Free in-app voice call (WebRTC) */}
               <VoiceCallButton />
 
               {/* Answering mode — the real toggle, kept from the old
@@ -794,8 +620,6 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                   <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
                 </div>
               </button>
-            </>
-          )}
         </div>
       )}
 
@@ -813,39 +637,12 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
         <div className="h-[calc(100dvh-130px)] flex flex-col overflow-hidden relative">
           <MessagesTab
             messages={messages}
-            currentUser={defaultUser}
+            currentUser={currentUser}
             onSendMessage={onSendMessage}
           />
         </div>
       )}
         </>
-      )}
-
-      {/* Incoming Call Ringing Overlay */}
-      {incomingCall && (
-        <IncomingCallModal
-          isOpen={!!incomingCall}
-          callerName={incomingCall.callerName}
-          callerNumber={incomingCall.callerNumber}
-          callerTopic={incomingCall.callerTopic}
-          autoAnswerMode={answeringMode}
-          onAnswerAI={handleAnswerAsAI}
-          onAnswerHuman={handleAnswerAsHuman}
-          onDecline={() => {
-            const missedCall: PhoneCall = {
-              id: `call_${Date.now()}`,
-              callerName: incomingCall.callerName,
-              callerNumber: incomingCall.callerNumber,
-              type: 'missed',
-              status: 'voicemail',
-              timestamp: 'Just now',
-              duration: '0m 00s',
-              summary: `Missed call from ${incomingCall.callerName}. Caller declined or routed to voicemail.`
-            };
-            setCallsList(prev => [missedCall, ...prev]);
-            setIncomingCall(null);
-          }}
-        />
       )}
 
       {/* Phone Setup Modal (Vonage SMS + LiveKit voice) */}

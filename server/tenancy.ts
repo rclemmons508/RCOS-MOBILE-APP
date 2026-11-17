@@ -2,7 +2,7 @@ import type { BusinessAccount, BusinessMember } from '../src/types';
 import { db } from './db';
 
 // The operator's own business — where website demo leads (and, when no
-// TWILIO_BUSINESS_ID is set, phone quotes) belong (audit #11).
+// OPERATOR_BUSINESS_ID is set, phone quote approvals) belong (audit #11).
 // OPERATOR_BUSINESS_ID when set AND that business exists; otherwise the
 // only business on a single-tenant server; otherwise undefined (never
 // "whichever business happens to be first").

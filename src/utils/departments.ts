@@ -125,12 +125,3 @@ export function availableDepartmentsFor(business: { industry?: unknown; services
   if (!hasFieldWork(business)) return ['sales', 'support', 'billing', 'emergency'];
   return ['sales', 'support', 'dispatch', 'billing', 'emergency'];
 }
-
-/** Maps the transfer-picker entries to transfer departments (the picker calls support "Customer Accounts & Support"). */
-export const MODAL_DEPARTMENT_TO_TRANSFER: Record<string, TransferDepartment> = {
-  'dept-dispatch': 'dispatch',
-  'dept-billing': 'billing',
-  'dept-emergency': 'emergency',
-  'dept-sales': 'sales',
-  'dept-accounts': 'support',
-};

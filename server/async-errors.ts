@@ -8,8 +8,8 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 // installAsyncErrorRouting() patches Express 4's internal Layer so that a
 // handler returning a rejected promise is forwarded to next(err) — the same
 // path a synchronous throw already takes. It is installed once, before any
-// route is registered, and covers every app/router (including the Twilio and
-// Gmail OAuth routers) without touching each handler. The final JSON error
+// route is registered, and covers every app/router (including the Gmail
+// OAuth and LiveKit webhook routers) without touching each handler. The final JSON error
 // middleware in server.ts then answers 500 instead of the process dying.
 //
 // asyncHandler() is the explicit per-route wrapper for any code that wants

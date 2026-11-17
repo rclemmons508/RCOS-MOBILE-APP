@@ -27,7 +27,7 @@ interface VoiceTokenResponse {
 
 /**
  * "Call us" button — free in-app voice call to the AI receptionist over WebRTC.
- * Used for testing/review while the Twilio carrier is parked. No phone number needed.
+ * No phone number needed.
  */
 export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId }) => {
   const [state, setState] = useState<CallState>('idle');

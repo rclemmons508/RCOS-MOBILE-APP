@@ -14,21 +14,24 @@ interface GmailComposeModalProps {
   threadId?: string;
 }
 
+// Blank starter templates — no names, amounts, or job details baked in.
+// Each one is a frame with {placeholders} for the sender to fill in from
+// the real job or customer before sending.
 const TEMPLATES = [
   {
     name: 'Emergency Dispatch',
     subject: 'URGENT: Emergency Field Technician Dispatched',
-    body: `Hello,\n\nOur senior field technician has been dispatched to your facility. Estimated arrival time is within 45 minutes.\n\nTechnician: Dave Vance (Lead Field Technician)\nVehicle: Unit 04\nDirect Dispatch Radio: (555) 019-4820\n\nPlease ensure mechanical room access is unlocked.\n\nBest regards,\nRC Solutions Operations`,
+    body: `Hello {customerName},\n\nOur field technician has been dispatched to your facility.\n\nTechnician: {technician}\nEstimated arrival: {eta}\n\nPlease ensure access is unlocked.\n\nBest regards,\n{businessName}`,
   },
   {
     name: 'Quote Proposal',
-    subject: 'Estimate: Commercial HVAC Overhaul & Service Agreement',
-    body: `Hello,\n\nThank you for reaching out to RC Solutions. Following our on-site diagnostic, we have prepared a comprehensive service and overhaul proposal.\n\nScope of Work:\n- High-side pressure manifold leak inspection\n- 40A Contactor replacement and wire harness test\n- R-410A system balance and thermal efficiency validation\n\nTotal Estimated Amount: $1,850.00\nValid for: 30 days\n\nPlease reply to this email to confirm schedule authorization.\n\nBest regards,\nRC Solutions Field Engineering`,
+    subject: 'Estimate: {jobTitle}',
+    body: `Hello {customerName},\n\nThank you for reaching out to {businessName}. Following our on-site visit, we have prepared a proposal.\n\nScope of work:\n{scope}\n\nTotal estimated amount: {amount}\nValid for: 30 days\n\nPlease reply to this email to confirm.\n\nBest regards,\n{businessName}`,
   },
   {
     name: 'Job Completed',
-    subject: 'Work Order Completed: Facility System Sign-Off',
-    body: `Hello,\n\nThis notification confirms that the scheduled service on your cooling plant has been completed and verified to exceed nominal operating tolerances.\n\n- All safety relief valves certified\n- Delta T across evaporator coils: 19.4°F (Optimal)\n- 100% digital telemetry handshake established\n\nFull service sign-off documentation is archived in the RCOS system.\n\nBest regards,\nRC Solutions Field Team`,
+    subject: 'Work Order Completed: {jobTitle}',
+    body: `Hello {customerName},\n\nThis confirms the scheduled service at {address} has been completed.\n\nWork performed:\n{workSummary}\n\nThank you for choosing {businessName}.\n\nBest regards,\n{businessName}`,
   },
 ];
 

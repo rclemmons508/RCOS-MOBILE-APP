@@ -406,7 +406,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors placeholder:text-zinc-600"
-                  placeholder="e.g. Sarah Jenkins"
+                  placeholder="e.g. Jane Smith"
                 />
               </div>
             </div>
@@ -423,7 +423,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors placeholder:text-zinc-600"
-                  placeholder="e.g. Apex Tower Facilities"
+                  placeholder="e.g. Acme Facilities"
                 />
               </div>
             </div>

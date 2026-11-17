@@ -9,7 +9,7 @@ import type { ActionRecord, CustomerRequest, Job, PhoneCall, TabType } from '../
  *  1. new_request    — a customer request arrives (status pending).
  *  2. quote_waiting  — a quote sits in the review queue (awaiting approval).
  *  3. invoice_unpaid — an approved invoice is still unpaid.
- *  4. missed_call    — a real missed call (simulator/test calls never fire).
+ *  4. missed_call    — a real missed call.
  *  5. job_stalled    — a job sits in progress/dispatched for 48+ hours.
  *
  * Dedupe: one alert per triggering record, enforced two ways — the
@@ -125,8 +125,8 @@ export function detectMainAiAlerts(input: {
     });
   }
 
-  // 4. Real missed call only — simulator/test calls never fire, matching
-  // the missed-call follow-up rule's real-call check.
+  // 4. Real missed call only, matching the missed-call follow-up
+  // rule's real-call check.
   for (const c of input.calls) {
     if (c.isRealPstnCall !== true) continue;
     if (c.type !== 'missed' && c.status !== 'missed') continue;

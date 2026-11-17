@@ -952,8 +952,8 @@ export default function App() {
   // When one fires, the agent posts a drafted text to the Agent Inbox with
   // Send now (opens the phone's SMS app pre-filled) / Edit / Dismiss.
   // Gates: master switch + per-rule on/off + pause + quiet hours (queued
-  // until morning). Simulator/test calls never fire the missed-call rule —
-  // it only trusts real carrier calls from the server.
+  // until morning). The missed-call rule only trusts real carrier calls
+  // from the server.
   const pollFollowups = useCallback(async () => {
     const bizId = businessAccount?.id;
     if (!bizId) return;
@@ -1085,7 +1085,6 @@ export default function App() {
     }
 
     // 3. Missed call: real carrier calls only (server list, isRealPstnCall).
-    // Simulator/test calls never reach the server, so they never fire this.
     let serverCalls: any[] | null = null;
     try {
       serverCalls = await apiFetch<any[]>(withBusinessId('/api/phone/calls', bizId));
@@ -1823,44 +1822,6 @@ export default function App() {
     return true;
   };
 
-  const handleSimulateInboundCall = () => {
-    // Demo data injection: development builds only. Wrapped in a
-    // compile-time DEV check so the demo strings are dropped from
-    // production bundles entirely.
-    if (!import.meta.env.DEV) {
-      console.warn('[demo] disabled');
-      return;
-    }
-    {
-      const newCall: PhoneCall = {
-        id: 'call-' + Date.now(),
-        callerName: 'Alex Vance (Apex Corporate)',
-        callerNumber: '+1 (555) 492-0012',
-        type: 'inbound',
-        status: 'completed',
-        timestamp: 'Just now',
-        duration: '1m 20s',
-        summary: 'Inbound emergency call. RCOS Voice AI generated priority job ticket & SMS dispatch.',
-        sentiment: 'urgent',
-        actionRequired: 'Auto-Dispatched Field Technician',
-      };
-      setCalls((prev) => [newCall, ...prev]);
-      setMetrics((prev) => ({
-        ...prev,
-        callsHandled: prev.callsHandled + 1,
-      }));
-      sendPushNotification({
-        type: 'call_event',
-        title: 'Inbound AI Call Processed',
-        message: 'Apex Corporate call answered by Voice AI Agent. Priority ticket logged.',
-        priority: 'high',
-        module: 'Phone System',
-        actionTaken: 'Transcript Saved',
-      });
-      setActiveTab('phone');
-    }
-  };
-
   const handleTriggerTestPush = () => {
     sendPushNotification({
       type: 'performance_anomaly',
@@ -2294,11 +2255,9 @@ export default function App() {
               serverOnline={serverOnline}
               openReceptionistSignal={receptionistSignal}
               onOpenSettingsSection={openSettings}
-              onSimulateCall={handleSimulateInboundCall}
               messages={messages}
               currentUser={currentUser}
               businessId={businessAccount?.id ?? ''}
-              availableDepartments={activeBusiness.availableDepartments}
               onSendMessage={(text) => {
                 const newMessage = {
                   id: uniqueId('msg-'),

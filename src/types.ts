@@ -341,8 +341,7 @@ export interface BusinessAccount {
   /**
    * Who answers incoming calls inside the app: 'ai' = the AI Receptionist
    * answers automatically after a short ring; 'manual' = calls ring for a
-   * human to pick up. Stored on the business record (not in the parked
-   * Twilio telephony config). Defaults to 'ai' when unset.
+   * human to pick up. Stored on the business record. Defaults to 'ai' when unset.
    */
   answeringMode?: 'ai' | 'manual';
   dollarThreshold: number;
@@ -708,39 +707,6 @@ export interface VoicemailRecord {
   reviewed: boolean;
 }
 
-export interface DepartmentTransfer {
-  id: string;
-  name: string;
-  extension: string;
-  leadName: string;
-  description: string;
-  status: 'available' | 'busy' | 'on_call';
-  realPhoneNumber?: string;
-}
-
-export interface TelephonyConfig {
-  provider: 'twilio' | 'custom_sip';
-  accountSidConfigured: boolean;
-  authTokenConfigured: boolean;
-  phoneNumber: string;
-  webhookUrl: string;
-  answeringStrategy: 'ai_first' | 'human_first' | 'simultaneous_ring';
-  ringDurationSeconds: number;
-  operatorForwardingPhone: string;
-  departmentForwardingNumbers: {
-    dispatch: string;
-    billing: string;
-    emergency: string;
-    sales: string;
-    support: string;
-  };
-  greetingMessage: string;
-  ttsVoice: string;
-  recordingEnabled: boolean;
-  transcriptionEnabled: boolean;
-  liveCallsActive: number;
-}
-
 export interface PhoneCall {
   id: string;
   callerName: string;
@@ -758,7 +724,6 @@ export interface PhoneCall {
   department?: string;
   voicemailAudioBase64?: string;
   actionsTriggered?: CallActionTriggered[];
-  twilioCallSid?: string;
   recordingUrl?: string;
   forwardedToNumber?: string;
   isRealPstnCall?: boolean;
