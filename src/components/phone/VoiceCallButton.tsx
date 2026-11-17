@@ -1,10 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Room, RoomEvent, Track } from 'livekit-client';
-import { PhoneCall as PhoneIcon, PhoneOff, Loader2, Mic, Volume2, VolumeX } from 'lucide-react';
+import { PhoneCall as PhoneIcon, PhoneOff, Loader2, Mic, Volume2, VolumeX, Grid3x3 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { enableEarpieceForCall, setCallSpeakerphone, restoreAudioAfterCall } from '../../utils/audioRoute';
+import { playDtmfTone } from '../../utils/phoneAudio';
+import { DtmfKeypad } from './DtmfKeypad';
 
 type CallState = 'idle' | 'connecting' | 'in-call' | 'error';
+
+/**
+ * RFC 4733 DTMF event codes, as required by
+ * LocalParticipant.publishDtmf(code, digit): 0–9 are their own digits,
+ * '*' is 10, '#' is 11.
+ */
+const DTMF_CODES: Record<string, number> = {
+  '0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
+  '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+  '*': 10, '#': 11,
+};
 
 interface VoiceTokenResponse {
   token: string;
@@ -21,6 +34,13 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
   const [error, setError] = useState<string | null>(null);
   const [callSeconds, setCallSeconds] = useState(0);
   const [speakerOn, setSpeakerOn] = useState(false);
+  // In-call keypad: open state + the digits already sent this call live in
+  // this call screen, so the record survives opening/closing the pad
+  // mid-call. It cannot survive a tab switch — the Phone tab unmounts on
+  // every tab switch and teardown() below ends the call by design.
+  const [keypadOpen, setKeypadOpen] = useState(false);
+  const [sentDigits, setSentDigits] = useState('');
+  const [dtmfError, setDtmfError] = useState<string | null>(null);
   const roomRef = useRef<Room | null>(null);
   const timerRef = useRef<number | null>(null);
   const agentTimeoutRef = useRef<number | null>(null);
@@ -56,6 +76,9 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
   const teardown = () => {
     callGenRef.current += 1;
     stopTimer();
+    setKeypadOpen(false);
+    setSentDigits('');
+    setDtmfError(null);
     if (agentTimeoutRef.current) window.clearTimeout(agentTimeoutRef.current);
     agentTimeoutRef.current = null;
     const room = roomRef.current;
@@ -91,6 +114,31 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
     if (!mountedRef.current) return;
     setSpeakerOn(false);
     setState('idle');
+  };
+
+  /**
+   * Send one DTMF digit on the live call, the real way: LiveKit's SIP
+   * DTMF message (LocalParticipant.publishDtmf) travels over the room's
+   * reliable data channel, and LiveKit forwards it to the SIP leg when the
+   * room is bridged to a phone call. The local tone only plays once the
+   * send succeeds — a failed send shows an error instead of a tone that
+   * would pretend the digit went out.
+   */
+  const sendDtmf = async (digit: string) => {
+    const room = roomRef.current;
+    if (!room) {
+      setDtmfError('No live call — the keypad only works during a call.');
+      return;
+    }
+    try {
+      await room.localParticipant.publishDtmf(DTMF_CODES[digit], digit);
+      playDtmfTone(digit);
+      setSentDigits((prev) => prev + digit);
+      setDtmfError(null);
+    } catch (e) {
+      console.warn('[VoiceCall] DTMF send failed:', e);
+      setDtmfError('That keypress did not go out — the call may have dropped. Try again, or end the call and redial.');
+    }
   };
 
   // The Phone tab unmounts on every tab switch: never leave a live mic,
@@ -215,37 +263,67 @@ export const VoiceCallButton: React.FC<{ businessId?: string }> = ({ businessId 
       </div>
 
       {state === 'in-call' ? (
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs text-zinc-300 font-mono">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22ec72] opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#22ec72]" />
-            </span>
-            On the call — {mm}:{ss}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs text-zinc-300 font-mono">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22ec72] opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#22ec72]" />
+              </span>
+              On the call — {mm}:{ss}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setKeypadOpen((open) => !open)}
+                aria-pressed={keypadOpen}
+                title={keypadOpen ? 'Hide keypad' : 'Show keypad'}
+                className={`min-h-[48px] px-3 py-2.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold transition cursor-pointer active:scale-95 ${
+                  keypadOpen
+                    ? 'bg-[#22ec72] text-black border-[#22ec72]'
+                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                }`}
+              >
+                <Grid3x3 className="w-4 h-4" />
+                <span>Keypad</span>
+              </button>
+              <button
+                type="button"
+                onClick={toggleSpeaker}
+                aria-pressed={speakerOn}
+                title={speakerOn ? 'Switch to earpiece' : 'Switch to speakerphone'}
+                className={`min-h-[48px] p-2.5 rounded-xl border flex items-center transition cursor-pointer active:scale-95 ${
+                  speakerOn
+                    ? 'bg-[#22ec72] text-black border-[#22ec72]'
+                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                }`}
+              >
+                {speakerOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={endCall}
+                className="min-h-[48px] px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+              >
+                <PhoneOff className="w-4 h-4" />
+                <span>End call</span>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleSpeaker}
-              aria-pressed={speakerOn}
-              title={speakerOn ? 'Switch to earpiece' : 'Switch to speakerphone'}
-              className={`min-h-[48px] p-2.5 rounded-xl border flex items-center transition cursor-pointer active:scale-95 ${
-                speakerOn
-                  ? 'bg-[#22ec72] text-black border-[#22ec72]'
-                  : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-              }`}
-            >
-              {speakerOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
-            <button
-              type="button"
-              onClick={endCall}
-              className="min-h-[48px] px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
-            >
-              <PhoneOff className="w-4 h-4" />
-              <span>End call</span>
-            </button>
-          </div>
+
+          {keypadOpen && (
+            <DtmfKeypad
+              sentDigits={sentDigits}
+              onDigit={(digit) => void sendDtmf(digit)}
+              onClear={() => setSentDigits('')}
+            />
+          )}
+
+          {dtmfError && (
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+              {dtmfError}
+            </p>
+          )}
         </div>
       ) : (
         <button

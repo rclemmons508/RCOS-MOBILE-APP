@@ -65,6 +65,52 @@ export function stopRingtone() {
 }
 
 /**
+ * Real DTMF keypress tone: the two standard tones for the digit
+ * (row frequency + column frequency), ~120ms. Same Web Audio pattern
+ * as the ringtone/chimes above. This is local feedback only — the digit
+ * itself is sent to the live call with LocalParticipant.publishDtmf().
+ */
+const DTMF_FREQUENCIES: Record<string, [number, number]> = {
+  '1': [697, 1209],
+  '2': [697, 1336],
+  '3': [697, 1477],
+  '4': [770, 1209],
+  '5': [770, 1336],
+  '6': [770, 1477],
+  '7': [852, 1209],
+  '8': [852, 1336],
+  '9': [852, 1477],
+  '*': [941, 1209],
+  '0': [941, 1336],
+  '#': [941, 1477],
+};
+
+export function playDtmfTone(digit: string) {
+  const freqs = DTMF_FREQUENCIES[digit];
+  if (!freqs) return;
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.01);
+    gain.gain.setValueAtTime(0.12, now + 0.1);
+    gain.gain.linearRampToValueAtTime(0, now + 0.13);
+    gain.connect(ctx.destination);
+    freqs.forEach((freq) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.connect(gain);
+      osc.start(now);
+      osc.stop(now + 0.13);
+    });
+  } catch (e) {
+    console.warn('[PhoneAudio] DTMF tone failed:', e);
+  }
+}
+
+/**
  * Pleasant telephone system chimes for transfer, pick up, hang up, and voicemails
  */
 export function playChime(type: 'pickup' | 'hangup' | 'transfer' | 'message') {

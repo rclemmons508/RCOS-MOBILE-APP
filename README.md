@@ -6,7 +6,7 @@ It is built by RC Solutions and sold to other business owners, not just used in-
 
 ## What it does now
 
-- **24/7 AI receptionist (in-app voice).** Answers calls, routes between departments (Sales, Support, Billing, Emergency, and Dispatch for field trades), and hands off between AI personas inside the app. Calls start on the phone earpiece, with an on-screen speakerphone switch.
+- **24/7 AI receptionist (in-app voice).** Answers calls, routes between departments (Sales, Support, Billing, Emergency, and Dispatch for field trades), and hands off between AI personas inside the app. Calls start on the phone earpiece, with an on-screen speakerphone switch. During a call, a Keypad button opens a DTMF dial pad (1–9, *, 0, #) that sends each digit to the live call with LiveKit SIP DTMF, so menus (“press 1”), extensions, and PINs work from inside the app.
 - **Morning Briefing + Agent Inbox.** The dashboard briefs the owner each day, and AI assistants proactively surface alerts, suggestions, and questions. Each item can be replied to, snoozed until tomorrow, dismissed, or opened in the right screen.
 - **Global search.** Search from the dashboard across Jobs, Clients, Requests, Quotes, and Invoices.
 - **Pipeline Health.** Read-only flags for problems worth a look: an approved quote with no job, an invoice unpaid for over a week, and a good customer gone quiet.
