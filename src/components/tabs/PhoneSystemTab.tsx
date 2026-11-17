@@ -22,6 +22,7 @@ import { MessagesTab } from './MessagesTab';
 import { VoicemailsView } from '../phone/VoicemailsView';
 import { RealPhoneSetupModal } from '../phone/RealPhoneSetupModal';
 import { VoiceCallButton } from '../phone/VoiceCallButton';
+import { OutboundDialer } from '../phone/OutboundDialer';
 import { AiReceptionistDetail, receptionistStatus } from '../phone/AiReceptionistDetail';
 import { sidebarCard } from '../ui/cards';
 import { apiFetch } from '../../lib/api';
@@ -370,6 +371,11 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Dial out — real PSTN calls from the app keypad (LiveKit
+                  SIP outbound trunk; shows its setup state when the
+                  trunk is not configured yet). */}
+              <OutboundDialer businessId={scopedBusinessId} />
 
               {/* Free in-app voice call (WebRTC) */}
               <VoiceCallButton />

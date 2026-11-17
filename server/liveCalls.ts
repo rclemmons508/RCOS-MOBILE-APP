@@ -36,6 +36,10 @@ const RECEPTIONIST_AGENT_IDENTITY = 'rcos-receptionist';
 // stale (a missed webhook) and is dropped on the next read.
 const STALE_AFTER_MS = 3 * 60 * 60 * 1000;
 
+// Outbound dialer rooms (server/outboundCalls.ts) — the live-call
+// registry tracks receptionist calls only; see applyLivekitEvent.
+const OUTBOUND_ROOM_PREFIX = 'outbound-';
+
 export type LiveCallStatus = 'ringing' | 'answered';
 
 export interface LiveCall {
@@ -116,6 +120,11 @@ function sweepStale(now = Date.now()): void {
 export function applyLivekitEvent(ev: LivekitWebhookPayload): LiveCall | null {
   const roomName = ev.room?.name || '';
   if (!roomName) return null;
+  // Outbound rooms (the owner dialed out from the app) are the owner's
+  // own call, not a receptionist call: the agent never joins them, so
+  // without this guard they would sit in the live-call list stuck on
+  // 'ringing' forever. The dialer UI tracks its own call.
+  if (roomName.startsWith(OUTBOUND_ROOM_PREFIX)) return null;
   const now = Date.now();
   const participant = ev.participant;
   const kind = participant ? Number(participant.kind) : NaN;
