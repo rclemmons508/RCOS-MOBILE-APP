@@ -386,7 +386,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
       return {
         kind: 'quote',
         clientName: quote.clientName,
-        items: quote.items.map((item) => ({
+        items: (quote.items || []).map((item) => ({
           description: item.description,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
@@ -616,7 +616,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                             </span>
                           </div>
                           <div className="space-y-1.5 text-xs text-slate-300">
-                            {action.result.quoteDetails.items.map((item, idx) => (
+                            {(action.result.quoteDetails.items || []).map((item, idx) => (
                               <div key={idx} className="flex justify-between items-center py-1 border-b border-[#1d2b26] last:border-0">
                                 <span>{item.description} (x{item.quantity})</span>
                                 <span className="font-mono text-slate-400">${item.total}</span>
@@ -1067,7 +1067,7 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                       </span>
                     </span>
                     <span className="text-sm font-mono font-extrabold text-[#22ec72] shrink-0">
-                      ${invoice.totalAmount.toLocaleString()}
+                      ${(invoice.totalAmount ?? invoice.amount ?? 0).toLocaleString()}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${badge.cls}`}>
                       {badge.label}

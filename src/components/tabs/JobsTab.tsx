@@ -582,7 +582,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     <span className="text-zinc-500 text-xs font-mono shrink-0">{job.scheduledTime}</span>
                   </div>
                   <div className="text-xs text-zinc-400 font-mono">
-                    Value: <span className="text-[#22ec72] font-bold">${job.estimatedValue.toLocaleString()}</span>
+                    Value: <span className="text-[#22ec72] font-bold">${(job.estimatedValue ?? 0).toLocaleString()}</span>
                   </div>
                 </div>
               </div>
