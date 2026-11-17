@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ArrowLeft,
   AudioWaveform,
   BookOpen,
   ChevronRight,
   FileText,
-  Phone as PhoneIcon,
-  PhoneIncoming,
   Sliders,
 } from 'lucide-react';
 import { sidebarCard } from '../ui/cards';
@@ -91,18 +89,6 @@ interface AiReceptionistDetailProps {
   leadsCaptured: number;
   /** Jobs booked today (createdAt stamped today). */
   appointmentsBooked: number;
-  // Test-call form — state is owned by the Calls tab so the ringing
-  // console and live-call console keep working from this screen.
-  testName: string;
-  onTestNameChange: (v: string) => void;
-  testPhone: string;
-  onTestPhoneChange: (v: string) => void;
-  testTopic: string;
-  onTestTopicChange: (v: string) => void;
-  testSpeech: string;
-  onTestSpeechChange: (v: string) => void;
-  onRingTest: () => void;
-  onDialRealPhone: () => void;
   onClose: () => void;
   onOpenCallFlow: () => void;
   onOpenKnowledgeBase: () => void;
@@ -115,23 +101,12 @@ export const AiReceptionistDetail: React.FC<AiReceptionistDetailProps> = ({
   callsToday,
   leadsCaptured,
   appointmentsBooked,
-  testName,
-  onTestNameChange,
-  testPhone,
-  onTestPhoneChange,
-  testTopic,
-  onTestTopicChange,
-  testSpeech,
-  onTestSpeechChange,
-  onRingTest,
-  onDialRealPhone,
   onClose,
   onOpenCallFlow,
   onOpenKnowledgeBase,
   onOpenTranscripts,
 }) => {
   const status = receptionistStatus(serverOnline, answeringMode);
-  const [testOpen, setTestOpen] = useState(false);
 
   const stats = [
     { label: 'Calls Today', value: callsToday },
@@ -205,74 +180,6 @@ export const AiReceptionistDetail: React.FC<AiReceptionistDetailProps> = ({
           </div>
         ))}
       </div>
-
-      {/* Test — opens the same inbound test the Calls tab used to carry.
-          The form starts empty: no fake caller is ever pre-filled. */}
-      <button
-        type="button"
-        onClick={() => setTestOpen((v) => !v)}
-        className="w-full px-4 py-3 rounded-xl bg-transparent border-2 border-[#22ec72] text-[#22ec72] font-extrabold text-sm flex items-center justify-center gap-2 transition hover:bg-[#22ec72]/10 active:scale-[0.99] cursor-pointer min-h-[48px]"
-      >
-        <PhoneIncoming className="w-4 h-4" />
-        <span>Test AI Receptionist</span>
-      </button>
-
-      {testOpen && (
-        <div className={`${sidebarCard} p-3.5 space-y-2.5`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input
-              type="text"
-              value={testName}
-              onChange={(e) => onTestNameChange(e.target.value)}
-              placeholder="Caller name"
-              className="bg-black border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
-            />
-            <input
-              type="tel"
-              value={testPhone}
-              onChange={(e) => onTestPhoneChange(e.target.value)}
-              placeholder="Caller phone number"
-              className="bg-black border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
-            />
-          </div>
-          <input
-            type="text"
-            value={testTopic}
-            onChange={(e) => onTestTopicChange(e.target.value)}
-            placeholder="Service topic"
-            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
-          />
-          <textarea
-            value={testSpeech}
-            onChange={(e) => onTestSpeechChange(e.target.value)}
-            placeholder="What the caller says…"
-            className="w-full h-16 bg-black border border-zinc-800 rounded-xl p-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72] resize-none"
-          />
-          <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
-            <span className="text-xs text-zinc-400">
-              Answers as {answeringMode === 'ai' ? 'AI Concierge Kore' : 'Live Operator'}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onDialRealPhone}
-                className="px-3 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer border border-zinc-800 min-h-[44px]"
-              >
-                <PhoneIcon className="w-3.5 h-3.5 text-[#22ec72]" />
-                <span>Dial Real Phone</span>
-              </button>
-              <button
-                type="button"
-                onClick={onRingTest}
-                className="px-4 py-2.5 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-[#22ec72]/20 active:scale-95 shrink-0 min-h-[44px]"
-              >
-                <PhoneIncoming className="w-3.5 h-3.5" />
-                <span>Ring Operator Console</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Settings rows — each opens a real screen. */}
       <div className={`${sidebarCard} divide-y divide-zinc-800/80 overflow-hidden`}>

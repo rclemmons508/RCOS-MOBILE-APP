@@ -109,10 +109,11 @@ There is no automated test suite in this repo — verification is typecheck + pr
 
 ## Current status — read before treating this as production-hardened
 
-- **Login gate is OFF.** `FIREBASE_SERVICE_ACCOUNT` is not set, so API routes are not yet gated by Firebase ID tokens and Firestore rules are still permissive. Do not rely on per-business API authorization until the gate is on and the rules are hardened.
-- **No carrier phone line is connected.** The Phone tab is in-app calling only. The old Twilio carrier path is not the current path and its trial has expired — do not configure Twilio expecting live carrier calls.
+- **Login gate is ON.** `FIREBASE_SERVICE_ACCOUNT` is set, so signed-in /api routes require a Firebase ID token (unsigned calls answer 401) and Firestore rules enforce per-business tenancy. Rollback: delete `FIREBASE_SERVICE_ACCOUNT` in Railway and redeploy, or set `ALLOW_OPEN_API=true`.
+- **No carrier phone line is connected.** The Phone tab is in-app calling only (LiveKit voice). There is no Twilio dependency in the build — the carrier was removed entirely. SMS follow-ups send through Vonage when it is configured.
+- **No mock or demo data anywhere in the build.** Every list starts empty and fills from the business's real records only — no fake voicemails, calls, jobs, clients, or companies are baked into the code.
 - **External-number transfer is unproven.** Department transfers today are handoffs between AI personas inside the app, not transfers to a real outside phone number.
-- **Stripe billing is not built yet.** Pricing above is the published plan; checkout and subscription billing are still to come.
+- **Stripe billing is intentionally out of scope for now.** Pricing above is the published plan; checkout and subscription billing are still to come.
 - **New builds start signed out.** If a build opens already logged in, that is a bug, not a feature.
 
 See `PRODUCTION_CHECKLIST.md` for the full release criteria.

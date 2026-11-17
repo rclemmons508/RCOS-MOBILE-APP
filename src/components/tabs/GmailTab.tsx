@@ -409,7 +409,6 @@ export const GmailTab: React.FC<GmailTabProps> = ({
         status: 'unassigned',
         priority: msg.subject.toLowerCase().includes('urgent') ? 'critical' : 'medium',
         description: `Source: Gmail (${msg.from})\n\n${msg.snippet}`,
-        assignedTechnician: 'Dave Vance (Lead Field Specialist)',
       });
       setStatusNotice(`Created active dispatch job from email "${msg.subject}"`);
       setTimeout(() => setStatusNotice(null), 4000);

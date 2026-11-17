@@ -726,7 +726,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     required
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
-                    placeholder="e.g. Apex Biotech"
+                    placeholder="e.g. Acme Corp"
                     className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>

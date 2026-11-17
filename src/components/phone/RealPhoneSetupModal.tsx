@@ -202,7 +202,6 @@ export const RealPhoneSetupModal: React.FC<RealPhoneSetupModalProps> = ({
                 <p>
                   <strong className="text-zinc-100">No PSTN carrier.</strong>{' '}
                   No carrier phone line is connected, so the app cannot receive or dial regular phone calls.
-                  Twilio is not connected.
                 </p>
               </div>
             </div>

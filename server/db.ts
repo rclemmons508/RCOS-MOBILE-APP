@@ -7,7 +7,6 @@ import {
   ChatMessage, 
   JobPack,
   VoicemailRecord,
-  TelephonyConfig,
   PhoneCall,
   AgentInboxMessage,
   TeamMessage,
@@ -32,19 +31,12 @@ try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* exists */ }
 export type ScopedPhoneCall = PhoneCall & { businessId?: string };
 export type ScopedVoicemail = VoicemailRecord & {
   businessId?: string;
-  // Twilio identifiers, so a later transcription webhook attaches to
-  // exactly this voicemail (audit #25) — never matched by caller number.
-  twilioCallSid?: string;
-  twilioRecordingSid?: string;
 };
 
-// The business that owns records arriving with no business of their own
-// (Twilio PSTN webhooks hit one global number): TWILIO_BUSINESS_ID when
-// set, else the only business on a single-tenant server, else undefined
+// The business that owns records arriving with no business of their own:
+// the only business on a single-tenant server, else undefined
 // (unattributed — hidden from every tenant once the login gate is on).
 export function defaultPhoneBusinessId(): string | undefined {
-  const fromEnv = (process.env.TWILIO_BUSINESS_ID || '').trim();
-  if (fromEnv) return fromEnv;
   try {
     const all = ensureDb().businesses;
     return all.length === 1 ? all[0].id : undefined;
@@ -60,38 +52,11 @@ interface DatabaseSchema {
   chatMessages: ChatMessage[];
   jobPacks: JobPack[];
   voicemails?: ScopedVoicemail[];
-  telephonyConfig?: TelephonyConfig;
   calls?: ScopedPhoneCall[];
   agentMessages?: AgentInboxMessage[];
   teamMessages?: TeamMessage[];
   teamInvites?: TeamInvite[];
   pendingIntake?: PendingIntake[];
-}
-
-export function getDefaultTelephonyConfig(): TelephonyConfig {
-  const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-  return {
-    provider: 'twilio',
-    accountSidConfigured: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_ACCOUNT_SID.startsWith('AC')),
-    authTokenConfigured: !!(process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_AUTH_TOKEN.length > 5),
-    phoneNumber: process.env.TWILIO_PHONE_NUMBER || '+1 (800) 555-7267',
-    webhookUrl: appUrl ? `${appUrl}/api/twilio/voice/incoming` : '/api/twilio/voice/incoming',
-    answeringStrategy: 'ai_first',
-    ringDurationSeconds: 15,
-    operatorForwardingPhone: process.env.OPERATOR_FORWARDING_PHONE || '+1 (555) 019-4820',
-    departmentForwardingNumbers: {
-      dispatch: process.env.DISPATCH_FORWARDING_PHONE || '+1 (555) 392-8811',
-      billing: process.env.BILLING_FORWARDING_PHONE || '+1 (555) 741-2290',
-      emergency: process.env.EMERGENCY_FORWARDING_PHONE || '+1 (555) 883-1120',
-      sales: process.env.SALES_FORWARDING_PHONE || '+1 (555) 612-4490',
-      support: process.env.SUPPORT_FORWARDING_PHONE || '+1 (555) 902-3310'
-    },
-    greetingMessage: 'Thank you for calling RC Solutions, how may I direct your call or assist you today?',
-    ttsVoice: 'Polly.Joanna',
-    recordingEnabled: true,
-    transcriptionEnabled: true,
-    liveCallsActive: 0
-  };
 }
 
 const DB_BAK_FILE = `${DB_FILE}.bak`;
@@ -491,57 +456,21 @@ export const db = {
     return data.voicemails.length < initialLen;
   },
 
-  // Telephony Carrier Config
-  getTelephonyConfig(): TelephonyConfig {
-    const data = ensureDb();
-    const defaultConfig = getDefaultTelephonyConfig();
-    if (!data.telephonyConfig) {
-      data.telephonyConfig = defaultConfig;
-      saveDb(data);
-    }
-    // Always sync current runtime environment presence
-    data.telephonyConfig.accountSidConfigured = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_ACCOUNT_SID.startsWith('AC'));
-    data.telephonyConfig.authTokenConfigured = !!(process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_AUTH_TOKEN.length > 5);
-    if (process.env.TWILIO_PHONE_NUMBER) {
-      data.telephonyConfig.phoneNumber = process.env.TWILIO_PHONE_NUMBER;
-    }
-    const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-    if (appUrl) {
-      data.telephonyConfig.webhookUrl = `${appUrl}/api/twilio/voice/incoming`;
-    }
-    return data.telephonyConfig;
-  },
-
-  saveTelephonyConfig(cfg: Partial<TelephonyConfig>): TelephonyConfig {
-    const data = ensureDb();
-    const current = this.getTelephonyConfig();
-    data.telephonyConfig = {
-      ...current,
-      ...cfg,
-      departmentForwardingNumbers: {
-        ...current.departmentForwardingNumbers,
-        ...(cfg.departmentForwardingNumbers || {})
-      }
-    };
-    saveDb(data);
-    return data.telephonyConfig;
-  },
-
   // Phone Calls
   getCalls(): ScopedPhoneCall[] {
     const data = ensureDb();
     return data.calls || [];
   },
 
-  findCall(call: { id?: string; twilioCallSid?: string }): ScopedPhoneCall | undefined {
+  findCall(call: { id?: string }): ScopedPhoneCall | undefined {
     const data = ensureDb();
-    return (data.calls || []).find(c => (!!call.id && c.id === call.id) || (!!call.twilioCallSid && c.twilioCallSid === call.twilioCallSid));
+    return (data.calls || []).find(c => (!!call.id && c.id === call.id));
   },
 
   saveCall(call: ScopedPhoneCall): ScopedPhoneCall {
     const data = ensureDb();
     if (!data.calls) data.calls = [];
-    const idx = data.calls.findIndex(c => c.id === call.id || (call.twilioCallSid && c.twilioCallSid === call.twilioCallSid));
+    const idx = data.calls.findIndex(c => c.id === call.id);
     const businessId = (idx >= 0 ? data.calls[idx].businessId : undefined) || call.businessId || defaultPhoneBusinessId();
     const record: ScopedPhoneCall = businessId ? { ...call, businessId } : call;
     if (idx >= 0) {

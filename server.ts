@@ -27,7 +27,6 @@ import { availableDepartmentsFor, normalizeDepartments } from './src/utils/depar
 import { withBehaviorProtocol, withBusinessKnowledge, resolveBusinessKnowledge } from './src/utils/agentBehavior';
 import { AI_EMPLOYEES } from './src/data/employees';
 
-import { telephonyRouter } from './server/telephony';
 import { businessIsMember, businessIsOwner, businessMemberFor, businessOwnerEmails, explicitOperatorBusinessId, operatorBusinessId } from './server/tenancy';
 import { sendVonageSms, isVonageConfigured } from './server/vonage';
 import { checkDestination, envInt, normalizeE164, takeDailyQuota } from './server/phone-policy';
@@ -197,7 +196,6 @@ const voiceTokenLimiter = createRateLimiter('voice-token', 10, 60000); // 10 Liv
 const quoteInvoiceLimiter = createRateLimiter('quote-invoice', 30, 60000); // 30 quote/invoice creations / min (M9)
 const teamMessageLimiter = createRateLimiter('team-message', 60, 60000); // 60 team-chat posts / min (H10)
 const ttsLimiter = createRateLimiter('tts', 30, 60000); // 30 TTS syntheses / min
-const twilioWebhookLimiter = createRateLimiter('twilio-webhook', 600, 60000); // signed carrier webhooks
 const livekitWebhookLimiter = createRateLimiter('livekit-webhook', 600, 60000); // signed LiveKit webhooks (live calls)
 // CodeQL (js/missing-rate-limiting) only recognizes rate limiting from
 // known libraries — the repo's own token-bucket limiter above is real
@@ -206,29 +204,6 @@ const livekitWebhookLimiter = createRateLimiter('livekit-webhook', 600, 60000); 
 // The global generalApiLimiter/writeLimiter still apply on top.
 const liveCallsLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false }); // 60 live-call polls / min (Calls screen polls every 6s)
 const listenTokenLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false }); // 10 listen-token mints / min (minting is a billable LiveKit call)
-const outboundCallLimiter = createRateLimiter('outbound-call', 5, 60000); // 5 outbound dials / min / user (audit #8)
-const telephonyConfigLimiter = createRateLimiter('telephony-config', 10, 60000); // 10 config writes / min (audit #7)
-
-// Twilio's signed webhook paths, relative to the /api mount.
-const TWILIO_WEBHOOK_PATHS = new Set([
-  '/twilio/voice/incoming',
-  '/twilio/voice/human-fallback',
-  '/twilio/voice/handle-speech',
-  '/twilio/voice/dial-status',
-  '/twilio/voice/voicemail',
-  '/twilio/voice/voicemail-transcription',
-  '/twilio/voice/status',
-]);
-function isTwilioWebhookPath(p: string): boolean {
-  return TWILIO_WEBHOOK_PATHS.has(p);
-}
-
-// Telephony provider: 'twilio' mounts the Twilio PSTN router. Anything else parks it —
-// testing/review builds use the in-app WebRTC voice call instead (see /api/voice/token).
-// Set TELEPHONY_PROVIDER=twilio in the environment to re-enable the carrier.
-// The router itself is mounted further down, AFTER the login gate and the
-// default rate limiters (audit #7) — see "Twilio carrier router" below.
-const telephonyProvider = (process.env.TELEPHONY_PROVIDER || 'webrtc').toLowerCase();
 
 // ==================== API ROUTES ====================
 
@@ -243,8 +218,12 @@ app.get('/api/firebase-config', (_req: Request, res: Response) => {
   const rawDb = process.env.VITE_FIREBASE_DATABASE_ID;
   const dbId = (!rawDb || rawDb === 'rcos-mobile' || rawDb === '(default)') ? CANONICAL_DB : rawDb;
 
+  // Telephony provider, for the Phone Setup modal's Vonage check:
+  // 'vonage' when Vonage SMS is configured, otherwise 'webrtc'
+  // (in-app calling only). There is no carrier anymore, so this field
+  // never returns a carrier value.
   res.json({
-    telephonyProvider,
+    telephonyProvider: isVonageConfigured() ? 'vonage' : 'webrtc',
     projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'rcos-mobile',
     firestoreDatabaseId: dbId,
     storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'rcos-mobile.firebasestorage.app'
@@ -281,12 +260,6 @@ app.use('/api', (req: Request, res: Response, next) => {
   // handler. GET does NOT skip: reading the call routing log requires a
   // signed-in user (the old blanket skip let anyone read it).
   if (req.method === 'POST' && req.path === '/voice/routing-log') return next();
-  // Twilio carrier webhooks: Twilio cannot sign in as a user — the
-  // X-Twilio-Signature (checked fail-closed inside server/telephony.ts)
-  // is the credential. Only these exact webhook paths skip the gate; the
-  // user-facing /twilio/config, /twilio/test-carrier and
-  // /twilio/voice/outbound-call routes stay gated.
-  if (req.method === 'POST' && isTwilioWebhookPath(req.path)) return next();
   // LiveKit webhooks: LiveKit cannot sign in as a user either — the
   // Authorization header (a signed JWT over the raw body, checked
   // fail-closed inside the /api/livekit/webhook handler) is the
@@ -307,36 +280,15 @@ app.use('/api', (req: Request, res: Response, next) => {
 // verification probe while the gate is off).
 app.use('/api', (req: Request, res: Response, next) => {
   if (req.path === '/diagnostics/scan') return next();
-  // Signed Twilio webhooks get their own, larger bucket (keyed by Twilio's
-  // egress IP) so a busy phone line cannot exhaust the user limiters.
-  if (req.method === 'POST' && isTwilioWebhookPath(req.path)) return twilioWebhookLimiter(req, res, next);
   // Signed LiveKit webhooks get the same treatment.
   if (req.method === 'POST' && req.path === '/livekit/webhook') return livekitWebhookLimiter(req, res, next);
   return generalApiLimiter(req, res, next);
 });
 app.use('/api', (req: Request, res: Response, next) => {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
-  if (isTwilioWebhookPath(req.path)) return next();
   if (req.method === 'POST' && req.path === '/livekit/webhook') return next();
   return writeLimiter(req, res, next);
 });
-
-// ---- Twilio carrier router (audit #7) ----
-// Mounted after the login gate and the default limiters so the config and
-// outbound-call routes are rate limited (plus outboundCallLimiter below)
-// and the webhooks pass the twilio-webhook limiter. 'twilio' mounts it;
-// anything else parks it (testing/review builds use the in-app WebRTC
-// voice call instead — see /api/voice/token).
-if (telephonyProvider === 'twilio') {
-  app.use('/api/twilio/voice/outbound-call', outboundCallLimiter);
-  app.use('/api/twilio/config', (req: Request, res: Response, next) =>
-    req.method === 'POST' ? telephonyConfigLimiter(req, res, next) : next());
-  app.use('/api/twilio', telephonyRouter);
-} else {
-  app.use('/api/twilio', (_req: Request, res: Response) =>
-    res.status(503).json({ error: 'Phone carrier is parked (TELEPHONY_PROVIDER is not "twilio"). Use the in-app voice call instead.' })
-  );
-}
 
 // ---- Per-business ownership (login-gate ON only) ----
 // When the gate is OFF (today's deployment, FIREBASE_SERVICE_ACCOUNT
@@ -1262,7 +1214,7 @@ app.post('/api/business/:id/agent-messages/:msgId/respond', (req: Request, res: 
 // and VONAGE_API_KEY/VONAGE_API_SECRET are set. Anything else returns
 // { sent: false, configured: false } and the app falls back to its manual
 // Send-now draft — no behavior change when Vonage is not configured.
-// Twilio is untouched: this route is independent of the Twilio router.
+// This route is independent of any carrier router.
 //
 // Abuse limits (audit #18):
 //   - the business must exist (no more self-heal stub creation here);
@@ -2382,283 +2334,11 @@ app.post('/api/phone/tts', ttsLimiter, async (req: Request, res: Response) => {
   }
 });
 
-// 2b. Intelligent Multi-Turn Voice Receptionist Engine
-app.post('/api/phone/receptionist-chat', aiRateLimiter, async (req: Request, res: Response) => {
-  // Coerce every field to its expected type (audit #4): a number or object
-  // here used to throw inside the fallback generator, i.e. inside catch.
-  const rb = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, any>;
-  const str = (v: unknown, dflt: string) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : dflt);
-  const userSpeech = str(rb.userSpeech, '');
-  const callerName = str(rb.callerName, 'Inbound Caller') || 'Inbound Caller';
-  const callerNumber = str(rb.callerNumber, '(555) 019-4820');
-  const callerTopic = str(rb.callerTopic, 'Service Inquiry') || 'Service Inquiry';
-  const conversationHistory: any[] = Array.isArray(rb.conversationHistory) ? rb.conversationHistory : [];
-  const answeredBy = rb.answeredBy === 'human_operator' ? 'human_operator' : 'ai_receptionist';
-  const businessId = typeof rb.businessId === 'string' ? rb.businessId : undefined;
-  const withAudio = rb.withAudio === undefined ? true : !!rb.withAudio;
-
-  // Gate ON: resolve to the caller's own business, never to the first
-  // business on the server. A caller with no business gets a 403
-  // instead of another company's record. Gate OFF: today's behavior.
-  const resolvedBiz = resolveBodyBusiness(req, businessId);
-  const defaultBiz = resolvedBiz || (!isGateOn() ? {
-    id: 'biz_rc_solutions',
-    name: 'RC Solutions',
-    industry: 'automation_field_services',
-    dollarThreshold: 250
-  } : null);
-  if (!defaultBiz) {
-    return res.status(403).json({ error: 'Sign in with a business account first.' });
-  }
-
-  const isHuman = answeredBy === 'human_operator';
-
-  // Fallback heuristic response generator
-  const fallbackGenerator = () => {
-    const lower = userSpeech.toLowerCase();
-    let intent: 'take_message' | 'send_email' | 'request_quote_approval' | 'transfer_call' | 'general_qa' = 'general_qa';
-    let aiResponse = `Thank you for calling RC Solutions. How can I assist you with our smart mechanical, electrical, or automation services today?`;
-    let actionTriggered: any = null;
-    let sentiment: 'positive' | 'neutral' | 'urgent' = 'neutral';
-    let callStatus: 'active' | 'transferred' | 'voicemail_recorded' = 'active';
-
-    if (lower.includes('transfer') || lower.includes('dispatch') || lower.includes('marcus') || lower.includes('billing') || lower.includes('sales')) {
-      intent = 'transfer_call';
-      let dept = 'Dispatch & Field Operations';
-      let ext = '101';
-      let lead = 'Marcus Vance';
-      if (lower.includes('billing') || lower.includes('invoice')) {
-        dept = 'Billing & Invoicing';
-        ext = '102';
-        lead = 'Elena Rostova';
-      } else if (lower.includes('sales') || lower.includes('pricing')) {
-        dept = 'Sales & Project Estimates';
-        ext = '104';
-        lead = 'Sarah Chen';
-      } else if (lower.includes('emergency') || lower.includes('technician')) {
-        dept = 'Emergency Mechanical Tech';
-        ext = '103';
-        lead = 'Dave Miller';
-      }
-      aiResponse = `I'd be glad to connect you. I am transferring your call right now to ${dept} at Extension ${ext}, connecting with ${lead}. Please stay on the line.`;
-      callStatus = 'transferred';
-      actionTriggered = {
-        type: 'transfer_call',
-        targetDepartment: dept,
-        extension: ext,
-        agentName: lead
-      };
-    } else if (lower.includes('quote') || lower.includes('estimate') || lower.includes('price') || lower.includes('cost') || lower.includes('bid')) {
-      intent = 'request_quote_approval';
-      const est = 1250;
-      aiResponse = `I have logged your request for a project quote for ${userSpeech.slice(0, 60)}. Because this is an official estimate, I have submitted an Approval Request to our Operations Supervisor for formal review.`;
-      actionTriggered = {
-        type: 'request_quote_approval',
-        clientName: callerName,
-        serviceName: callerTopic || 'Diagnostic & Installation Quote',
-        estimatedAmount: est,
-        details: `Voice request from ${callerName}: "${userSpeech}"`
-      };
-    } else if (lower.includes('message') || lower.includes('voicemail') || lower.includes('not available') || lower.includes('leave a note')) {
-      intent = 'take_message';
-      callStatus = 'voicemail_recorded';
-      aiResponse = `I have transcribed and saved your message for the team. We will ensure the assigned specialist reviews it and follows up promptly.`;
-      actionTriggered = {
-        type: 'take_message',
-        callerName,
-        callerNumber,
-        messageText: userSpeech || 'Please call back regarding urgent project updates.',
-        urgency: lower.includes('urgent') || lower.includes('asap') ? 'urgent' : 'medium',
-        department: 'Operations'
-      };
-    } else if (lower.includes('email') || lower.includes('confirmation') || lower.includes('send me')) {
-      intent = 'send_email';
-      aiResponse = `I have sent a confirmation email summary regarding your inquiry to your registered contact address.`;
-      actionTriggered = {
-        type: 'send_email',
-        recipient: `${callerName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'client'}@example.com`,
-        subject: `RC Solutions Call Confirmation: ${callerTopic}`,
-        body: `Hello ${callerName},\n\nThank you for speaking with our Voice Receptionist today regarding: "${userSpeech}". Your inquiry has been routed to our team.\n\nBest regards,\nRC Solutions Concierge`
-      };
-    } else if (lower.includes('emergency') || lower.includes('leak') || lower.includes('tripping') || lower.includes('fire') || lower.includes('smoke')) {
-      sentiment = 'urgent';
-      aiResponse = `Understood, this sounds like an urgent priority. I am escalating your details directly to our emergency dispatch queue and transferring you to our on-call technician Dave Miller immediately.`;
-      intent = 'transfer_call';
-      callStatus = 'transferred';
-      actionTriggered = {
-        type: 'transfer_call',
-        targetDepartment: 'Emergency Field Tech',
-        extension: '103',
-        agentName: 'Dave Miller'
-      };
-    }
-
-    return {
-      aiResponse,
-      intent,
-      actionTriggered,
-      sentiment,
-      callStatus
-    };
-  };
-
-  try {
-    const prompt = `You are "Kore", the intelligent AI Voice Receptionist for RC Solutions, a premier commercial mechanical, electrical, and AI automation field service company.
-Caller Name: ${callerName}
-Caller Phone: ${callerNumber}
-Caller Topic: ${callerTopic}
-Answered Mode: ${answeredBy} (If 'human_operator', the human answered; otherwise AI Receptionist is speaking)
-
-Conversation History:
-${conversationHistory.map((c: any) => `${c.speaker}: ${c.text}`).join('\n')}
-
-Caller just said: "${userSpeech}"
-
-RC Solutions Departments Available for Transfer:
-- "Dispatch & Field Operations" (Ext: 101, Lead: Marcus Vance) - for urgent tech dispatch, work orders, on-site arrival.
-- "Billing & Invoicing" (Ext: 102, Lead: Elena Rostova) - for invoice questions, payment, statements.
-- "Emergency Mechanical & Electrical" (Ext: 103, Lead: Dave Miller) - for active leaks, power outage, chiller failure, critical hazards.
-- "Sales & Project Estimates" (Ext: 104, Lead: Sarah Chen) - for new contracts, facility assessments, upgrades.
-- "Customer Accounts & Support" (Ext: 105, Lead: Alex Rivera) - for general account status and maintenance schedules.
-
-Tasks you can perform:
-1. "transfer_call": If the caller explicitly or implicitly requests a transfer or mentions a department/person.
-2. "request_quote_approval": If caller asks for a quote, estimate, proposal, or price for a service or repair.
-3. "send_email": If caller requests an email confirmation, summary, or document.
-4. "take_message": If caller wants to leave a voicemail or note for someone.
-5. "general_qa": Answer inquiries politely, concisely, and professionally (1 to 3 spoken sentences).
-
-Respond in JSON with exact format:
-{
-  "aiResponse": "spoken response to the caller (natural, polite, concise, professional)",
-  "intent": "transfer_call" | "request_quote_approval" | "send_email" | "take_message" | "general_qa",
-  "sentiment": "positive" | "neutral" | "urgent",
-  "callStatus": "active" | "transferred" | "voicemail_recorded",
-  "actionTriggered": null or {
-    "type": "transfer_call" | "request_quote_approval" | "send_email" | "take_message",
-    "targetDepartment"?: "Dispatch & Field Operations" | "Billing & Invoicing" | "Emergency Mechanical & Electrical" | "Sales & Project Estimates" | "Customer Accounts & Support",
-    "extension"?: string,
-    "agentName"?: string,
-    "clientName"?: string,
-    "serviceName"?: string,
-    "estimatedAmount"?: number,
-    "details"?: string,
-    "recipient"?: string,
-    "subject"?: string,
-    "body"?: string,
-    "callerName"?: string,
-    "callerNumber"?: string,
-    "messageText"?: string,
-    "urgency"?: "low" | "medium" | "high" | "urgent",
-    "department"?: string
-  }
-}`;
-
-    const result = await executeGeminiWithFallback({
-      preferredModel: PRIMARY_MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
-      fallbackFn: () => JSON.stringify(fallbackGenerator())
-    });
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(result.text);
-    } catch {
-      parsed = fallbackGenerator();
-    }
-
-    // Side-effect: If actionTriggered is request_quote_approval, save ActionRecord directly into RCOS approvals ledger
-    if (parsed.actionTriggered && parsed.actionTriggered.type === 'request_quote_approval') {
-      const q = parsed.actionTriggered;
-      const amt = Number(q.estimatedAmount) || 1200;
-      const newAction: ActionRecord = {
-        id: `act_${crypto.randomUUID()}`,
-        businessId: defaultBiz.id,
-        employeeId: 'executive_assistant',
-        actionType: 'generate_quote',
-        riskCategory: 'commitment_outbound',
-        title: `Quote Approval: ${q.serviceName || 'Service Quote'} for ${q.clientName || callerName}`,
-        description: q.details || `Voice Receptionist quote request for ${callerName} (${callerNumber}): "${userSpeech}"`,
-        status: 'awaiting_approval',
-        dollarAmount: amt,
-        financialAmount: amt,
-        requiresApproval: true,
-        requiresReview: true,
-        result: {
-          summary: `Quote generated during Voice Receptionist call for ${callerName}`,
-          quoteDetails: {
-            clientName: q.clientName || callerName,
-            items: [
-              {
-                description: q.serviceName || 'Mechanical & Automation Service Scope',
-                quantity: 1,
-                unitPrice: amt,
-                total: amt
-              }
-            ],
-            totalAmount: amt,
-            validDays: 30,
-            terms: 'Standard 30-Day Commercial Guarantee'
-          }
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      db.saveAction(newAction);
-      parsed.actionTriggered.actionId = newAction.id;
-    }
-
-    // Side-effect: If actionTriggered is take_message, save to voicemails DB
-    if (parsed.actionTriggered && parsed.actionTriggered.type === 'take_message') {
-      const m = parsed.actionTriggered;
-      const newVoicemail: ScopedVoicemail = {
-        id: `vm_${crypto.randomUUID()}`,
-        businessId: defaultBiz.id,
-        callerName: m.callerName || callerName,
-        callerNumber: m.callerNumber || callerNumber,
-        company: callerName.includes('(') ? callerName.replace(/.*\((.*?)\).*/, '$1') : 'RC Client',
-        timestamp: new Date().toISOString(),
-        duration: '0m 35s',
-        transcription: m.messageText || userSpeech,
-        summary: `Transcribed message regarding ${callerTopic}: ${m.messageText || userSpeech}`,
-        urgency: m.urgency || (parsed.sentiment === 'urgent' ? 'urgent' : 'medium'),
-        department: m.department || 'General Operations',
-        reviewed: false
-      };
-      db.saveVoicemail(newVoicemail);
-      parsed.actionTriggered.voicemailId = newVoicemail.id;
-    }
-
-    // Synthesize real voice speech audio via Gemini TTS if requested and answered by AI
-    let audioBase64: string | null = null;
-    let mimeType = 'audio/wav';
-    if (withAudio && !isHuman && parsed.aiResponse) {
-      const speechRes = await generateSpeechAudio(parsed.aiResponse, 'Kore');
-      audioBase64 = speechRes.audioBase64;
-      mimeType = speechRes.mimeType;
-    }
-
-    return res.json({
-      ...parsed,
-      audioBase64,
-      mimeType,
-      voice: 'Kore'
-    });
-  } catch (err: any) {
-    console.error('[Receptionist Error]', err);
-    const fallback = fallbackGenerator();
-    return res.json(fallback);
-  }
-});
-
 // 2b-2. Calls Log Store (Web & Real PSTN Carrier Calls)
 // Business-scoped (audit #6): pass ?businessId=<id> (see resolvePhoneScope).
 // Writes are allow-listed and may only create/update records of the named
-// business — a call id or Twilio SID belonging to another business is a 404.
-const PHONE_CALL_STRING_FIELDS = ['callerName', 'callerNumber', 'type', 'status', 'timestamp', 'duration', 'summary', 'sentiment', 'actionRequired', 'answeredBy', 'transferredTo', 'department', 'voicemailAudioBase64', 'twilioCallSid', 'recordingUrl', 'forwardedToNumber'] as const;
+// business — a call id belonging to another business is a 404.
+const PHONE_CALL_STRING_FIELDS = ['callerName', 'callerNumber', 'type', 'status', 'timestamp', 'duration', 'summary', 'sentiment', 'actionRequired', 'answeredBy', 'transferredTo', 'department', 'voicemailAudioBase64', 'recordingUrl', 'forwardedToNumber'] as const;
 app.get('/api/phone/calls', (req: Request, res: Response) => {
   try {
     const scope = resolvePhoneScope(req, res);
@@ -2675,8 +2355,7 @@ app.post('/api/phone/calls', (req: Request, res: Response) => {
     if (!target) return;
     const body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) as Record<string, unknown>;
     const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim().slice(0, 100) : undefined;
-    const twilioCallSid = typeof body.twilioCallSid === 'string' && body.twilioCallSid ? body.twilioCallSid : undefined;
-    const existing = (id || twilioCallSid) ? db.findCall({ id, twilioCallSid }) : undefined;
+    const existing = id ? db.findCall({ id }) : undefined;
     if (existing && !phoneScopeFilter(target.scope)(existing)) {
       return res.status(404).json({ error: 'Call not found' });
     }
@@ -2741,10 +2420,8 @@ app.post('/api/phone/voicemails', (req: Request, res: Response) => {
       reviewed: !!body.reviewed,
       ...(target.businessId ? { businessId: target.businessId } : {}),
       // Server-owned fields are never taken from the client, and an update
-      // keeps them (carrier ids for transcript matching, recording url).
+      // keeps them (recording url).
       ...(existing?.audioUrl ? { audioUrl: existing.audioUrl } : {}),
-      ...(existing?.twilioCallSid ? { twilioCallSid: existing.twilioCallSid } : {}),
-      ...(existing?.twilioRecordingSid ? { twilioRecordingSid: existing.twilioRecordingSid } : {}),
     };
     const saved = db.saveVoicemail(vm);
     res.status(201).json(saved);
@@ -2775,7 +2452,7 @@ app.post('/api/phone/send-email', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Recipient and subject are required' });
   }
 
-  // Record simulated outbound email
+  // Record outbound email
   const emailRecord = {
     id: `email_${crypto.randomUUID()}`,
     recipient,
@@ -2975,59 +2652,6 @@ app.post('/api/phone/request-invoice', quoteInvoiceLimiter, requireInvoiceAmount
     action: saved,
     message: `Invoice of $${amt} for ${clientName} queued for approval`
   });
-});
-
-// 2f. Backward compatibility simulate call endpoint
-app.post('/api/phone/simulate-call', aiRateLimiter, async (req: Request, res: Response) => {
-  const userSpeech = typeof req.body?.userSpeech === 'string' ? req.body.userSpeech : '';
-  const callerName = typeof req.body?.callerName === 'string' && req.body.callerName ? req.body.callerName : 'Caller';
-  const callerTopic = typeof req.body?.callerTopic === 'string' && req.body.callerTopic ? req.body.callerTopic : 'General Inquiry';
-
-  const fallbackData = () => {
-    const isUrgent =
-      callerTopic.toLowerCase().includes('emergency') ||
-      callerTopic.toLowerCase().includes('leak') ||
-      userSpeech.toLowerCase().includes('urgent') ||
-      userSpeech.toLowerCase().includes('emergency') ||
-      userSpeech.toLowerCase().includes('broken');
-
-    return JSON.stringify({
-      aiResponse: `Thank you for calling RC Solutions, ${callerName}. I understand your request regarding ${callerTopic}. Our smart dispatch system has logged your details and a specialist is being scheduled.`,
-      suggestedAction: isUrgent ? 'Emergency Tech Dispatch & SMS' : 'Log Lead & Schedule Tech Visit',
-      sentiment: isUrgent ? 'urgent' : 'positive'
-    });
-  };
-
-  try {
-    const prompt = `Simulate an inbound customer service call for RC Solutions (AI Business Automation & Field Services).
-Caller Name: ${callerName}
-Topic: ${callerTopic}
-Caller said: "${userSpeech}"
-
-Respond concisely as the RCOS Voice AI Assistant (max 2-3 sentences). Then output JSON with keys:
-- "aiResponse": What the AI agent says back to caller
-- "suggestedAction": What action RCOS should take (e.g., "Dispatch Tech Marcus", "Send SMS Booking Link")
-- "sentiment": "positive" | "neutral" | "urgent"`;
-
-    const result = await executeGeminiWithFallback({
-      preferredModel: PRIMARY_MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
-      fallbackFn: fallbackData
-    });
-
-    let data;
-    try {
-      data = JSON.parse(result.text);
-    } catch {
-      data = JSON.parse(fallbackData());
-    }
-    return res.json(data);
-  } catch {
-    return res.json(JSON.parse(fallbackData()));
-  }
 });
 
 // 3. Analyze uploaded RCOS system files

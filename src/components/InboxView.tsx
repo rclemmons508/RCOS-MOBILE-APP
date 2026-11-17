@@ -461,7 +461,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
       });
     // Real missed calls with no follow-up draft and no alert yet —
     // last 7 days only, so old calls never linger as fake urgency.
-    // Simulator/test calls never count (isRealPstnCall must be true).
+    // Only real carrier calls count (isRealPstnCall must be true).
     serverCalls
       .filter(
         (c) =>

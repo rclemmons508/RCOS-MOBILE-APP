@@ -21,7 +21,7 @@ let authMisconfigured = false;
 // opt-in ALLOW_OPEN_API=true (e.g. a short setup window). Outside
 // production the old open-for-setup behavior is unchanged. The process
 // still boots either way (no Railway restart loop) — public routes
-// (health, intake/booking, demo form, team join, Twilio webhooks,
+// (health, intake/booking, demo form, team join, LiveKit webhooks,
 // voice-worker posts) keep working.
 function isProduction(): boolean {
   return (process.env.NODE_ENV || '').toLowerCase() === 'production';
@@ -50,7 +50,7 @@ function lockedBanner(reason: string): void {
   console.error(`[auth] ${reason}`);
   console.error('[auth] Every signed-in /api route now answers 503 until FIREBASE_SERVICE_ACCOUNT');
   console.error('[auth] is set to a valid service-account key and the server is redeployed.');
-  console.error('[auth] Public routes (health, booking/intake, demo form, team join, Twilio');
+  console.error('[auth] Public routes (health, booking/intake, demo form, team join, LiveKit');
   console.error('[auth] webhooks) keep working. To deliberately run OPEN (not recommended),');
   console.error('[auth] set ALLOW_OPEN_API=true.');
   console.error(`${edge}\n`);

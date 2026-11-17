@@ -104,121 +104,6 @@ interface ScoredPresetMatch {
   matchedTerms: string[];
 }
 
-// Sample business files for instant 1-tap testing
-const SAMPLE_BUSINESS_FILES = [
-  {
-    name: 'Apex_Flow_Plumbing_Invoice.txt',
-    title: 'Plumbing & Drain Services Invoice',
-    trade: 'Plumbing',
-    content: `Apex Flow Plumbing & Sewer Solutions LLC
-License #PLMB-94021 | 24/7 Emergency Dispatch
-1840 Riverfront Way, Suite 400
-Phone: (555) 749-3820 | dispatch@apexflowplumbing.com
-
-SERVICES & WORK TICKET DETAILS:
-- Emergency slab leak electronic location & thermal imaging
-- Copper water line pinhole excision & PEX ProPress coupling repair
-- Hydro-jetting 4-inch main sewer line to city tap (cleared heavy root intrusion)
-- High-efficiency 50-gallon Rheem hybrid heat pump water heater installation
-- Static water pressure testing: Calibrated PRV to 65 PSI
-
-TERMS & POLICIES:
-Standard diagnostic rate: $149 (waived with approved repair).
-Emergency after-hours dispatch available 24/7.
-All joint couplings backed by 5-year workmanship warranty.`
-  },
-  {
-    name: 'VoltMaster_Electrical_Quote.txt',
-    title: 'Electrical Contracting & EV Charger Quote',
-    trade: 'Electrical',
-    content: `VoltMaster Commercial & Residential Electric
-Licensed Master Electricians | EC-48201
-450 Innovation Parkway, Industrial Park
-dispatch@voltmasterelectric.com | (555) 832-1940
-
-PROJECT SCOPE & RATE PROPOSAL:
-1. 200A Square D Main Electrical Panel Upgrade with whole-home surge protector
-2. Dedicated 60A Level 2 Tesla Universal EV Wall Connector install in 2-car garage
-3. Conduit run: 45ft 1-inch EMT with 6/3 THHN wire from basement utility room
-4. Kitchen GFCI code compliance audit & AFCI dual-function breaker retrofitting
-5. Whole-home smart Lutron Caséta lighting automation setup
-
-SAFETY COMPLIANCE:
-All installations strictly adhere to NEC 2023 code standards.
-Municipal inspection scheduled upon rough-in clearance.
-Warranty: Lifetime warranty on panel bus and 2-year warranty on digital equipment.`
-  },
-  {
-    name: 'Nexus_Cloud_IT_MSP_Agreement.txt',
-    title: 'Managed IT Services (MSP) SOW',
-    trade: 'IT Services',
-    content: `Nexus Systems & Cloud Technologies MSP
-Managed Service Provider & Cybersecurity Operations
-700 Silicon Ave, Suite 1200
-support@nexuscloudit.com | 24/7 NOC: (555) 902-4411
-
-MANAGED IT SERVICES & CLIENT PROFILE:
-- 24/7 Remote Helpdesk & Tier-2 Systems Support for 35 corporate workstations
-- Microsoft 365 Enterprise migration, Intune MDM security policy deployment
-- Zero-Trust cybersecurity perimeter audit, endpoint EDR, and SentinelOne setup
-- Automated immutable cloud backup disaster recovery testing with 15-min RTO
-- Fortinet SD-WAN firewall gateway deployment & secure VPN mesh for remote staff
-
-CLIENT SLA:
-Priority 1 Outage: 15-minute response time.
-Automated patch management executed on Tuesday off-peak windows.`
-  },
-  {
-    name: 'Solarix_CleanEnergy_Proposal.txt',
-    title: 'Solar PV & Battery Storage Proposal',
-    trade: 'Solar Energy',
-    content: `Solarix Clean Energy & Power Storage Solutions
-NABCEP Certified PV Contractors | Lic #SOL-77402
-900 Sunburst Boulevard
-projects@solarixenergy.com | (555) 612-8800
-
-TURNKEY RESIDENTIAL SOLAR SPECIFICATION:
-- 10.4 kW DC Rooftop Solar Array (26x REC 400W Alpha Pure Black Panels)
-- Enphase IQ8+ Microinverters with rapid shutdown safety compliance
-- Tesla Powerwall 3 Integrated Battery Storage (13.5 kWh usable capacity)
-- Smart electrical gateway backup load management subpanel
-- Turnkey utility net-metering interconnection filing and PTO management
-- Production guarantee: 14,800 kWh estimated annual generation`
-  },
-  {
-    name: 'IronPulse_Gym_Membership_Menu.txt',
-    title: 'Fitness Studio & Personal Training Menu',
-    trade: 'Fitness & Gym',
-    content: `Iron & Pulse Athletic Performance Club
-Functional Fitness, Strength & Conditioning Studio
-1200 Metro Athletic Way
-membership@ironpulseclub.com | (555) 433-2100
-
-CLUB SERVICES & AMENITIES:
-- 1-on-1 Certified Strength & Conditioning Coach Personal Training
-- Functional Movement Screen (FMS) and InBody 570 biometric body composition analysis
-- Unlimited HIIT, Olympic Weightlifting, and Recovery Yoga group classes
-- Custom macro nutrition coaching and athletic supplement regimens
-- Cold plunge tub, infrared dry sauna, and physical therapy recovery zone
-- Open gym access 5:00 AM - 11:00 PM with RFID digital mobile keycard access`
-  },
-  {
-    name: 'PawsWhiskers_PetGrooming_Menu.txt',
-    title: 'Mobile Pet Care & Veterinary Spa Menu',
-    trade: 'Pet Care',
-    content: `Paws & Whiskers Luxury Mobile Grooming & Pet Wellness
-Certified AKC Canine Stylists & Pet First Aid Techs
-service@pawswhiskersspa.com | (555) 234-9000
-
-SERVICE PACKAGES & TREATMENT MENU:
-- Head-to-Tail Luxury Hydro-Massage Bath with Organic Oatmeal Conditioning
-- Precision Breed-Standard Scissor Styling & Sanitary Trim
-- Ultrasonic Teeth Brushing, Fresh Breath Spray, and Diamond Dremel Nail Grind
-- Hypoallergenic De-shedding Furminator Treatment & Ear Canal Cleansing
-- Mobile van arrives climate-controlled with warm purified water
-- Veterinary wellness screening report card provided after every visit`
-  }
-];
 
 // Categorized preset groups for the selector modal
 const PRESET_CATEGORIES = [
@@ -539,17 +424,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       haptic.selection();
       processUploadedFile(e.dataTransfer.files[0]);
     }
-  };
-
-  const handleLoadSampleFile = (sample: typeof SAMPLE_BUSINESS_FILES[0]) => {
-    haptic.selection();
-    persistUploadedFile({
-      name: sample.name,
-      size: sample.content.length,
-      type: 'text/plain',
-      text: sample.content
-    });
-    setError(null);
   };
 
   // Scored local preset keyword matcher (offline fallback only).
@@ -1102,7 +976,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
     if (inputMode === 'upload') {
       if (!uploadedFile) {
-        setError('Please upload a business file or tap one of the sample business files below.');
+        setError('Please upload your own business file to continue.');
         return;
       }
       rawContent = uploadedFile.text;
@@ -1630,38 +1504,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     </>
                   )}
                 </div>
-
-                {/* Instant Sample Business File Test Chips */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono">
-                      Or tap a sample document to test the AI Agent:
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                    {SAMPLE_BUSINESS_FILES.map((sample) => {
-                      const isSelected = uploadedFile?.name === sample.name;
-                      return (
-                        <button
-                          key={sample.name}
-                          type="button"
-                          onClick={() => handleLoadSampleFile(sample)}
-                          className={`min-h-[48px] p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                            isSelected
-                              ? 'bg-[#22ec72]/20 border-[#22ec72]/60 text-[#22ec72] font-bold'
-                              : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
-                          }`}
-                        >
-                          <div className="text-xs font-bold truncate flex items-center gap-1">
-                            <FileText className="w-3 h-3 shrink-0 text-[#22ec72]" />
-                            <span className="truncate">{sample.trade}</span>
-                          </div>
-                          <span className="text-xs text-zinc-400 truncate mt-0.5">{sample.title}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1676,7 +1518,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     type="text"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
-                    placeholder="e.g. Apex Mechanical & Electrical Solutions"
+                    placeholder="e.g. Your Business Name"
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-[#22ec72]"
                   />
                 </div>
