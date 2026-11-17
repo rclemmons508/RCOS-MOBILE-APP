@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { JobDetailModal } from '../jobs/JobDetailModal';
 import { haptic } from '../../utils/haptics';
+import { getJobCategories } from '../../lib/jobCategories';
 
 interface JobsTabProps {
   jobs: Job[];
@@ -36,6 +37,11 @@ interface JobsTabProps {
       form opens. Lets the bottom bar's + button open the real form
       instead of just navigating to the tab. */
   openCreateSignal?: number;
+  /** The business's industry id (e.g. 'it_services') and its own
+      services list. Job categories come from these — see
+      getJobCategories — never from a hardcoded trade list. */
+  industry?: string;
+  businessServices?: string[];
 }
 
 export const JobsTab: React.FC<JobsTabProps> = ({
@@ -45,8 +51,21 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   onDeleteJob,
   onTriggerNotification,
   onCreateInvoice,
-  openCreateSignal = 0
+  openCreateSignal = 0,
+  industry,
+  businessServices
 }) => {
+  // Job categories come from the business itself (its own services, then
+  // its industry preset's default services). The same list feeds the
+  // filter ribbon, the Dispatch New Job picker, and the detail editor.
+  const jobCategories = getJobCategories(industry, businessServices);
+
+  // Active / Completed split: finished jobs move off the active list
+  // into their own view instead of sitting there until deleted.
+  const [jobView, setJobView] = useState<'active' | 'completed'>('active');
+  const activeJobCount = jobs.filter((j) => j.status !== 'completed').length;
+  const completedJobCount = jobs.length - activeJobCount;
+
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,15 +132,21 @@ export const JobsTab: React.FC<JobsTabProps> = ({
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [category, setCategory] = useState<Job['category']>('HVAC');
+  const [category, setCategory] = useState<Job['category']>(jobCategories[0] ?? 'HVAC');
   const [priority, setPriority] = useState<Job['priority']>('high');
   const [estimatedValue, setEstimatedValue] = useState<number>(1850);
   const [description, setDescription] = useState('');
 
-  const categories = ['All', 'HVAC', 'Automation', 'Security', 'Software AI', 'Electrical', 'Plumbing'];
+  const categories = ['All', ...jobCategories];
   const statuses = ['All', 'urgent', 'dispatched', 'in_progress', 'completed'];
+  // In the Completed view the status filter has nothing to narrow — a
+  // completed job is completed — so only 'All' shows there.
+  const viewStatuses = jobView === 'active'
+    ? statuses.filter((s) => s !== 'completed')
+    : ['All'];
 
   const filteredJobs = jobs.filter((j) => {
+    const matchesView = jobView === 'active' ? j.status !== 'completed' : j.status === 'completed';
     const matchesCategory = filterCategory === 'All' || j.category === filterCategory;
     const matchesStatus = filterStatus === 'All' || j.status === filterStatus;
     const matchesDay = !selectedDay || jobDayKey(j) === selectedDay;
@@ -130,7 +155,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
       j.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       j.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (j.assignedTechnician && j.assignedTechnician.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCategory && matchesStatus && matchesSearch && matchesDay;
+    return matchesView && matchesCategory && matchesStatus && matchesSearch && matchesDay;
   });
 
   // A selected day shows that day's jobs in booked order (earliest first).
@@ -362,12 +387,52 @@ export const JobsTab: React.FC<JobsTabProps> = ({
           />
         </div>
 
-        {/* Status Filter Ribbon */}
+        {/* Active / Completed switch — finished jobs live in their own
+            view so the active list only ever shows work still to do. */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <button
+            type="button"
+            aria-pressed={jobView === 'active'}
+            onClick={() => {
+              haptic.selection();
+              setJobView('active');
+              setFilterStatus('All');
+            }}
+            className={`min-h-[48px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
+              jobView === 'active'
+                ? 'bg-[#22ec72]/20 text-[#22ec72] border-[#22ec72]/50 shadow'
+                : 'bg-[#0c1211] text-zinc-400 border-[#1d2b26] hover:text-zinc-200'
+            }`}
+          >
+            Active ({activeJobCount})
+          </button>
+          <button
+            type="button"
+            aria-pressed={jobView === 'completed'}
+            onClick={() => {
+              haptic.selection();
+              setJobView('completed');
+              setFilterStatus('All');
+            }}
+            className={`min-h-[48px] px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
+              jobView === 'completed'
+                ? 'bg-[#22ec72]/20 text-[#22ec72] border-[#22ec72]/50 shadow'
+                : 'bg-[#0c1211] text-zinc-400 border-[#1d2b26] hover:text-zinc-200'
+            }`}
+          >
+            Completed ({completedJobCount})
+          </button>
+        </div>
+
+        {/* Status Filter Ribbon — only in the Active view; in the
+            Completed view every job is completed, so there is nothing
+            left to narrow by status. */}
+        {jobView === 'active' && (
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           <span className="text-xs text-zinc-500 uppercase tracking-wider font-mono font-bold pr-1 shrink-0">
             Status:
           </span>
-          {statuses.map((st) => (
+          {viewStatuses.map((st) => (
             <button
               key={st}
               type="button"
@@ -385,6 +450,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
             </button>
           ))}
         </div>
+        )}
 
         {/* Category Filter Ribbon */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
@@ -417,12 +483,18 @@ export const JobsTab: React.FC<JobsTabProps> = ({
           <div className="p-8 text-center rounded-2xl bg-[#0c1211] border border-[#1d2b26] space-y-2">
             <Briefcase className="w-8 h-8 text-zinc-600 mx-auto" />
             <div className="text-sm font-bold text-zinc-300">
-              {selectedDay && selectedDayLabel ? `No jobs on ${selectedDayLabel}` : 'No jobs match these filters'}
+              {selectedDay && selectedDayLabel
+                ? `No jobs on ${selectedDayLabel}`
+                : jobView === 'completed'
+                  ? 'No completed jobs yet'
+                  : 'No jobs match these filters'}
             </div>
             <p className="text-xs text-zinc-500">
               {selectedDay && selectedDayLabel
                 ? 'Nothing is booked for this day yet.'
-                : 'Try changing status filters or dispatch a new work order.'}
+                : jobView === 'completed'
+                  ? 'Finished jobs move here on their own — nothing to delete.'
+                  : 'Try changing status filters or dispatch a new work order.'}
             </p>
             {selectedDay ? (
               <button
@@ -695,11 +767,9 @@ export const JobsTab: React.FC<JobsTabProps> = ({
                     onChange={(e) => setCategory(e.target.value as any)}
                     className="w-full bg-zinc-900 border border-[#1d2b26] rounded-xl px-2 py-2 text-white focus:outline-none focus:border-[#22ec72]"
                   >
-                    <option value="HVAC">HVAC</option>
-                    <option value="Automation">Automation</option>
-                    <option value="Electrical">Electrical</option>
-                    <option value="Security">Security</option>
-                    <option value="Software AI">Software AI</option>
+                    {jobCategories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -771,6 +841,7 @@ export const JobsTab: React.FC<JobsTabProps> = ({
         isOpen={!!selectedJobForDetail}
         onClose={() => setSelectedJobForDetail(null)}
         job={selectedJobForDetail}
+        categories={jobCategories}
         onUpdateJob={(updated) => {
           if (onUpdateJob) onUpdateJob(updated);
           setSelectedJobForDetail(updated);

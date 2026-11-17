@@ -784,7 +784,14 @@ export interface Job {
    */
   createdAt?: string;
   aiNotes?: string;
-  category: 'HVAC' | 'Electrical' | 'Automation' | 'Security' | 'Maintenance' | 'Software AI';
+  /**
+   * The service this job is filed under. It is a service name from the
+   * business's own services / industry preset (see getJobCategories),
+   * not a fixed trade list — an IT business files jobs under its own
+   * services, a plumber under theirs. Older jobs keep the category they
+   * were created with.
+   */
+  category: string;
   quoteId?: string;
   invoiceId?: string;
 }
