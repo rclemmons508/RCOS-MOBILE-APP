@@ -21,9 +21,12 @@ import {
   FileText,
   StickyNote,
   History,
+  Briefcase,
 } from 'lucide-react';
 import { AddClientModal } from '../clients/AddClientModal';
 import { apiFetch } from '../../lib/api';
+import { getJobCategories } from '../../lib/jobCategories';
+import { ClientPrefill } from '../../lib/callToClient';
 import { haptic } from '../../utils/haptics';
 
 interface ClientsTabProps {
@@ -43,6 +46,14 @@ interface ClientsTabProps {
       form opens. Lets the bottom bar's + button open the real form
       instead of just navigating to the tab. */
   openAddSignal?: number;
+  /** The business's industry + own services, for the service picker on
+      the Add/Edit Client form — same catalog the Jobs screen uses, so a
+      customer is only ever tagged with work this business does. */
+  industry?: string | null;
+  businessServices?: string[] | null;
+  /** Pre-filled details for the next Add Client open (e.g. from a call
+      on the Calls screen). Read when openAddSignal fires. */
+  clientPrefill?: ClientPrefill | null;
 }
 
 type Filter = 'all' | 'leads' | 'active';
@@ -66,6 +77,9 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
   jobs = [],
   actions = [],
   openAddSignal = 0,
+  industry,
+  businessServices,
+  clientPrefill,
 }) => {
   const [profileClientId, setProfileClientId] = useState<string | null>(null);
   const [profileTab, setProfileTab] = useState<ProfileTab>('overview');
@@ -75,16 +89,35 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
   const [generatedDraft, setGeneratedDraft] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
+  // Pre-filled details for the next Add Client open (from a call).
+  // Set from the prop when the open signal fires, and cleared when the
+  // form closes, so a manual Add never inherits a stale caller's number.
+  const [pendingPrefill, setPendingPrefill] = useState<ClientPrefill | null>(null);
+  // The business's own services — the only options the service picker
+  // ever offers (own services → industry preset → empty, never another
+  // trade's list; see getJobCategories).
+  const serviceOptions = getJobCategories(industry, businessServices);
   // Quick-action signal from the bottom bar's + button: a new value
   // opens the add-client form. The ref stops a re-render from reopening
   // it after the user closes it.
   const lastAddSignalRef = useRef(0);
+  // Identity of the last prefill object this tab consumed. App keeps
+  // its copy until the next call-to-client action, so a later manual
+  // Add (same signal family, same object) must not re-apply a stale
+  // caller's number — only a fresh prefill object is applied.
+  const lastPrefillRef = useRef<ClientPrefill | null>(null);
   useEffect(() => {
     if (openAddSignal && openAddSignal !== lastAddSignalRef.current) {
       lastAddSignalRef.current = openAddSignal;
+      if (clientPrefill && clientPrefill !== lastPrefillRef.current) {
+        lastPrefillRef.current = clientPrefill;
+        setPendingPrefill(clientPrefill);
+      } else {
+        setPendingPrefill(null);
+      }
       setIsAddClientModalOpen(true);
     }
-  }, [openAddSignal]);
+  }, [openAddSignal, clientPrefill]);
   const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
   const [sentNotice, setSentNotice] = useState<string | null>(null);
 
@@ -345,6 +378,9 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
           {profileTab === 'overview' && (
             <div className="rounded-2xl bg-[#0c1211] border border-[#1d2b26] p-4 space-y-3">
               {detailRow(<Building2 className="w-4 h-4" />, 'Company', profileClient.company)}
+              {profileClient.serviceType
+                ? detailRow(<Briefcase className="w-4 h-4" />, 'Service', profileClient.serviceType)
+                : null}
               {detailRow(<Phone className="w-4 h-4" />, 'Phone', profileClient.phone || 'Not on file')}
               {detailRow(<Mail className="w-4 h-4" />, 'Email', profileClient.email || 'Not on file')}
               {detailRow(
@@ -528,7 +564,7 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => setIsAddClientModalOpen(true)}
+                onClick={() => { setPendingPrefill(null); setIsAddClientModalOpen(true); }}
                 className="px-3 py-2 rounded-xl bg-[#22ec72] hover:brightness-110 text-black font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-[#22ec72]/20 shrink-0 min-h-[40px]"
               >
                 <Plus className="w-4 h-4" />
@@ -562,7 +598,7 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
                 <p className="text-xs text-zinc-500">Add your first client to track jobs, follow-ups, and account health.</p>
                 <button
                   type="button"
-                  onClick={() => setIsAddClientModalOpen(true)}
+                  onClick={() => { setPendingPrefill(null); setIsAddClientModalOpen(true); }}
                   className="min-h-[48px] mt-2 px-3 py-1.5 rounded-xl bg-[#22ec72] text-black text-xs font-bold cursor-pointer hover:brightness-110 transition"
                 >
                   + Add First Client
@@ -658,8 +694,10 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
       {/* New Client Onboarding Modal */}
       <AddClientModal
         isOpen={isAddClientModalOpen}
-        onClose={() => setIsAddClientModalOpen(false)}
+        onClose={() => { setIsAddClientModalOpen(false); setPendingPrefill(null); }}
         onAddClient={onAddClient}
+        prefill={pendingPrefill}
+        serviceOptions={serviceOptions}
       />
 
       {/* Edit Client Modal */}
@@ -667,6 +705,7 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
         isOpen={!!clientToEdit}
         onClose={() => setClientToEdit(null)}
         initialClient={clientToEdit}
+        serviceOptions={serviceOptions}
         onAddClient={(c) => {
           onEditClient(c);
           setClientToEdit(null);

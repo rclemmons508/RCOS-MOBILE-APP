@@ -16,7 +16,8 @@ import {
   Users,
   Settings,
   ExternalLink,
-  Play
+  Play,
+  UserPlus
 } from 'lucide-react';
 import { MessagesTab } from './MessagesTab';
 import { VoicemailsView } from '../phone/VoicemailsView';
@@ -27,6 +28,7 @@ import { AiReceptionistDetail, receptionistStatus } from '../phone/AiReceptionis
 import { sidebarCard } from '../ui/cards';
 import { apiFetch } from '../../lib/api';
 import { fetchLiveCalls, type LiveCall } from '../../lib/liveCalls';
+import { type CallerPrefillSource } from '../../lib/callToClient';
 import { LiveCallsCard } from '../phone/LiveCallsCard';
 import { withBusinessId, filterToBusiness } from '../../lib/businessScope';
 import { firestoreService } from '../../services/firestoreService';
@@ -59,6 +61,10 @@ interface PhoneSystemTabProps {
   /** Opens Settings on a section (Knowledge Base lives in 'user', where
       Teach Your Team is). */
   onOpenSettingsSection?: (section: 'user' | 'agents') => void;
+  /** Add a caller as a customer — opens the Add Client form pre-filled
+      with what the call record carries (number, and for log entries the
+      caller name and AI summary when the record has them). */
+  onAddCallerAsClient?: (source: CallerPrefillSource) => void;
 }
 
 // No preset scenarios: the old Quick Scenarios box was demo content
@@ -80,6 +86,7 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
   serverOnline = null,
   openReceptionistSignal = 0,
   onOpenSettingsSection,
+  onAddCallerAsClient,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'phone' | 'voicemails' | 'comms'>(initialSubTab ?? 'phone');
   const [answeringMode, setAnsweringMode] = useState<'ai' | 'manual'>('ai');
@@ -338,7 +345,15 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
 
               {/* Live receptionist calls — the real inbound calls the AI
                   is on right now, with Listen in. Empty state when none. */}
-              <LiveCallsCard calls={liveCalls} businessId={scopedBusinessId} />
+              <LiveCallsCard
+                calls={liveCalls}
+                businessId={scopedBusinessId}
+                onAddCallerAsClient={
+                  onAddCallerAsClient
+                    ? (liveCall) => onAddCallerAsClient({ callerNumber: liveCall.callerNumber })
+                    : undefined
+                }
+              />
 
               {/* Phone status bar — no carrier line is connected; calls run in-app. */}
               <div className={`p-3 ${sidebarCard} flex items-center justify-between gap-2 flex-wrap`}>
@@ -585,6 +600,28 @@ export const PhoneSystemTab: React.FC<PhoneSystemTabProps> = ({
                                   <span>{call.actionRequired}</span>
                                 </div>
                               </div>
+                            )}
+
+                            {/* Add the caller as a customer — opens the Add
+                                Client form pre-filled with this call's
+                                number, caller name, and AI summary (when
+                                the record has them). */}
+                            {onAddCallerAsClient && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onAddCallerAsClient({
+                                    callerNumber: call.callerNumber,
+                                    callerName: call.callerName,
+                                    summary: call.summary,
+                                    department: call.department,
+                                  })
+                                }
+                                className="min-h-[48px] w-full px-3 py-2.5 rounded-xl bg-[#22ec72]/10 hover:bg-[#22ec72]/20 border border-[#22ec72]/40 text-[#22ec72] text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                              >
+                                <UserPlus className="w-4 h-4" />
+                                <span>Add caller as customer</span>
+                              </button>
                             )}
                           </div>
                         )}

@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Client } from '../../types';
+import { ClientPrefill } from '../../lib/callToClient';
 import { apiFetch } from '../../lib/api';
 import { UserPlus, Building2, Phone, Mail, CheckCircle2, X, Upload, FileText, Loader2, Sparkles } from 'lucide-react';
 
@@ -8,6 +9,14 @@ interface AddClientModalProps {
   onClose: () => void;
   onAddClient: (client: Client) => void;
   initialClient?: Client | null;
+  /** Pre-filled values for a brand-new client (e.g. from a call).
+      Ignored when editing an existing client. */
+  prefill?: ClientPrefill | null;
+  /** The business's own services, for the service picker — same catalog
+      the Jobs screen uses. Empty means the business has no services set
+      up yet, and the picker shows that honestly instead of another
+      industry's list. */
+  serviceOptions?: string[];
 }
 
 // Response contract for POST /api/business/analyze-document with mode: 'client'.
@@ -56,12 +65,15 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
   onClose,
   onAddClient,
   initialClient,
+  prefill,
+  serviceOptions = [],
 }) => {
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [serviceType, setServiceType] = useState('');
 
   // ---- Fill from a file or pasted text ----
   const [fillMode, setFillMode] = useState<'upload' | 'paste'>('upload');
@@ -73,17 +85,29 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
 
   React.useEffect(() => {
     if (initialClient && isOpen) {
+      // Editing: fill from the stored record, including its service.
       setName(initialClient.name);
       setCompany(initialClient.company);
       setEmail(initialClient.email);
       setPhone(initialClient.phone);
       setNotes(initialClient.aiSummary);
+      setServiceType(initialClient.serviceType ?? '');
+    } else if (prefill && isOpen) {
+      // New client from a call: only what the call record carried.
+      // Company and email were never on the call, so they stay blank.
+      setName(prefill.name);
+      setCompany('');
+      setEmail('');
+      setPhone(prefill.phone);
+      setNotes(prefill.notes);
+      setServiceType(prefill.serviceType ?? '');
     } else if (isOpen) {
       setName('');
       setCompany('');
       setEmail('');
       setPhone('');
       setNotes('');
+      setServiceType('');
     }
     if (isOpen) {
       setFillMode('upload');
@@ -92,7 +116,7 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
       setFillNote(null);
       setAnalyzing(false);
     }
-  }, [initialClient, isOpen]);
+  }, [initialClient, prefill, isOpen]);
 
   if (!isOpen) return null;
 
@@ -264,6 +288,10 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
       activeJobsCount: initialClient ? initialClient.activeJobsCount : 0,
       tags: initialClient ? initialClient.tags : ['New Onboarding'],
       aiSummary: notes || (initialClient ? initialClient.aiSummary : 'New client onboarded via manual entry.'),
+      // The service this client uses, from the business's own catalog.
+      // Left unset when no service was picked — never another
+      // industry's work, and never a guess from the call.
+      serviceType: serviceType.trim() ? serviceType.trim() : undefined,
     };
     onAddClient(newClient);
     onClose();
@@ -461,6 +489,31 @@ export const AddClientModal: React.FC<AddClientModalProps> = ({
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Service they use — the business's own services only. When
+                the business has no services set up yet, this says so
+                honestly instead of offering another industry's work. */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-400 pl-1">Service they use</label>
+              {serviceOptions.length > 0 ? (
+                <select
+                  value={serviceType}
+                  onChange={(e) => setServiceType(e.target.value)}
+                  className="w-full px-3 py-2 bg-black border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#22ec72]/50 transition-colors"
+                >
+                  <option value="">Choose a service…</option>
+                  {serviceOptions.map((service) => (
+                    <option key={service} value={service}>
+                      {service}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-zinc-500 leading-relaxed bg-black border border-zinc-800 rounded-xl p-2.5">
+                  No services set up yet — add your services in Settings to tag customers with the work they use.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1">

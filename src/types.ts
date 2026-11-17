@@ -777,6 +777,11 @@ export interface Client {
   lastContactDate: string;
   aiSummary: string;
   tags: string[];
+  /** Which of the BUSINESS's own services this client uses — one entry
+      from the business's service catalog (see getJobCategories), never
+      another industry's work. Set when the client is added (including
+      from a call) or edited; older records simply have none. */
+  serviceType?: string;
 }
 
 export interface RCOSFileItem {

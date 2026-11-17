@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Ear, PhoneIncoming } from 'lucide-react';
+import { Ear, PhoneIncoming, UserPlus } from 'lucide-react';
 import { sidebarCard } from '../ui/cards';
 import { formatCallerNumber, liveCallDuration, type LiveCall } from '../../lib/liveCalls';
 import { ListenInConsole } from './ListenInConsole';
@@ -7,6 +7,10 @@ import { ListenInConsole } from './ListenInConsole';
 interface LiveCallsCardProps {
   calls: LiveCall[];
   businessId: string;
+  /** Add the caller as a customer — opens the Add Client form
+      pre-filled with the caller's number. Live calls carry no name or
+      summary, so those stay blank for the user to fill in. */
+  onAddCallerAsClient?: (call: LiveCall) => void;
 }
 
 /**
@@ -15,7 +19,7 @@ interface LiveCallsCardProps {
  * shows real calls — when there are none, it says so plainly instead of
  * inventing one.
  */
-export const LiveCallsCard: React.FC<LiveCallsCardProps> = ({ calls, businessId }) => {
+export const LiveCallsCard: React.FC<LiveCallsCardProps> = ({ calls, businessId, onAddCallerAsClient }) => {
   const [listeningTo, setListeningTo] = useState<LiveCall | null>(null);
   // Tick the durations once a second while a call is live.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -83,14 +87,26 @@ export const LiveCallsCard: React.FC<LiveCallsCardProps> = ({ calls, businessId 
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setListeningTo(call)}
-                  className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0"
-                >
-                  <Ear className="w-4 h-4" />
-                  <span>Listen in</span>
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {onAddCallerAsClient && (
+                    <button
+                      type="button"
+                      onClick={() => onAddCallerAsClient(call)}
+                      className="min-h-[48px] px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <UserPlus className="w-4 h-4 text-[#22ec72]" />
+                      <span>Add customer</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setListeningTo(call)}
+                    className="min-h-[48px] px-3 py-2 rounded-xl bg-[#22ec72] hover:bg-[#4bf28a] text-black text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Ear className="w-4 h-4" />
+                    <span>Listen in</span>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
