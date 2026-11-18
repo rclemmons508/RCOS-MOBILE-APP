@@ -70,9 +70,9 @@ When the AI receptionist answers a call, the server sends the business owner a p
          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
      ```
 4. The app asks for notification permission at sign-in and registers its FCM token with the server (`POST /api/push/register`); signing out unregisters it. Tokens live in Firestore (`pushTokens`, server-only — see `firestore.rules`) and only the business owner's tokens ever get a call alert.
-5. Flip the flag: set `PUSH_CONFIGURED = true` in `src/lib/pushNotifications.ts`. This is the last step — without it push stays off even with the file in place.
+5. Push is enabled: `PUSH_CONFIGURED = true` in `src/lib/pushNotifications.ts` — flipped once the steps above were complete. If the Firebase setup is ever removed, flip it back to `false` until the file and secret are back in place (see below).
 
-Without `google-services.json`, the APK still builds — but the app MUST NOT call the native push plugin: with no native FirebaseApp, `register()` throws on the native side and crashes the app the moment notification permission is granted (and on every launch after that, because the permission stays granted). `PUSH_CONFIGURED = false` in `src/lib/pushNotifications.ts` keeps every native push call off until the setup above is done, so the app opens and runs normally; the Calls screen's live-call view still shows the call.
+The flag is the safety net: without `google-services.json` in the build, the app MUST NOT call the native push plugin — with no native FirebaseApp, `register()` throws on the native side and crashes the app the moment notification permission is granted (and on every launch after that, because the permission stays granted). Setting `PUSH_CONFIGURED = false` in `src/lib/pushNotifications.ts` keeps every native push call off until the setup above is done, so the app opens and runs normally; the Calls screen's live-call view still shows the call.
 
 ### Outbound calling (dial out from the app)
 

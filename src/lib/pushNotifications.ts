@@ -39,7 +39,7 @@ const STORED_BUSINESS_KEY = 'rcos_push_token_business';
  * comment. When this is false, setup and teardown never touch the
  * native push plugin at all, so the app opens and runs normally.
  */
-const PUSH_CONFIGURED = false;
+const PUSH_CONFIGURED = true;
 
 export interface LiveCallPush {
   title: string;
