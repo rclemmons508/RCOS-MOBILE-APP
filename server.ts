@@ -35,6 +35,14 @@ import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, creat
 import { applyLivekitEvent, getLiveCall, getLiveCalls } from './server/liveCalls';
 import { notifyCallAnswered, registerPushToken, unregisterPushToken } from './server/pushNotifications';
 import { deleteAssistantDocument, getAssistantDocumentTexts, listAssistantDocuments, processAssistantUpload } from './server/assistantDocs';
+import {
+  dialOutboundCall,
+  hangupOutboundCall,
+  isOutboundConfigured,
+  OUTBOUND_ROOM_PREFIX,
+  OutboundDialError,
+  OutboundNotConfiguredError,
+} from './server/outboundCalls';
 import { analyzeDocument, analyzeClientDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
 import { z } from 'zod';
@@ -207,6 +215,8 @@ const livekitWebhookLimiter = createRateLimiter('livekit-webhook', 600, 60000); 
 const liveCallsLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false }); // 60 live-call polls / min (Calls screen polls every 6s)
 const listenTokenLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false }); // 10 listen-token mints / min (minting is a billable LiveKit call)
 const pushLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }); // 30 push token registrations / min
+const dialLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false }); // 10 outbound dials / min (each dial is a billable PSTN call)
+const outboundStatusLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false }); // 60 outbound-status reads / min
 const assistantUploadLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false }); // 10 document uploads / min (upload runs a Gemini extraction)
 // ==================== API ROUTES ====================
 
@@ -507,6 +517,13 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
   checks.push({
     id: 'livekit', label: 'Voice Calling (LiveKit)', status: lk ? 'pass' : 'fail',
     detail: lk ? 'LiveKit credentials configured' : 'LIVEKIT_URL / KEY / SECRET missing'
+  });
+
+  // Outbound SIP trunk (dial out from the app keypad)
+  const obTrunk = !!process.env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID;
+  checks.push({
+    id: 'outbound-trunk', label: 'Outbound Calling (SIP trunk)', status: obTrunk ? 'pass' : 'warn',
+    detail: obTrunk ? 'Outbound SIP trunk configured — the dialer can call out' : 'LIVEKIT_SIP_OUTBOUND_TRUNK_ID not set — dialing out is unavailable (see SETUP.md §4)'
   });
 
   // Voice worker secret
@@ -1115,6 +1132,76 @@ app.post('/api/calls/live/:roomName/listen-token', listenTokenLimiter, requireVe
     console.error('[live-calls] listen token failed:', err?.message || err);
     res.status(500).json({ error: 'Could not join the call to listen in. Please try again.' });
   }
+});
+
+// Outbound calling readiness, for the dialer: true only when the server
+// has LiveKit credentials AND a stored outbound SIP trunk id
+// (LIVEKIT_SIP_OUTBOUND_TRUNK_ID). The dialer shows the setup steps
+// instead of a working keypad when this is false.
+app.get('/api/calls/outbound-status', outboundStatusLimiter, requireVerifiedAuth, (req: Request, res: Response) => {
+  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  const livekitConfigured = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
+  res.json({
+    configured: livekitConfigured && isOutboundConfigured(),
+    livekitConfigured,
+    trunkConfigured: isOutboundConfigured(),
+  });
+});
+
+// Dial out from the app: creates a LiveKit room, dials the number into
+// it as a SIP participant (server/outboundCalls.ts), and returns a
+// publish-capable token so the owner can talk. Destination policy is
+// the same as every other dial-out path (strict E.164, US/Canada by
+// default, premium-rate blocked, daily cap). A missing trunk is a 503
+// with code `outbound_trunk_not_configured`, never a fake connected call.
+app.post('/api/calls/dial', dialLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
+  const business = resolveBodyBusiness(req, req.body?.businessId);
+  if (!business) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  const caller = verifiedCaller(req);
+  if (!caller) {
+    return res.status(401).json({ error: 'Please sign in to use this feature.' });
+  }
+  const to = typeof req.body?.to === 'string' ? req.body.to : '';
+  try {
+    const result = await dialOutboundCall({
+      to,
+      businessId: business.id,
+      callerUid: caller.uid || 'guest',
+      callerEmail: caller.email || '',
+    });
+    res.json(result);
+  } catch (err: any) {
+    if (err instanceof OutboundNotConfiguredError) {
+      return res.status(503).json({ error: err.message, code: 'outbound_trunk_not_configured' });
+    }
+    if (err instanceof OutboundDialError) {
+      return res.status(err.status || 500).json({ error: err.message });
+    }
+    console.error('[outbound-dial] failed:', err?.message || err);
+    res.status(500).json({ error: 'Could not place the call. Please try again.' });
+  }
+});
+
+// Hang up an outbound call: deleting the room drops the SIP leg and
+// disconnects the app. Idempotent — hanging up a room that already
+// finished (callee hung up, ring timeout) still answers ok.
+app.post('/api/calls/dial/:roomName/hangup', dialLimiter, requireVerifiedAuth, async (req: Request, res: Response) => {
+  const roomName = req.params.roomName || '';
+  if (!roomName.startsWith(OUTBOUND_ROOM_PREFIX)) {
+    return res.status(400).json({ error: 'Not an outbound call room.' });
+  }
+  // The room name embeds the business id (outbound-<businessId>-<ts>):
+  // only a caller on that business may hang it up.
+  const rest = roomName.slice(OUTBOUND_ROOM_PREFIX.length);
+  const businessId = rest.slice(0, rest.lastIndexOf('-'));
+  const business = resolveBodyBusiness(req, businessId);
+  if (!business) {
+    return res.status(403).json({ error: 'You are not on this team.' });
+  }
+  await hangupOutboundCall(roomName);
+  res.json({ ok: true });
 });
 
 // Push registration: the phone app sends its FCM device token here after

@@ -72,6 +72,8 @@ Never commit real secrets. `VITE_*` values are embedded in the client bundle, so
 | `APP_URL` | Server | Public URL of the deployed server |
 | `GEMINI_API_KEY` | Server secret | Google AI Studio key |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Server secret | LiveKit Cloud voice |
+| `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` | Server secret | Stored LiveKit outbound SIP trunk id — required for the Dial out keypad; without it dialing answers 503 and the dialer shows the setup steps (see SETUP.md §4) |
+| `LIVEKIT_SIP_OUTBOUND_CALLER_ID` | Server secret | Optional caller ID the outbound trunk presents (defaults to the trunk's own number) |
 | `VOICE_AGENT_SECRET` | Server secret | Shared secret for voice-agent routing logs |
 | `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_DATABASE_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID` | Client-safe | Firebase web config for project `rcos-mobile` |
 | `VITE_API_URL` | Client-safe | Optional API base override for Android native builds (empty in web dev) |
@@ -113,7 +115,7 @@ There is no automated test suite in this repo — verification is typecheck + pr
 ## Current status — read before treating this as production-hardened
 
 - **Login gate is ON.** `FIREBASE_SERVICE_ACCOUNT` is set, so signed-in /api routes require a Firebase ID token (unsigned calls answer 401) and Firestore rules enforce per-business tenancy. Rollback: delete `FIREBASE_SERVICE_ACCOUNT` in Railway and redeploy, or set `ALLOW_OPEN_API=true`.
-- **No carrier phone line is connected.** The Phone tab is in-app calling only (LiveKit voice). There is no Twilio dependency in the build — the carrier was removed entirely. SMS follow-ups send through Vonage when it is configured.
+- **No carrier phone line is connected for inbound.** Inbound calls arrive on the LiveKit number and go straight to the AI receptionist. Dialing out from the app keypad needs a stored LiveKit outbound SIP trunk (Vonage — see SETUP.md §4); until `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` is set, the dialer shows that setup is missing instead of pretending to call. There is no Twilio dependency in the build — the carrier was removed entirely. SMS follow-ups send through Vonage when it is configured.
 - **No mock or demo data anywhere in the build.** Every list starts empty and fills from the business's real records only — no fake voicemails, calls, jobs, clients, or companies are baked into the code.
 - **External-number transfer is unproven.** Department transfers today are handoffs between AI personas inside the app, not transfers to a real outside phone number.
 - **Stripe billing is intentionally out of scope for now.** Pricing above is the published plan; checkout and subscription billing are still to come.
