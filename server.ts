@@ -33,6 +33,7 @@ import { checkDestination, envInt, normalizeE164, takeDailyQuota } from './serve
 import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn, requireAuth, requireVerifiedAuth, verifiedCaller } from './server/auth';
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
 import { applyLivekitEvent, getLiveCall, getLiveCalls } from './server/liveCalls';
+import { logFinishedReceptionistCall } from './server/inboundCallLog';
 import { notifyCallAnswered, registerPushToken, unregisterPushToken } from './server/pushNotifications';
 import { deleteAssistantDocument, getAssistantDocumentTexts, listAssistantDocuments, processAssistantUpload } from './server/assistantDocs';
 import {
@@ -1048,9 +1049,12 @@ app.get('/api/voice/routing-log', (req: Request, res: Response) => {
 
 // LiveKit webhook: verifies the Authorization signature with the LiveKit
 // API secret (fail-closed: a bad or missing signature is a 401) and
-// applies the event to the live-call registry. Always answers 200 for a
-// verified event, even one it does not track, so LiveKit never retries
-// a healthy delivery.
+// applies the event to the live-call registry. When a receptionist-
+// answered call ends (caller hangs up, or the room closes) it also
+// writes the call's one record to the Calls log (server/inboundCallLog.ts)
+// so the call shows in the Calls list and counts on the weekly calls
+// answered card. Always answers 200 for a verified event, even one it
+// does not track, so LiveKit never retries a healthy delivery.
 app.post('/api/livekit/webhook', async (req: Request, res: Response) => {
   const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
@@ -1064,11 +1068,23 @@ app.post('/api/livekit/webhook', async (req: Request, res: Response) => {
     const { WebhookReceiver } = await import('livekit-server-sdk');
     const receiver = new WebhookReceiver(LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
     const event = await receiver.receive(rawBody, req.headers.authorization);
-    const answered = applyLivekitEvent(event as any);
+    const { answered, finished } = applyLivekitEvent(event as any);
     if (answered) {
       // Fire-and-forget: a push failure must never fail the webhook.
       // notifyCallAnswered never throws and dedupes by room.
       void notifyCallAnswered(answered);
+    }
+    if (finished) {
+      // The receptionist-answered call ended: write its one call-log
+      // record (caller, time, duration) so it shows in the Calls log and
+      // counts on the weekly calls answered card. A logging failure must
+      // never fail the webhook — the call is already over — so it is
+      // caught and logged here, and the webhook still answers 200.
+      try {
+        logFinishedReceptionistCall(finished);
+      } catch (err: any) {
+        console.error('[livekit-webhook] could not log finished call:', err?.message || err);
+      }
     }
     res.json({ ok: true });
   } catch (err: any) {

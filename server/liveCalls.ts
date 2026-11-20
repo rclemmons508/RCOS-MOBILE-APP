@@ -22,6 +22,11 @@
  * - This is live-only data: the registry lives in memory and resets on a
  *   server restart/redeploy. A stale-entry sweep (3h) drops anything a
  *   missed webhook left behind.
+ * - A finished call is reported exactly once, so the call log can be
+ *   written from it (server/inboundCallLog.ts): the registry entry is
+ *   gone after the first end event, so a redelivered end event finds
+ *   nothing to report — and the log record id is the room, so even a
+ *   second report would update the same record, never a second one.
  */
 
 // livekit ParticipantInfo_Kind values (see @livekit/protocol):
@@ -112,26 +117,38 @@ function sweepStale(now = Date.now()): void {
   }
 }
 
-/** Apply one verified LiveKit webhook event to the live-call registry.
- * Returns the call when this event newly marks it ANSWERED (the
- * receptionist agent just joined a ringing call), so the caller can alert
- * the owner — null for every other event, including a duplicate agent
- * join for a call that is already answered. */
-export function applyLivekitEvent(ev: LivekitWebhookPayload): LiveCall | null {
+/** What one verified LiveKit webhook event did to the live-call registry. */
+export interface LivekitEventOutcome {
+  /** The call the receptionist just answered (agent joined a ringing
+   *  call), so the owner can be alerted. Null for every other event,
+   *  including a duplicate agent join for a call already answered. */
+  answered: LiveCall | null;
+  /** A receptionist-answered call that just ended (caller hung up, or
+   *  the room closed), so it can be written to the Calls log. Null when
+   *  the call was never answered — a caller who hung up while still
+   *  ringing is not a call she answered — and null on a duplicate
+   *  delivery: the registry entry is gone after the first end event. */
+  finished: LiveCall | null;
+}
+
+const NO_OUTCOME: LivekitEventOutcome = { answered: null, finished: null };
+
+/** Apply one verified LiveKit webhook event to the live-call registry. */
+export function applyLivekitEvent(ev: LivekitWebhookPayload): LivekitEventOutcome {
   const roomName = ev.room?.name || '';
-  if (!roomName) return null;
+  if (!roomName) return NO_OUTCOME;
   // Outbound rooms (the owner dialed out from the app) are the owner's
   // own call, not a receptionist call: the agent never joins them, so
   // without this guard they would sit in the live-call list stuck on
   // 'ringing' forever. The dialer UI tracks its own call.
-  if (roomName.startsWith(OUTBOUND_ROOM_PREFIX)) return null;
+  if (roomName.startsWith(OUTBOUND_ROOM_PREFIX)) return NO_OUTCOME;
   const now = Date.now();
   const participant = ev.participant;
   const kind = participant ? Number(participant.kind) : NaN;
 
   switch (ev.event) {
     case 'participant_joined': {
-      if (!participant) return null;
+      if (!participant) return NO_OUTCOME;
       if (kind === PARTICIPANT_KIND_SIP) {
         // An inbound phone call just arrived in this room.
         const startedMs =
@@ -155,17 +172,22 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): LiveCall | null {
         if (existing && existing.status !== 'answered') {
           existing.status = 'answered';
           existing.lastSeenAt = now;
-          return { ...existing };
+          return { answered: { ...existing }, finished: null };
         }
       }
-      return null;
+      return NO_OUTCOME;
     }
     case 'participant_left':
     case 'participant_connection_aborted': {
-      if (!participant) return null;
+      if (!participant) return NO_OUTCOME;
       if (kind === PARTICIPANT_KIND_SIP) {
-        // The caller hung up — the call is over.
+        // The caller hung up — the call is over. Only a call the
+        // receptionist actually answered is reported as finished.
+        const existing = liveCalls.get(roomName);
         liveCalls.delete(roomName);
+        return existing && existing.status === 'answered'
+          ? { answered: null, finished: { ...existing } }
+          : NO_OUTCOME;
       } else if (kind === PARTICIPANT_KIND_AGENT && isReceptionist(participant)) {
         // The receptionist left but the caller is still there: back to
         // ringing so the card never claims she is on a call she left.
@@ -175,15 +197,20 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): LiveCall | null {
           existing.lastSeenAt = now;
         }
       }
-      return null;
+      return NO_OUTCOME;
     }
     case 'room_finished': {
+      // The room closed — the call is over, however it ended. Same rule:
+      // only a call she answered is reported as finished.
+      const existing = liveCalls.get(roomName);
       liveCalls.delete(roomName);
-      return null;
+      return existing && existing.status === 'answered'
+        ? { answered: null, finished: { ...existing } }
+        : NO_OUTCOME;
     }
     default:
       // room_started, track_*, egress_*, ingress_*: nothing to track.
-      return null;
+      return NO_OUTCOME;
   }
 }
 
