@@ -74,6 +74,12 @@ When the AI receptionist answers a call, the server sends the business owner a p
 
 The flag is the safety net: without `google-services.json` in the build, the app MUST NOT call the native push plugin — with no native FirebaseApp, `register()` throws on the native side and crashes the app the moment notification permission is granted (and on every launch after that, because the permission stays granted). Setting `PUSH_CONFIGURED = false` in `src/lib/pushNotifications.ts` keeps every native push call off until the setup above is done, so the app opens and runs normally; the Calls screen's live-call view still shows the call.
 
+### Receptionist calls in the Calls log
+
+When a receptionist call ends, the server writes one record to the Calls log (caller, time, duration) — it shows in the Calls list and counts on the weekly calls answered card. The record is written from the LiveKit webhook when the caller hangs up or the room closes; only a call the receptionist actually answered is logged, and the record id is the LiveKit room, so a redelivered call-end signal updates the same record instead of writing a second one. The record carries no business id — it is attributed to the phone line's business (the only business on the server), the same rule the live-call list uses.
+
+This depends on the webhook actually reaching the API service: the webhook is registered in LiveKit Cloud (project **rcos-mobile** → Settings → Webhooks) at `https://rcos-mobile-app-production.up.railway.app/api/livekit/webhook`, and the API service (not just the voice worker) needs its own `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` in Railway — without them the webhook answers 503 and no call is ever logged. Settings → Diagnostics shows the Voice Calling (LiveKit) state.
+
 ### Outbound calling (dial out from the app)
 
 The Calls tab's **Dial out** keypad calls a real phone number from the app: the server creates a LiveKit room and dials the number into it as a SIP participant (`POST /api/calls/dial`), and the owner talks through the room. LiveKit cannot dial out on its own number alone — it needs a stored **outbound SIP trunk** from a SIP provider. The business already has a Vonage account (SMS + number), so Vonage is the trunk provider — no new signup and no work email needed.
