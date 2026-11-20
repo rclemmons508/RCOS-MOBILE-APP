@@ -21,6 +21,8 @@ import { uniqueId } from '../lib/businessScope';
 import { employeeCustomizationService } from '../services/employeeCustomizationService';
 import { resolveBehaviorProtocol } from '../utils/agentBehavior';
 import { getEmployeeIcon, agentColorSet } from '../utils/employeeIcon';
+import type { MainAiAlert } from '../utils/mainAiAlerts';
+import { morganQuestion, type MorganAlertAction } from '../utils/morganAlerts';
 import {
   detectChatAction,
   executeChatAction,
@@ -28,6 +30,8 @@ import {
 } from '../services/chatActions';
 
 type ActionCardStatus = 'pending' | 'confirmed' | 'cancelled' | 'done' | 'failed';
+
+type AlertCardStatus = 'pending' | 'done' | 'failed' | 'dismissed';
 
 interface ChatMessageItem {
   id: string;
@@ -42,6 +46,17 @@ interface ChatMessageItem {
     status: ActionCardStatus;
     result?: string;
     recordId?: string;
+  };
+  /**
+   * Present only on Morgan's proactive messages (one of the five approved
+   * triggers). The buttons are the question's answer — nothing runs until
+   * the owner taps one.
+   */
+  alertCard?: {
+    alert: MainAiAlert;
+    actions: { id: MorganAlertAction; label: string }[];
+    status: AlertCardStatus;
+    result?: string;
   };
 }
 
@@ -60,6 +75,17 @@ interface GeminiChatViewProps {
   attachedDocuments?: { id: string; name: string }[];
   /** Parent-driven send: when nonce changes, this text is sent as the user's message. */
   sendSignal?: { text: string; nonce: number };
+  /**
+   * Morgan's proactive alerts: when nonce changes, each alert is posted
+   * as her own message with its question and buttons attached.
+   */
+  incomingAlerts?: { alerts: MainAiAlert[]; nonce: number };
+  /**
+   * Runs when the owner taps a button on a Morgan alert card. Resolves
+   * with what really happened (server reply for approve / mark paid) —
+   * the card reports only that, never a guess.
+   */
+  onAlertAction?: (alert: MainAiAlert, action: MorganAlertAction) => Promise<{ ok: boolean; summary: string }>;
 }
 
 const DEFAULT_BIZ: BusinessAccount = {
@@ -161,7 +187,9 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
   senderName = '',
   onBusinessRefresh,
   attachedDocuments = [],
-  sendSignal
+  sendSignal,
+  incomingAlerts,
+  onAlertAction
 }) => {
   const business = propBusiness || DEFAULT_BIZ;
   // One thread per signed-in user AND business: teammates sharing a device
@@ -192,6 +220,7 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
   const [appRefreshBusy, setAppRefreshBusy] = useState(false);
   const [cardValues, setCardValues] = useState<Record<string, Record<string, string>>>({});
   const [cardBusy, setCardBusy] = useState<Record<string, boolean>>({});
+  const [alertBusy, setAlertBusy] = useState<Record<string, boolean>>({});
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -334,6 +363,85 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
     if (sendSignal.text.trim()) void handleSend(sendSignal.text);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sendSignal?.nonce]);
+
+  // Morgan speaks first (Assistant page proactive alerts): when the parent
+  // bumps the nonce, each alert lands as her own message, with its
+  // question and buttons attached. The thread save below persists them,
+  // so they are still there when the owner opens the page later.
+  const lastAlertNonce = useRef(0);
+  useEffect(() => {
+    if (!incomingAlerts || incomingAlerts.nonce === lastAlertNonce.current) return;
+    lastAlertNonce.current = incomingAlerts.nonce;
+    if (incomingAlerts.alerts.length === 0) return;
+    setMessages(prev => [
+      ...prev,
+      ...incomingAlerts.alerts.map((alert) => {
+        const { content, actions } = morganQuestion(alert);
+        return {
+          id: uniqueId('msg_'),
+          role: 'assistant' as const,
+          content,
+          timestamp: timeNow(),
+          roleId: 'executive_assistant',
+          alertCard: { alert, actions, status: 'pending' as AlertCardStatus },
+        };
+      }),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingAlerts?.nonce]);
+
+  /**
+   * A tap on a Morgan alert card. "View" and "Not now" settle on the
+   * spot — the card records the answer and the parent navigates or
+   * notes it. "Approve quote" and "Mark paid" wait for the parent's
+   * real server reply first: the card reports done only when the
+   * server confirmed it, and stays tappable (failed) when it did not,
+   * so a failed tap never reads as handled.
+   */
+  const handleAlertAction = async (msg: ChatMessageItem, actionId: MorganAlertAction) => {
+    if (!msg.alertCard || alertBusy[msg.id]) return;
+    const card = msg.alertCard;
+    if (actionId === 'view' || actionId === 'dismiss') {
+      setMessages(prev => prev.map(m =>
+        m.id === msg.id && m.alertCard
+          ? {
+              ...m,
+              alertCard: {
+                ...m.alertCard,
+                status: (actionId === 'view' ? 'done' : 'dismissed') as AlertCardStatus,
+                result:
+                  actionId === 'view'
+                    ? 'Opening it now.'
+                    : "Noted — I won't bring this up again. It stays in your Operations feed if you need it.",
+              },
+            }
+          : m
+      ));
+      try {
+        await onAlertAction?.(card.alert, actionId);
+      } catch {
+        /* the answer is already recorded on the card */
+      }
+      return;
+    }
+    setAlertBusy(prev => ({ ...prev, [msg.id]: true }));
+    const result = await (onAlertAction
+      ? onAlertAction(card.alert, actionId)
+      : Promise.resolve({ ok: false, summary: 'That action is not available from this chat.' }));
+    setMessages(prev => prev.map(m =>
+      m.id === msg.id && m.alertCard
+        ? {
+            ...m,
+            alertCard: {
+              ...m.alertCard,
+              status: (result.ok ? 'done' : 'failed') as AlertCardStatus,
+              result: result.summary,
+            },
+          }
+        : m
+    ));
+    setAlertBusy(prev => ({ ...prev, [msg.id]: false }));
+  };
 
   const handleConfirmCard = async (msg: ChatMessageItem) => {
     if (!msg.actionCard || msg.actionCard.status !== 'pending' || cardBusy[msg.id]) return;
@@ -688,6 +796,48 @@ export const GeminiChatView: React.FC<GeminiChatViewProps> = ({
                     <p className={`text-xs font-bold ${msg.actionCard.status === 'done' ? 'text-[#22ec72]' : 'text-red-400'}`}>
                       {msg.actionCard.result}
                       {msg.actionCard.recordId ? ` (Record: ${msg.actionCard.recordId})` : ''}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {msg.alertCard && (
+                <div className="rounded-2xl border border-[#22ec72]/40 bg-zinc-900 p-3 space-y-2 ml-11">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-white text-sm">Needs your answer</span>
+                    <span className="text-xs font-bold text-zinc-400">
+                      {msg.alertCard.status === 'pending'
+                        ? 'Waiting for your answer'
+                        : msg.alertCard.status === 'failed'
+                          ? 'Did not go through — try again'
+                          : msg.alertCard.status === 'dismissed'
+                            ? 'Not now'
+                            : 'Answered'}
+                    </span>
+                  </div>
+                  {(msg.alertCard.status === 'pending' || msg.alertCard.status === 'failed') && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {msg.alertCard.actions.map((a, i) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => handleAlertAction(msg, a.id)}
+                          disabled={!!alertBusy[msg.id]}
+                          className={`min-h-[48px] px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 ${
+                            i === 0
+                              ? 'bg-[#22ec72] hover:bg-[#22ec72] text-black'
+                              : 'bg-zinc-800 hover:bg-zinc-700 text-white'
+                          }`}
+                        >
+                          {alertBusy[msg.id] && i === 0 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {msg.alertCard.result && (
+                    <p className={`text-xs font-bold ${msg.alertCard.status === 'failed' ? 'text-red-400' : 'text-[#22ec72]'}`}>
+                      {msg.alertCard.result}
                     </p>
                   )}
                 </div>

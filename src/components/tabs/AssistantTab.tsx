@@ -14,6 +14,20 @@ import {
 } from 'lucide-react';
 import { GeminiChatView } from '../GeminiChatView';
 import { AgentTalkConsole } from '../phone/AgentTalkConsole';
+import { apiFetch, ApiError } from '../../lib/api';
+import {
+  detectMainAiAlerts,
+  loadMainAiAlertState,
+  saveMainAiAlertState,
+  type MainAiAlert,
+} from '../../utils/mainAiAlerts';
+import {
+  loadMorganAlertState,
+  markMorganAlertAnswered,
+  planMorganAlerts,
+  saveMorganAlertState,
+  type MorganAlertAction,
+} from '../../utils/morganAlerts';
 import {
   ACCEPTED_TYPES,
   deleteAssistantDocument,
@@ -85,10 +99,121 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   const [confirmClientId, setConfirmClientId] = useState<string | null>(null);
   const [clientAddedId, setClientAddedId] = useState<string | null>(null);
   const [sendSignal, setSendSignal] = useState<{ text: string; nonce: number } | undefined>(undefined);
+  const [incomingAlerts, setIncomingAlerts] = useState<{ alerts: MainAiAlert[]; nonce: number } | undefined>(undefined);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const businessId = business.id;
+
+  // ---- Morgan asks in the conversation ----
+  // The same five approved triggers as the Operations feed, but raised
+  // here as Morgan's own question with the choice attached — so the
+  // owner can answer (approve a quote, mark an invoice paid, open the
+  // record) without opening the feed. Detection is reused, not
+  // duplicated; Morgan's own raised/answered record decides what speaks
+  // up, and a record that is still waiting and unanswered speaks up
+  // exactly once more, a day later, then never again. The feed stays
+  // the backup: it already carries every one of these items.
+  useEffect(() => {
+    const mainState = loadMainAiAlertState(businessId);
+    const { alerts, jobFirstSeen } = detectMainAiAlerts({
+      requests: customerRequests,
+      actions,
+      calls,
+      jobs,
+      // Deliberately NOT the inbox's fired set: a record the feed
+      // already carries still needs its question here.
+      alerted: new Set<string>(),
+      jobFirstSeen: mainState.jobFirstSeen,
+    });
+    // Share first-seen stalled-job tracking with the feed; never touch
+    // its fired list.
+    if (JSON.stringify(jobFirstSeen) !== JSON.stringify(mainState.jobFirstSeen)) {
+      saveMainAiAlertState(businessId, { ...mainState, jobFirstSeen });
+    }
+    if (alerts.length === 0) return;
+    const morganState = loadMorganAlertState(businessId);
+    const { toRaise, nextState } = planMorganAlerts(alerts, morganState);
+    if (JSON.stringify(nextState) !== JSON.stringify(morganState)) {
+      saveMorganAlertState(businessId, nextState);
+    }
+    if (toRaise.length > 0) {
+      setIncomingAlerts({ alerts: toRaise, nonce: Date.now() });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId, jobs, actions, customerRequests, calls]);
+
+  /**
+   * A tap on a Morgan alert card. Only the tap itself does anything —
+   * Morgan never approves, marks paid, or navigates on her own. The
+   * result reported is only what the server call actually returned.
+   */
+  const handleAlertAction = async (
+    alert: MainAiAlert,
+    action: MorganAlertAction
+  ): Promise<{ ok: boolean; summary: string }> => {
+    if (action === 'dismiss') {
+      markMorganAlertAnswered(businessId, alert.dedupeKey);
+      return { ok: true, summary: "Noted — I won't bring this up again." };
+    }
+    if (action === 'view') {
+      markMorganAlertAnswered(businessId, alert.dedupeKey);
+      onNavigateTab(alert.actionTab);
+      return { ok: true, summary: 'Opening it now.' };
+    }
+    // Approve / mark paid only exist for server-owned action records.
+    // A device-only record has no server decision to make.
+    if (alert.recordId.startsWith('local-emg-')) {
+      markMorganAlertAnswered(businessId, alert.dedupeKey);
+      return {
+        ok: false,
+        summary: 'This one lives only on this device, so I can’t act on it from here — open Approvals to handle it.',
+      };
+    }
+    if (action === 'approve') {
+      try {
+        const updated = await apiFetch<ActionRecord>(
+          `/api/business/${businessId}/actions/${alert.recordId}/decide`,
+          { method: 'POST', body: JSON.stringify({ decision: 'approved' }) }
+        );
+        if (updated?.status === 'approved') {
+          markMorganAlertAnswered(businessId, alert.dedupeKey);
+          return { ok: true, summary: 'Done — quote approved. Find it in Approvals.' };
+        }
+        return { ok: false, summary: 'The server did not confirm the approval, so nothing was approved.' };
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) {
+          // Already decided on another device or by a teammate: the
+          // record is settled, so Morgan stops raising it.
+          markMorganAlertAnswered(businessId, alert.dedupeKey);
+          return { ok: false, summary: 'This was already decided on another device — the latest status is in Approvals.' };
+        }
+        return {
+          ok: false,
+          summary: `It did not go through${e instanceof Error && e.message ? `: ${e.message}` : ''}. Nothing was approved.`,
+        };
+      }
+    }
+    if (action === 'mark_paid') {
+      try {
+        const updated = await apiFetch<any>(
+          `/api/business/${businessId}/actions/${alert.recordId}/mark-paid`,
+          { method: 'POST', body: JSON.stringify({}) }
+        );
+        if (updated?.paymentStatus === 'paid') {
+          markMorganAlertAnswered(businessId, alert.dedupeKey);
+          return { ok: true, summary: 'Done — invoice marked as paid.' };
+        }
+        return { ok: false, summary: 'The server did not confirm the invoice as paid, so it was not changed.' };
+      } catch (e) {
+        return {
+          ok: false,
+          summary: `It did not go through${e instanceof Error && e.message ? `: ${e.message}` : ''}. The invoice was not changed.`,
+        };
+      }
+    }
+    return { ok: false, summary: 'That action is not supported here.' };
+  };
 
   const loadDocuments = async () => {
     setDocsLoading(true);
@@ -480,6 +605,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         onBusinessRefresh={onBusinessRefresh}
         attachedDocuments={attachedDocuments}
         sendSignal={sendSignal}
+        incomingAlerts={incomingAlerts}
+        onAlertAction={handleAlertAction}
       />
 
       {/* Live voice — executive persona, same engine as the phone calls */}
