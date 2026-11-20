@@ -42,6 +42,10 @@ export interface MainAiAlert {
   actionTab: TabType;
   /** Stable key: `mainai:<trigger>:<record id>` — one alert per record. */
   dedupeKey: string;
+  /** The real record this alert is about (request / action / call / job id). */
+  recordId: string;
+  /** Missed calls only: the number to call back. */
+  callerNumber?: string;
 }
 
 export interface MainAiAlertState {
@@ -90,6 +94,7 @@ export function detectMainAiAlerts(input: {
       actionLabel: 'View requests',
       actionTab: 'requests',
       dedupeKey,
+      recordId: r.id,
     });
   }
 
@@ -106,6 +111,7 @@ export function detectMainAiAlerts(input: {
       actionLabel: 'Review quotes',
       actionTab: 'approvals',
       dedupeKey,
+      recordId: a.id,
     });
   }
 
@@ -122,6 +128,7 @@ export function detectMainAiAlerts(input: {
       actionLabel: 'Review invoices',
       actionTab: 'approvals',
       dedupeKey,
+      recordId: a.id,
     });
   }
 
@@ -140,6 +147,8 @@ export function detectMainAiAlerts(input: {
       actionLabel: 'View calls',
       actionTab: 'phone',
       dedupeKey,
+      recordId: c.id,
+      callerNumber: c.callerNumber,
     });
   }
 
@@ -160,6 +169,7 @@ export function detectMainAiAlerts(input: {
       actionLabel: 'View jobs',
       actionTab: 'jobs',
       dedupeKey,
+      recordId: j.id,
     });
   }
   // Keep the map bounded and drop finished jobs.
