@@ -19,6 +19,10 @@
         "activeEmployees": { "type": "object" },
         "onboardingCompleted": { "type": "boolean" },
         "starterDrafts": { "type": "array" },
+        "publicChatbotEnabled": { "type": "boolean" },
+        "businessHoursStart": { "type": "string", "maxLength": 10 },
+        "businessHoursEnd": { "type": "string", "maxLength": 10 },
+        "businessHoursDays": { "type": "array" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },

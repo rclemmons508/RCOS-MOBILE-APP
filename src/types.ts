@@ -348,6 +348,10 @@ export interface BusinessAccount {
   activeEmployees: Record<string, boolean>;
   onboardingCompleted: boolean;
   starterDrafts: StarterDraft[];
+  publicChatbotEnabled?: boolean;
+  businessHoursStart?: string;
+  businessHoursEnd?: string;
+  businessHoursDays?: number[];
   createdAt: string;
   updatedAt: string;
 }

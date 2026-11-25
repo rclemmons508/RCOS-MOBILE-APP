@@ -136,6 +136,10 @@ const BLANK_BUSINESS: BusinessAccount = {
   },
   onboardingCompleted: false,
   starterDrafts: [],
+  publicChatbotEnabled: true,
+  businessHoursStart: '08:00',
+  businessHoursEnd: '18:00',
+  businessHoursDays: [1, 2, 3, 4, 5],
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 };
@@ -2559,6 +2563,23 @@ export default function App() {
               onUpdateAutonomyMode={handleUpdateAutonomyMode}
               onUpdateBusinessKnowledge={handleUpdateBusinessKnowledge}
               onLogout={handleLogout}
+              business={activeBusiness}
+              onUpdateBusiness={(updatedBiz) => {
+                setBusinessAccount(updatedBiz);
+                localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(updatedBiz)));
+                if (updatedBiz.id) {
+                  apiFetch(`/api/business/${updatedBiz.id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(updatedBiz)
+                  }).catch(async () => {
+                    await apiFetch('/api/businesses', {
+                      method: 'POST',
+                      body: JSON.stringify(updatedBiz)
+                    }).catch(() => null);
+                  });
+                  firestoreService.saveBusiness(updatedBiz).catch(() => null);
+                }
+              }}
               automationTasks={automationTasks}
               onToggleAutomation={(taskId, isAutomated) => {
                 setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, isAutomated } : t));
