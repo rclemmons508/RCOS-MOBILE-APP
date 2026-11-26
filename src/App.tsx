@@ -45,6 +45,7 @@ import { useBiometrics } from './context/BiometricContext';
 import { biometricService } from './services/biometricService';
 import { LoginView } from './components/auth/LoginView';
 import { showChecklistAgain } from './utils/getStartedChecklist';
+import { openNotificationSettings } from './utils/appSettings';
 import { authService } from './services/authService';
 import { APP_BUILD_ID } from './utils/buildInfo';
 import {
@@ -76,7 +77,7 @@ import {
 import { isTaskFiring, getFollowupWindowMs, inQuietHours } from './utils/automation';
 import { haptic } from './utils/haptics';
 import { tabForDeepLink } from './utils/deepLinks';
-import { setupPushNotifications, teardownPushNotifications } from './lib/pushNotifications';
+import { checkPushPermission, setupPushNotifications, teardownPushNotifications } from './lib/pushNotifications';
 import { withBusinessId, filterToBusiness, uniqueId } from './lib/businessScope';
 import { getJobCategories } from './lib/jobCategories';
 import { buildClientPrefillFromCall, type CallerPrefillSource, type ClientPrefill } from './lib/callToClient';
@@ -294,6 +295,15 @@ export default function App() {
   );
   const [activePushToast, setActivePushToast] = useState<RCOSNotification | null>(null);
   const [isNotifPrefsOpen, setIsNotifPrefsOpen] = useState(false);
+  // Notification permission denied: live-call alerts are off. Shown as a
+  // banner with a button to the phone's notification settings; cleared
+  // when the permission is granted.
+  const [pushPermissionDenied, setPushPermissionDenied] = useState(false);
+  // Refs the foreground re-check uses: the latest push-setup runner, and
+  // whether setup has ever reported a permission outcome (before the
+  // first setup there is nothing to re-check).
+  const pushSetupRef = useRef<(() => void) | null>(null);
+  const pushPermissionKnownRef = useRef(false);
 
   // Proactive Agent Inbox — the AI team messages the owner here.
   // The messages live in the Operations feed (InboxView); the old
@@ -1490,31 +1500,83 @@ export default function App() {
   // instead (through sendPushNotification, so the call-alert preference
   // and quiet hours still apply to the toast — the phone still buzzes
   // from the FCM notification itself). Re-runs when the business changes;
-  // the module attaches its listeners once and re-sends the token only
-  // when it changed.
+  // the module attaches its listeners once and re-sends the token on
+  // every launch. A denied notification permission shows a banner with a
+  // button to the phone's notification settings instead of failing
+  // silently (see the foreground re-check below).
   useEffect(() => {
     const businessId = businessAccount?.id;
     if (!currentUser || !businessId) return;
     let cancelled = false;
-    void setupPushNotifications({
-      businessId,
-      onForegroundLiveCall: (call) => {
-        if (cancelled) return;
-        sendPushNotification({
-          type: 'call_event',
-          title: call.title,
-          message: call.body,
-          priority: 'high',
-          module: 'Phone System',
-          openTab: 'phone',
-        });
-      },
-      onLiveCallTap: () => {
-        if (cancelled) return;
-        setActiveTab('phone');
-      },
-    });
+    const runSetup = () => {
+      void setupPushNotifications({
+        businessId,
+        onForegroundLiveCall: (call) => {
+          if (cancelled) return;
+          sendPushNotification({
+            type: 'call_event',
+            title: call.title,
+            message: call.body,
+            priority: 'high',
+            module: 'Phone System',
+            openTab: 'phone',
+          });
+        },
+        onLiveCallTap: () => {
+          if (cancelled) return;
+          setActiveTab('phone');
+        },
+        onPermissionDenied: () => {
+          if (cancelled) return;
+          pushPermissionKnownRef.current = true;
+          setPushPermissionDenied(true);
+        },
+        onPermissionGranted: () => {
+          if (cancelled) return;
+          pushPermissionKnownRef.current = true;
+          setPushPermissionDenied(false);
+        },
+      });
+    };
+    pushSetupRef.current = runSetup;
+    runSetup();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, businessAccount?.id]);
+
+  // Re-check the notification permission when the app comes to the
+  // foreground: granting it in system settings takes effect without a
+  // reinstall (setup re-runs and registers the token), and revoking it
+  // shows the banner again. checkPushPermission never prompts, so this
+  // never pops the system dialog on its own — the dialog only appears
+  // from the setup run at sign-in. Nothing happens before the first
+  // setup has reported a permission outcome.
+  useEffect(() => {
+    const businessId = businessAccount?.id;
+    if (!currentUser || !businessId) return;
+    let cancelled = false;
+    let stateHandle: { remove: () => Promise<void> } | null = null;
+    (async () => {
+      const { Capacitor } = await import('@capacitor/core');
+      if (!Capacitor.isNativePlatform() || cancelled) return;
+      const { App } = await import('@capacitor/app');
+      stateHandle = await App.addListener('appStateChange', async ({ isActive }: { isActive: boolean }) => {
+        if (!isActive || cancelled) return;
+        if (!pushPermissionKnownRef.current) return;
+        const granted = await checkPushPermission();
+        if (cancelled) return;
+        if (granted) {
+          setPushPermissionDenied(false);
+          pushSetupRef.current?.();
+        } else {
+          setPushPermissionDenied(true);
+        }
+      });
+    })().catch(() => { /* native listeners unavailable — web behaviour stays */ });
+    return () => {
+      cancelled = true;
+      void stateHandle?.remove().catch(() => {});
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, businessAccount?.id]);
 
@@ -2248,6 +2310,26 @@ export default function App() {
           }}
         />
 
+        {/* Call alerts are off — notification permission denied */}
+        {pushPermissionDenied && (
+          <div className="w-full bg-amber-500/15 border-b border-amber-500/40 px-4 py-3 flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-white">Call alerts are off</p>
+              <p className="text-xs text-zinc-300 mt-0.5">
+                Your phone is blocking notifications for this app, so you won't be told when the receptionist answers a
+                call. Turn notifications on in your phone's settings.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void openNotificationSettings()}
+              className="shrink-0 min-h-[48px] px-3 rounded-xl bg-[#22ec72] text-black text-xs font-bold cursor-pointer"
+            >
+              Open settings
+            </button>
+          </div>
+        )}
+
         {/* Top Header with Brand Logo, Unread Bell, and Profile */}
         <Header
           activeTab={activeTab}
@@ -2563,23 +2645,6 @@ export default function App() {
               onUpdateAutonomyMode={handleUpdateAutonomyMode}
               onUpdateBusinessKnowledge={handleUpdateBusinessKnowledge}
               onLogout={handleLogout}
-              business={activeBusiness}
-              onUpdateBusiness={(updatedBiz) => {
-                setBusinessAccount(updatedBiz);
-                localStorage.setItem('rcos_configured_business', JSON.stringify(toLocalStorageBusiness(updatedBiz)));
-                if (updatedBiz.id) {
-                  apiFetch(`/api/business/${updatedBiz.id}`, {
-                    method: 'PUT',
-                    body: JSON.stringify(updatedBiz)
-                  }).catch(async () => {
-                    await apiFetch('/api/businesses', {
-                      method: 'POST',
-                      body: JSON.stringify(updatedBiz)
-                    }).catch(() => null);
-                  });
-                  firestoreService.saveBusiness(updatedBiz).catch(() => null);
-                }
-              }}
               automationTasks={automationTasks}
               onToggleAutomation={(taskId, isAutomated) => {
                 setAutomationTasks(prev => prev.map(t => t.id === taskId ? { ...t, isAutomated } : t));

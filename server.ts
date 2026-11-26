@@ -34,7 +34,7 @@ import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
 import { applyLivekitEvent, getLiveCall, getLiveCalls } from './server/liveCalls';
 import { logFinishedReceptionistCall } from './server/inboundCallLog';
-import { notifyCallAnswered, registerPushToken, unregisterPushToken } from './server/pushNotifications';
+import { getFirestoreBusinesses, getOwnerPushTokens, isPushAvailable, notifyCallAnswered, registerPushToken, unregisterPushToken } from './server/pushNotifications';
 import { deleteAssistantDocument, getAssistantDocumentTexts, listAssistantDocuments, processAssistantUpload } from './server/assistantDocs';
 import {
   dialOutboundCall,
@@ -491,7 +491,7 @@ function resolveBodyBusiness(req: Request, businessId?: string): BusinessAccount
 // Returns system health checks with PASS/WARN/FAIL status.
 // Behind the login gate: it reports which services are configured,
 // which is not public information.
-app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
+app.get('/api/diagnostics/scan', async (_req: Request, res: Response) => {
   const checks: { id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }[] = [];
 
   // Server core
@@ -547,6 +547,53 @@ app.get('/api/diagnostics/scan', (_req: Request, res: Response) => {
     id: 'database', label: 'Data Persistence', status: dataDir ? 'pass' : 'warn',
     detail: dataDir ? `Using persistent volume at ${dataDir}` : 'No DATA_DIR volume — data lost on redeploy'
   });
+
+  // Call alerts (push): Firebase Admin ready + registered owner devices
+  // for the caller's business. The other checks say nothing about push,
+  // so an all-pass scan used to prove nothing about whether an alert
+  // will arrive when the receptionist answers.
+  try {
+    let pushStatus: 'pass' | 'warn' | 'fail' = 'fail';
+    let pushDetail = 'Firebase Admin is not ready — push alerts are unavailable';
+    if (isPushAvailable()) {
+      const caller = verifiedCaller(_req);
+      let mine = callerBusinesses(_req);
+      if (mine.length === 0 && caller) {
+        // The local file store is wiped on redeploy — the durable
+        // business records live in the named Firestore database.
+        const durable = await getFirestoreBusinesses();
+        mine = durable.filter((b) => businessIsMember(b, caller));
+      }
+      if (mine.length === 0) {
+        pushStatus = 'warn';
+        pushDetail = 'No business found on this server — open the app to sync your business before a call arrives';
+      } else {
+        // Several business records can belong to the caller (old and
+        // orphaned onboarding attempts), so check all of them: pass when
+        // ANY of them has a registered owner device.
+        let withTokens: { business: BusinessAccount; count: number } | null = null;
+        for (const b of mine) {
+          const tokens = await getOwnerPushTokens(b);
+          if (tokens.length > 0) { withTokens = { business: b, count: tokens.length }; break; }
+        }
+        if (!withTokens) {
+          pushStatus = 'warn';
+          pushDetail = mine.length === 1
+            ? `Push is ready but no device is registered for ${mine[0].name || mine[0].id} — open the app on your phone to register it`
+            : 'Push is ready but no device is registered for any of your businesses — open the app on your phone to register it';
+        } else {
+          pushStatus = 'pass';
+          pushDetail = `Push ready — ${withTokens.count} device(s) registered for ${withTokens.business.name || withTokens.business.id}`;
+        }
+      }
+    }
+    checks.push({ id: 'push', label: 'Call Alerts (Push)', status: pushStatus, detail: pushDetail });
+  } catch {
+    checks.push({
+      id: 'push', label: 'Call Alerts (Push)', status: 'warn',
+      detail: 'The push check could not run — try the scan again'
+    });
+  }
 
   const fails = checks.filter(c => c.status === 'fail').length;
   const warns = checks.filter(c => c.status === 'warn').length;

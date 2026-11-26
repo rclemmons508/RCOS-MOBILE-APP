@@ -31,13 +31,23 @@
  *   the called number is matched against the businesses' phone numbers;
  *   no match means no alert (logged) rather than alerting the wrong
  *   owner.
- * - One alert per call: a room is marked notified the first time it is
- *   sent, so a retried webhook event never buzzes the owner twice.
+ * - One alert per call: a room is marked notified only after a
+ *   successful send, so a retried webhook event never buzzes the owner
+ *   twice — and a failed attempt (no business, no tokens, send error)
+ *   leaves the room unmarked, so a retry can still alert once the
+ *   problem clears.
+ * - Business lookup reads the server's local file store first and falls
+ *   back to the durable business records in the named Firestore
+ *   database (the file store is wiped on every redeploy, so a call
+ *   that arrives before the app re-syncs would otherwise match no
+ *   business at all). Device tokens stay in the (default) database —
+ *   only businesses live in the named one.
  * - No Admin SDK (local dev, no service account) means no push at all:
  *   registration answers 503 and the webhook logs and moves on.
  */
 
 import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
 import crypto from 'node:crypto';
 import { db } from './db';
 import { businessIsOwner } from './tenancy';
@@ -46,6 +56,11 @@ import type { BusinessAccount } from '../src/types';
 
 /** Android notification channel for live-call alerts (created by the app at registration). */
 export const CALLS_CHANNEL_ID = 'rcos_calls';
+
+/** The named Firestore database that holds the durable business records.
+ *  The server's bare admin.firestore() hits the (default) database,
+ *  which has NO businesses collection — businesses live ONLY here. */
+const NAMED_FIRESTORE_DB = 'ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967';
 
 const PUSH_TOKEN_COLLECTION = 'pushTokens';
 
@@ -76,6 +91,38 @@ function getPushDb(): admin.firestore.Firestore | null {
     return admin.apps.length > 0 ? admin.firestore() : null;
   } catch {
     return null;
+  }
+}
+
+/** True when Firebase Admin is initialized and push can be sent at all. */
+export function isPushAvailable(): boolean {
+  try {
+    return admin.apps.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** The named Firestore database client (business records live ONLY there), else null. */
+function getNamedDb(): admin.firestore.Firestore | null {
+  try {
+    return admin.apps.length > 0 ? getFirestore(admin.app(), NAMED_FIRESTORE_DB) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Every business record from the durable named Firestore database.
+ *  Empty when Admin is unavailable or the read fails — never throws. */
+export async function getFirestoreBusinesses(): Promise<BusinessAccount[]> {
+  const store = getNamedDb();
+  if (!store) return [];
+  try {
+    const snap = await store.collection('businesses').get();
+    return snap.docs.map((doc) => ({ ...(doc.data() as Partial<BusinessAccount>), id: doc.id }) as BusinessAccount);
+  } catch (err: any) {
+    console.error('[push] Firestore business lookup failed:', err?.message || err);
+    return [];
   }
 }
 
@@ -165,13 +212,7 @@ function digits(value: string): string {
 }
 
 /** The business a call belongs to: the only business, or the one whose phone number was called. */
-function businessForCall(call: LiveCall): BusinessAccount | null {
-  let businesses: BusinessAccount[] = [];
-  try {
-    businesses = db.getAllBusinesses();
-  } catch {
-    return null;
-  }
+function matchBusinessForCall(businesses: BusinessAccount[], call: LiveCall): BusinessAccount | null {
   if (businesses.length === 0) return null;
   if (businesses.length === 1) return businesses[0];
   const called = digits(call.calledNumber);
@@ -185,6 +226,43 @@ function businessForCall(call: LiveCall): BusinessAccount | null {
       });
     });
     if (match) return match;
+  }
+  return null;
+}
+
+/**
+ * The business a call belongs to. The local file store is read first;
+ * when it is empty (wiped on redeploy, before the app re-syncs) the
+ * durable business records in the named Firestore database are the
+ * fallback — a bare admin.firestore() read of the (default) database
+ * would find no businesses at all. Never throws.
+ */
+async function businessForCall(call: LiveCall): Promise<BusinessAccount | null> {
+  let businesses: BusinessAccount[] = [];
+  try {
+    businesses = db.getAllBusinesses();
+  } catch {
+    businesses = [];
+  }
+  if (businesses.length === 0) {
+    businesses = await getFirestoreBusinesses();
+  }
+  const matched = matchBusinessForCall(businesses, call);
+  if (matched) return matched;
+  // The named Firestore database holds several business records (old and
+  // orphaned onboarding attempts), and none of them stores the
+  // receptionist number as its contact phone — so the called-number match
+  // above can miss even when the live business is in the list. The
+  // business that can actually be alerted is the one with a registered
+  // owner device, so use that as the tiebreak: exactly one business with
+  // owner tokens wins; several or none means ambiguous, alert nobody.
+  if (businesses.length > 1) {
+    const withTokens: BusinessAccount[] = [];
+    for (const b of businesses) {
+      const tokens = await getOwnerPushTokens(b);
+      if (tokens.length > 0) withTokens.push(b);
+    }
+    if (withTokens.length === 1) return withTokens[0];
   }
   return null;
 }
@@ -216,17 +294,17 @@ export type NotifyResult =
 
 /**
  * Alert the business owner that the receptionist just answered a call.
- * One alert per room; never throws; returns what happened for logging.
+ * One alert per room, marked only after a successful send; never throws;
+ * returns what happened for logging. A failed attempt (no business, no
+ * tokens, Admin unavailable, send error) leaves the room unmarked, so a
+ * retried webhook event can still alert once the problem clears.
  */
 export async function notifyCallAnswered(call: LiveCall): Promise<NotifyResult> {
   const now = Date.now();
   pruneNotified(now);
   if (notifiedRooms.has(call.roomName)) return 'duplicate';
-  // Mark before sending: a retried webhook event must not buzz twice
-  // even if this attempt fails — the live-call view still shows the call.
-  notifiedRooms.set(call.roomName, now);
 
-  const business = businessForCall(call);
+  const business = await businessForCall(call);
   if (!business) {
     console.warn(`[push] no business matched for answered call in room ${call.roomName}; no alert sent.`);
     return 'no-business';
@@ -261,7 +339,10 @@ export async function notifyCallAnswered(call: LiveCall): Promise<NotifyResult> 
     },
     android: {
       priority: 'high',
-      notification: { channelId: CALLS_CHANNEL_ID, sound: 'default' },
+      // A live-call alert is worthless minutes after the call — expire it.
+      // (firebase-admin takes the TTL in milliseconds.)
+      ttl: 120000,
+      notification: { channelId: CALLS_CHANNEL_ID, sound: 'default', visibility: 'public' },
     },
   }));
   try {
@@ -274,6 +355,9 @@ export async function notifyCallAnswered(call: LiveCall): Promise<NotifyResult> 
       console.error(`[push] FCM send failed for room ${call.roomName}: all ${tokens.length} token(s) rejected.`);
       return 'failed';
     }
+    // Mark only after a successful send: a retried webhook event must
+    // not buzz twice, but a failed attempt must not burn the room.
+    notifiedRooms.set(call.roomName, now);
     console.warn(`[push] live-call alert sent for room ${call.roomName} (${result.successCount}/${tokens.length} device(s)).`);
     return 'sent';
   } catch (err: any) {
