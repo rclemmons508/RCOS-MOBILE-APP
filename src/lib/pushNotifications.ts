@@ -20,7 +20,11 @@
  * PUSH_CONFIGURED below gates every native call: push stays completely
  * off until the Firebase setup is done. Permission denied, on the other
  * hand, fails soft: setup returns before register() and the app, the
- * Calls screen, and the live-call view keep working.
+ * Calls screen, and the live-call view keep working — but the denial is
+ * surfaced in the app (the `onPermissionDenied` callback shows a banner
+ * with a button to the phone's notification settings), and the
+ * permission is re-checked whenever the app comes to the foreground, so
+ * granting it later takes effect without a reinstall.
  */
 
 import { apiFetch } from './api';
@@ -54,6 +58,11 @@ export interface PushSetupOptions {
   onForegroundLiveCall: (call: LiveCallPush) => void;
   /** The owner tapped a live-call alert — open the live call. */
   onLiveCallTap: (call: LiveCallPush) => void;
+  /** Notification permission is denied, so live-call alerts are off —
+   *  the app shows a banner with a button to system settings. */
+  onPermissionDenied?: () => void;
+  /** Notification permission is granted — clear any denied banner. */
+  onPermissionGranted?: () => void;
 }
 
 let listenersAttached = false;
@@ -98,10 +107,10 @@ function toLiveCallPush(title: string | undefined, body: string | undefined, dat
 }
 
 async function sendTokenToServer(token: string, businessId: string): Promise<void> {
-  const stored = storedToken();
-  // The FCM token is stable across launches — skip the write when the
-  // server already has this exact token for this business.
-  if (stored && stored.token === token && stored.businessId === businessId) return;
+  // The token is re-sent on every launch even when it has not changed:
+  // if the server-side row is ever deleted out of band while the FCM
+  // token stays valid, the next launch restores it instead of the app
+  // staying silently unregistered until the token rotates.
   try {
     await apiFetch('/api/push/register', {
       method: 'POST',
@@ -115,9 +124,30 @@ async function sendTokenToServer(token: string, businessId: string): Promise<voi
 }
 
 /**
+ * Is the notification permission granted right now? Native only, and it
+ * never prompts — use it to re-check when the app comes to the
+ * foreground, so granting the permission in system settings takes
+ * effect without a reinstall. False on the web and while unconfigured.
+ */
+export async function checkPushPermission(): Promise<boolean> {
+  if (!PUSH_CONFIGURED) return false;
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (!Capacitor.isNativePlatform()) return false;
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    const perm = await PushNotifications.checkPermissions().catch(() => null);
+    return !!perm && perm.receive === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Register this device for live-call alerts. Safe to call on every
- * sign-in / business change; listeners attach once, the token is
- * re-sent only when it changed or the business changed.
+ * sign-in / business change; listeners attach once, and the token is
+ * re-sent to the server on every launch (see sendTokenToServer).
+ * When the permission is denied, the onPermissionDenied callback fires
+ * so the app can show a banner — nothing about the denial is silent.
  */
 export async function setupPushNotifications(options: PushSetupOptions): Promise<void> {
   // Push is not configured yet (no google-services.json) — never touch
@@ -137,11 +167,14 @@ export async function setupPushNotifications(options: PushSetupOptions): Promise
       // The channel the server's alert names (channelId 'rcos_calls').
       // Created once; re-creating an existing channel is a no-op, and a
       // channel the user edited in system settings keeps their choice.
+      // Visibility 1 (public) so the full alert text shows on the lock
+      // screen instead of "contents hidden".
       await PushNotifications.createChannel({
         id: LIVE_CALL_CHANNEL_ID,
         name: 'Incoming calls',
         description: 'Alerts when the AI receptionist answers a call',
         importance: 5,
+        visibility: 1,
         sound: 'default',
         vibration: true,
         lights: true,
@@ -150,8 +183,10 @@ export async function setupPushNotifications(options: PushSetupOptions): Promise
       const perm = await PushNotifications.requestPermissions().catch(() => null);
       if (!perm || perm.receive !== 'granted') {
         console.warn('[push] notification permission not granted; live-call alerts are off.');
+        options.onPermissionDenied?.();
         return;
       }
+      options.onPermissionGranted?.();
 
       await PushNotifications.addListener('registration', (token) => {
         if (token?.value && setupBusinessId) {

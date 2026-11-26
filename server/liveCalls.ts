@@ -87,6 +87,17 @@ export interface LivekitWebhookPayload {
 
 const liveCalls = new Map<string, LiveCall>();
 
+/**
+ * Rooms where the receptionist agent joined before the caller's SIP
+ * event arrived (room name → when the agent joined). Webhook events
+ * can arrive in either order; without remembering the early join, the
+ * later SIP event would create the call as 'ringing' and no alert
+ * would ever fire for it. Entries are dropped when the SIP event
+ * lands, when the agent leaves, when the room closes, or when they
+ * go stale (same 3h window as the registry).
+ */
+const agentJoinedRooms = new Map<string, number>();
+
 function toMs(value: bigint | number | string | undefined): number | null {
   if (value === undefined || value === null || value === '') return null;
   const n = Number(value);
@@ -114,6 +125,9 @@ function isReceptionist(p: NonNullable<LivekitWebhookPayload['participant']>): b
 function sweepStale(now = Date.now()): void {
   for (const [roomName, call] of liveCalls) {
     if (now - call.lastSeenAt > STALE_AFTER_MS) liveCalls.delete(roomName);
+  }
+  for (const [roomName, joinedAt] of agentJoinedRooms) {
+    if (now - joinedAt > STALE_AFTER_MS) agentJoinedRooms.delete(roomName);
   }
 }
 
@@ -154,6 +168,9 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): LivekitEventOutcom
         const startedMs =
           toMs(ev.room?.creationTimeMs) ?? toMs(participant.joinedAtMs) ?? now;
         const existing = liveCalls.get(roomName);
+        // The agent may already have joined before this event arrived —
+        // a remembered early join means she already answered.
+        const agentAlreadyJoined = agentJoinedRooms.has(roomName);
         liveCalls.set(roomName, {
           roomName,
           roomSid: ev.room?.sid || existing?.roomSid || '',
@@ -162,10 +179,15 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): LivekitEventOutcom
           callId: participant.attributes?.['sip.callID'] || existing?.callId || '',
           startedAt: existing?.startedAt || new Date(startedMs).toISOString(),
           // Keep 'answered' if the agent already joined before this event arrived.
-          status: existing?.status || 'ringing',
+          status: existing?.status || (agentAlreadyJoined ? 'answered' : 'ringing'),
           businessId: null,
           lastSeenAt: now,
         });
+        if (agentAlreadyJoined) {
+          agentJoinedRooms.delete(roomName);
+          const answered = liveCalls.get(roomName)!;
+          return { answered: { ...answered }, finished: null };
+        }
       } else if (kind === PARTICIPANT_KIND_AGENT && isReceptionist(participant)) {
         // The receptionist answered.
         const existing = liveCalls.get(roomName);
@@ -174,6 +196,10 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): LivekitEventOutcom
           existing.lastSeenAt = now;
           return { answered: { ...existing }, finished: null };
         }
+        // No call record yet — the agent joined before the caller's SIP
+        // event arrived. Remember it so the SIP event can mark the call
+        // answered when it lands; otherwise the alert is lost entirely.
+        if (!existing) agentJoinedRooms.set(roomName, now);
       }
       return NO_OUTCOME;
     }
@@ -195,6 +221,11 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): LivekitEventOutcom
         if (existing) {
           existing.status = 'ringing';
           existing.lastSeenAt = now;
+        } else {
+          // She joined early and left before the caller event arrived:
+          // forget the early join so a later SIP event does not claim
+          // she answered a call she already left.
+          agentJoinedRooms.delete(roomName);
         }
       }
       return NO_OUTCOME;
@@ -204,6 +235,7 @@ export function applyLivekitEvent(ev: LivekitWebhookPayload): LivekitEventOutcom
       // only a call she answered is reported as finished.
       const existing = liveCalls.get(roomName);
       liveCalls.delete(roomName);
+      agentJoinedRooms.delete(roomName);
       return existing && existing.status === 'answered'
         ? { answered: null, finished: { ...existing } }
         : NO_OUTCOME;
