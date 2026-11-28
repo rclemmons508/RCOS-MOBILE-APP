@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'url';
-import { db, ScopedPhoneCall, ScopedVoicemail } from './server/db';
+import { db, flushDurableStore, initDurableStore, isDurableStoreReady, ScopedPhoneCall, ScopedVoicemail } from './server/db';
 import { RcosEngine } from './server/engine';
 import { ai, PRIMARY_MODEL, FAST_MODEL, PRO_MODEL, executeGeminiWithFallback, generateSpeechAudio } from './server/gemini';
 import { 
@@ -34,7 +34,7 @@ import { initAuth, isApiLockedClosed, isAuthMisconfigured, isAuthReady, isGateOn
 import { registerGmailOAuthPublic, getGmailAccessToken, deleteGmailTokens, createGmailOAuthState } from './server/gmail-oauth';
 import { applyLivekitEvent, getLiveCall, getLiveCalls } from './server/liveCalls';
 import { logFinishedReceptionistCall } from './server/inboundCallLog';
-import { getFirestoreBusinesses, getOwnerPushTokens, isPushAvailable, notifyCallAnswered, registerPushToken, unregisterPushToken } from './server/pushNotifications';
+import { getOwnerPushTokens, isPushAvailable, notifyCallAnswered, registerPushToken, unregisterPushToken } from './server/pushNotifications';
 import { deleteAssistantDocument, getAssistantDocumentTexts, listAssistantDocuments, processAssistantUpload } from './server/assistantDocs';
 import {
   dialOutboundCall,
@@ -43,6 +43,7 @@ import {
   OUTBOUND_ROOM_PREFIX,
   OutboundDialError,
   OutboundNotConfiguredError,
+  startOutboundCallSweeper,
 } from './server/outboundCalls';
 import { analyzeDocument, analyzeClientDocument, scorePresetsByKeywords } from './server/onboarding-docs';
 import { installAsyncErrorRouting, installProcessErrorLoggers } from './server/async-errors';
@@ -541,11 +542,13 @@ app.get('/api/diagnostics/scan', async (_req: Request, res: Response) => {
     detail: gm ? 'GEMINI_API_KEY configured' : 'GEMINI_API_KEY not set — AI features limited'
   });
 
-  // Database persistence
-  const dataDir = process.env.DATA_DIR;
+  // Database persistence — the durable Firestore store (audit Phase 2).
+  // The old check read DATA_DIR, which no longer means anything: the
+  // store lives in the named Firestore database now and survives
+  // redeploys by design.
   checks.push({
-    id: 'database', label: 'Data Persistence', status: dataDir ? 'pass' : 'warn',
-    detail: dataDir ? `Using persistent volume at ${dataDir}` : 'No DATA_DIR volume — data lost on redeploy'
+    id: 'database', label: 'Data Persistence', status: isDurableStoreReady() ? 'pass' : 'warn',
+    detail: isDurableStoreReady() ? 'Businesses + call logs in Firestore (named database)' : 'Durable store not loaded — running in-memory only'
   });
 
   // Call alerts (push): Firebase Admin ready + registered owner devices
@@ -557,13 +560,11 @@ app.get('/api/diagnostics/scan', async (_req: Request, res: Response) => {
     let pushDetail = 'Firebase Admin is not ready — push alerts are unavailable';
     if (isPushAvailable()) {
       const caller = verifiedCaller(_req);
-      let mine = callerBusinesses(_req);
-      if (mine.length === 0 && caller) {
-        // The local file store is wiped on redeploy — the durable
-        // business records live in the named Firestore database.
-        const durable = await getFirestoreBusinesses();
-        mine = durable.filter((b) => businessIsMember(b, caller));
-      }
+      const mine = callerBusinesses(_req);
+      // No Firestore fallback here anymore: the server store itself is
+      // Firestore-backed (audit Phase 2), so callerBusinesses already
+      // reads the durable records — a second read of the same
+      // collection would prove nothing.
       if (mine.length === 0) {
         pushStatus = 'warn';
         pushDetail = 'No business found on this server — open the app to sync your business before a call arrives';
@@ -1610,9 +1611,22 @@ app.post('/api/businesses', (req: Request, res: Response) => {
     businessId = `biz_${crypto.randomUUID()}`;
   }
   const sanitizedMembers = Array.isArray(data.members) ? sanitizeMembers(data.members) : undefined;
+  // Audit Phase 2 (finding 13) — the owner comes from the verified
+  // token, never from the client body. Gate ON: a new business belongs
+  // to the caller; re-saving keeps the existing owner (the caller
+  // already proved ownership above); adopting an ownerless record
+  // names the caller (the adopt check requires exactly that). With no
+  // verified caller the record is ownerless — it can only be claimed
+  // later by someone naming their own uid, never by naming someone
+  // else's. Gate OFF: no verified identity exists, keep today's body
+  // behavior. The impersonation check above still guards the members
+  // roster for authenticated callers.
+  const callerUid = verifiedCaller(req)?.uid;
   const newBusiness: BusinessAccount = {
     id: businessId,
-    ownerId: typeof data.ownerId === 'string' ? data.ownerId : existingBusiness?.ownerId,
+    ownerId: isGateOn()
+      ? (existingBusiness?.ownerId ?? callerUid ?? '')
+      : (typeof data.ownerId === 'string' ? data.ownerId : existingBusiness?.ownerId),
     members: sanitizedMembers ?? existingBusiness?.members,
     contactName: typeof data.contactName === 'string' ? data.contactName : undefined,
     contactPhone: typeof data.contactPhone === 'string' ? data.contactPhone : undefined,
@@ -3693,6 +3707,31 @@ function jsonErrorHandler(err: any, req: Request, res: Response, next: express.N
 
 // ==================== VITE SPA INTEGRATION ====================
 async function startServer() {
+  // Audit Phase 2 (backend) — load the durable Firestore store before
+  // listening. A failed load while Admin is configured exits the
+  // process so Railway restarts it, instead of serving an empty store
+  // over real data.
+  try {
+    await initDurableStore();
+  } catch (err) {
+    console.error('[db] Durable store failed to load — exiting:', (err as Error)?.message || err);
+    process.exit(1);
+  }
+  // Reap outbound rooms that outlived the call-duration cap (finding
+  // 15): one pass at boot, then every 10 minutes. No-ops when LiveKit
+  // is not configured.
+  startOutboundCallSweeper();
+  // Graceful shutdown: flush any pending Firestore writes before the
+  // process exits, so a redeploy does not leave dirty writes behind.
+  // Bounded at 5 s — Railway kills the process after its grace period
+  // either way.
+  process.once('SIGTERM', () => {
+    Promise.race([
+      flushDurableStore(),
+      new Promise((r) => setTimeout(r, 5000)),
+    ]).finally(() => process.exit(0));
+  });
+
   const httpServer = http.createServer(app);
 
   if (process.env.NODE_ENV !== 'production') {
