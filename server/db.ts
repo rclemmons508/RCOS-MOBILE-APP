@@ -1,10 +1,64 @@
-import fs from 'fs';
-import path from 'path';
-import { 
-  BusinessAccount, 
-  CustomerRequest, 
-  ActionRecord, 
-  ChatMessage, 
+/**
+ * Durable server store — Firestore-backed (audit Phase 2, backend).
+ *
+ * The old store kept everything in a local JSON file
+ * (DATA_DIR/rcos_db.json). Railway's default filesystem is ephemeral,
+ * so every redeploy — which happens on every merge to main — wiped
+ * the business store, the call logs, and everything else, and the app
+ * had to re-save the business on every foreground just to keep the
+ * server usable. This file replaces that store. Clean cutover (Nov
+ * 27, 2026): no data migration — the live business was test data and
+ * was wiped at the same time, so the store starts empty in Firestore
+ * and fills up as the app syncs.
+ *
+ * How it works (single-process server, so this is safe):
+ * - At boot, the whole store is loaded once from Firestore into an
+ *   in-memory snapshot. The `db` API below stays SYNCHRONOUS — all
+ *   116 call sites keep working unchanged, reading the snapshot.
+ * - Every mutation updates the snapshot first (exactly the old
+ *   behavior), then persists the changed document(s) to Firestore in
+ *   the background. A failed persist stays dirty and is retried on a
+ *   timer — a failed write must never silently drop data (the old
+ *   file store threw for the same reason, audit #23).
+ * - If Firebase Admin is not configured (local dev without
+ *   FIREBASE_SERVICE_ACCOUNT), the store runs in-memory only and says
+ *   so loudly. Nothing written there survives a restart.
+ * - If the boot load fails while Admin IS configured, startup throws
+ *   and the process exits — serving an empty store over real data
+ *   would be worse than not serving at all (the old file store
+ *   refused the same way when its file was unreadable).
+ *
+ * Database: the NAMED Firestore database
+ * ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967,
+ * used EXPLICITLY — never bare admin.firestore(), which hits the
+ * (default) database that holds no businesses. Same pattern as the
+ * push-token store (server/pushNotifications.ts).
+ *
+ * Collections in the named database:
+ * - `businesses` — SHARED with the app (same collection, same doc
+ *   ids). Server writes here MUST use set(..., { merge: true }) so
+ *   app-only fields (agentSettings, serviceCatalog, customFields,
+ *   ...) are never clobbered.
+ * - `serverCalls`, `serverVoicemails`, `serverRequests`,
+ *   `serverActions`, `serverChatMessages`, `serverJobPacks`,
+ *   `serverAgentMessages`, `serverTeamMessages`, `serverTeamInvites`,
+ *   `serverPendingIntake` — server-only. The app never reads these
+ *   directly (it reads calls through GET /api/phone/calls).
+ *
+ * One consistency note: the snapshot reloads from Firestore on every
+ * server start. A record edited directly in the Firebase console
+ * (for example the owner wiping a business) takes effect on the next
+ * deploy/restart, not instantly — the running server keeps serving
+ * its snapshot until then.
+ */
+
+import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+import {
+  BusinessAccount,
+  CustomerRequest,
+  ActionRecord,
+  ChatMessage,
   JobPack,
   VoicemailRecord,
   PhoneCall,
@@ -16,14 +70,27 @@ import {
 } from '../src/types';
 import { INDUSTRY_PRESETS } from '../src/data/presets';
 
-// DATA_DIR can point to a Railway persistent volume (e.g. /data) so the
-// database survives redeploys. Railway's default filesystem is ephemeral.
-const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
-const DB_FILE = path.join(DATA_DIR, 'rcos_db.json');
-if (!process.env.DATA_DIR) {
-  console.error('[db] DATA_DIR is not set — the database lives in ./data inside the container and is WIPED on every redeploy. Set DATA_DIR to the Railway persistent volume (e.g. /data).');
-}
-try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* exists */ }
+/** Named Firestore database — the live data lives here, never in
+ *  the (default) database. */
+const NAMED_FIRESTORE_DB = 'ai-studio-rcosmobileapp-c0c46f2b-8d0f-43b8-978d-70fb08614967';
+
+/** Server-owned collections in the named database. `businesses` is
+ *  shared with the app; the rest are server-only (see the header). */
+const COLLECTIONS = {
+  businesses: 'businesses',
+  requests: 'serverRequests',
+  actions: 'serverActions',
+  chatMessages: 'serverChatMessages',
+  jobPacks: 'serverJobPacks',
+  voicemails: 'serverVoicemails',
+  calls: 'serverCalls',
+  agentMessages: 'serverAgentMessages',
+  teamMessages: 'serverTeamMessages',
+  teamInvites: 'serverTeamInvites',
+  pendingIntake: 'serverPendingIntake',
+} as const;
+
+type CollectionKey = keyof typeof COLLECTIONS;
 
 // Calls and voicemails are owned by one business (audit #6). The shared
 // PhoneCall / VoicemailRecord types live in src/ (client-owned), so the
@@ -37,12 +104,8 @@ export type ScopedVoicemail = VoicemailRecord & {
 // the only business on a single-tenant server, else undefined
 // (unattributed — hidden from every tenant once the login gate is on).
 export function defaultPhoneBusinessId(): string | undefined {
-  try {
-    const all = ensureDb().businesses;
-    return all.length === 1 ? all[0].id : undefined;
-  } catch {
-    return undefined;
-  }
+  const all = getSnapshot().businesses;
+  return all.length === 1 ? all[0].id : undefined;
 }
 
 interface DatabaseSchema {
@@ -59,62 +122,13 @@ interface DatabaseSchema {
   pendingIntake?: PendingIntake[];
 }
 
-const DB_BAK_FILE = `${DB_FILE}.bak`;
+// ---- In-memory snapshot (the synchronous API reads this) ----
 
-// Atomic JSON persistence (audit #5). The old code rewrote rcos_db.json in
-// place with writeFileSync (a crash mid-write left a truncated file) and,
-// on ANY parse failure, returned an empty database that the next write
-// then persisted over the real file — wiping every tenant. Now:
-//   - writes go to a temp file, are fsynced, then renamed over the real
-//     file (rename is atomic on the same filesystem);
-//   - before each write the current, known-good file is copied to .bak;
-//   - a missing file is the ONLY case that starts an empty database
-//     (after first trying to restore from .bak);
-//   - an unreadable file falls back to .bak (the corrupt file is kept as
-//     rcos_db.json.corrupt-<time>), and if .bak is unreadable too every
-//     read and write throws (routes answer 500) instead of serving or
-//     saving an empty database.
-let lastReadWasGood = false;
+let snapshot: DatabaseSchema | null = null;
+let firestoreReady = false;
+let loadWarningLogged = false;
 
-function atomicWriteFile(file: string, content: string): void {
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  let fd: number | undefined;
-  try {
-    fd = fs.openSync(tmp, 'w');
-    fs.writeFileSync(fd, content, 'utf-8');
-    fs.fsyncSync(fd);
-    fs.closeSync(fd);
-    fd = undefined;
-    fs.renameSync(tmp, file);
-  } catch (err) {
-    if (fd !== undefined) { try { fs.closeSync(fd); } catch { /* ignore */ } }
-    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
-    throw err;
-  }
-}
-
-function parseDbText(raw: string): DatabaseSchema {
-  const parsed = JSON.parse(raw);
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.businesses)) {
-    throw new Error('Database file does not contain a valid database object');
-  }
-  for (const key of ['requests', 'actions', 'chatMessages', 'jobPacks', 'voicemails', 'teamMessages', 'teamInvites'] as const) {
-    if (!Array.isArray(parsed[key])) parsed[key] = [];
-  }
-  return parsed as DatabaseSchema;
-}
-
-function readBackup(): DatabaseSchema | null {
-  if (!fs.existsSync(DB_BAK_FILE)) return null;
-  try {
-    return parseDbText(fs.readFileSync(DB_BAK_FILE, 'utf-8'));
-  } catch (err) {
-    console.error('[db] Backup file is also unreadable:', DB_BAK_FILE, err);
-    return null;
-  }
-}
-
-function freshDb(): DatabaseSchema {
+function seedJobPacks(): JobPack[] {
   // Initial seeded job packs from presets, but strictly ZERO mock businesses/requests/actions
   const initialJobPacks: JobPack[] = [];
   for (const p of INDUSTRY_PRESETS) {
@@ -122,104 +136,229 @@ function freshDb(): DatabaseSchema {
       initialJobPacks.push(...p.sampleJobPacks);
     }
   }
+  return initialJobPacks;
+}
+
+function freshSnapshot(): DatabaseSchema {
   return {
     businesses: [],
     requests: [],
     actions: [],
     chatMessages: [],
-    jobPacks: initialJobPacks,
+    jobPacks: [],
     voicemails: [],
+    calls: [],
+    agentMessages: [],
     teamMessages: [],
     teamInvites: [],
     pendingIntake: []
   };
 }
 
-function ensureDb(): DatabaseSchema {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-
-  if (!fs.existsSync(DB_FILE)) {
-    // A missing main file with a good backup means a write was interrupted
-    // between steps — restore rather than starting empty.
-    const fromBak = readBackup();
-    if (fromBak) {
-      console.error('[db] Database file missing — restored from backup', DB_BAK_FILE);
-      atomicWriteFile(DB_FILE, JSON.stringify(fromBak, null, 2));
-      lastReadWasGood = true;
-      return fromBak;
+function getSnapshot(): DatabaseSchema {
+  if (!snapshot) {
+    if (!loadWarningLogged) {
+      loadWarningLogged = true;
+      console.error('[db] Durable store was not loaded at boot — running in-memory only. Restart the server to load from Firestore.');
     }
-    const emptyDb = freshDb();
-    atomicWriteFile(DB_FILE, JSON.stringify(emptyDb, null, 2));
-    lastReadWasGood = true;
-    return emptyDb;
+    snapshot = freshSnapshot();
   }
+  return snapshot;
+}
 
+function getNamedDb(): admin.firestore.Firestore | null {
   try {
-    const data = parseDbText(fs.readFileSync(DB_FILE, 'utf-8'));
-    lastReadWasGood = true;
-    return data;
-  } catch (err) {
-    lastReadWasGood = false;
-    console.error('[db] DATABASE FILE IS UNREADABLE:', DB_FILE, err);
-    const fromBak = readBackup();
-    if (fromBak) {
-      const corruptCopy = `${DB_FILE}.corrupt-${Date.now()}`;
-      try { fs.copyFileSync(DB_FILE, corruptCopy); } catch { /* best effort */ }
-      atomicWriteFile(DB_FILE, JSON.stringify(fromBak, null, 2));
-      console.error(`[db] Restored database from ${DB_BAK_FILE}; the unreadable file was kept as ${corruptCopy}.`);
-      lastReadWasGood = true;
-      return fromBak;
-    }
-    // No usable backup: refuse to continue rather than hand out (and then
-    // persist) an empty database over the real data.
-    throw new Error('Database file is unreadable and no valid backup exists; refusing to read or write until it is repaired.');
+    return admin.apps.length > 0 ? getFirestore(admin.app(), NAMED_FIRESTORE_DB) : null;
+  } catch {
+    return null;
   }
 }
 
-function saveDb(data: DatabaseSchema): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+// ---- Firestore persistence (write-through, with retry) ----
+
+// Pending writes: collection -> doc id -> record (null = delete).
+const dirty = new Map<CollectionKey, Map<string, unknown | null>>();
+let flushTimer: NodeJS.Timeout | null = null;
+let flushInFlight = false;
+
+/** Firestore rejects `undefined` field values. The server's record
+ *  builders leave optional fields undefined (e.g. a business with no
+ *  contactPhone), so strip them before every write. */
+function firestoreSafe<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((v) => firestoreSafe(v)) as T;
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === undefined) continue;
+      out[k] = firestoreSafe(v);
+    }
+    return out as T;
   }
-  if (!lastReadWasGood && fs.existsSync(DB_FILE)) {
-    // Never overwrite a file we could not read (see ensureDb).
-    throw new Error('Refusing to write: the database file could not be read.');
+  return value;
+}
+
+function markDirty(collection: CollectionKey, docId: string, record: unknown | null): void {
+  let per = dirty.get(collection);
+  if (!per) {
+    per = new Map();
+    dirty.set(collection, per);
   }
+  per.set(docId, record);
+  scheduleFlush();
+}
+
+function scheduleFlush(delayMs = 0): void {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void flushDirty();
+  }, delayMs);
+  // The timer must never keep the process alive on its own.
+  flushTimer.unref?.();
+}
+
+async function flushDirty(): Promise<void> {
+  if (flushInFlight) {
+    scheduleFlush();
+    return;
+  }
+  const store = getNamedDb();
+  if (!store) return; // Admin not configured — in-memory only (local dev).
+  flushInFlight = true;
   try {
-    // Rotate the last known-good file into .bak, then atomically replace.
-    if (fs.existsSync(DB_FILE)) fs.copyFileSync(DB_FILE, DB_BAK_FILE);
-    atomicWriteFile(DB_FILE, JSON.stringify(data, null, 2));
+    for (const [collection, docs] of dirty) {
+      if (docs.size === 0) continue;
+      const colName = COLLECTIONS[collection];
+      const entries = [...docs.entries()];
+      // Firestore batches cap at 500 writes; stay under it.
+      for (let i = 0; i < entries.length; i += 400) {
+        const batch = store.batch();
+        for (const [docId, record] of entries.slice(i, i + 400)) {
+          const ref = store.collection(colName).doc(docId);
+          if (record === null) {
+            batch.delete(ref);
+          } else if (collection === 'businesses') {
+            // Merge, never overwrite: the app writes fields the server
+            // never sees (agentSettings, serviceCatalog, customFields).
+            // A full set here would wipe them.
+            batch.set(ref, firestoreSafe(record), { merge: true });
+          } else {
+            batch.set(ref, firestoreSafe(record));
+          }
+        }
+        await batch.commit();
+      }
+      // Only drop entries once every chunk committed — a failure above
+      // leaves them dirty for the retry below.
+      for (const [docId] of entries) docs.delete(docId);
+    }
   } catch (err) {
-    console.error('[db] Error saving DB to', DB_FILE, err);
-    // Surface the failure (audit #23) — the caller must not report success
-    // for data that was never saved.
-    throw err;
+    // Writes stay dirty and the retry timer brings them back. A failed
+    // persist must never silently drop data (audit #23).
+    console.error('[db] Firestore persist failed — will retry:', (err as Error)?.message || err);
+    scheduleFlush(30_000);
+  } finally {
+    flushInFlight = false;
   }
+}
+
+/**
+ * Load the whole store from Firestore into the in-memory snapshot.
+ * Called once at server startup, before listening. Throws when Admin
+ * is configured but the load fails — the caller exits rather than
+ * serving an empty store over real data. When Admin is not configured
+ * (local dev), starts empty in-memory and says so loudly.
+ */
+export async function initDurableStore(): Promise<void> {
+  const store = getNamedDb();
+  if (!store) {
+    console.error('[db] Firebase Admin is not configured — the server store is IN-MEMORY ONLY and will be lost on restart. Set FIREBASE_SERVICE_ACCOUNT for durable storage.');
+    snapshot = freshSnapshot();
+    return;
+  }
+  const fresh = freshSnapshot();
+  // One array per collection, by reference, so the load loop below can
+  // push straight into the snapshot.
+  const arrays: Record<CollectionKey, unknown[]> = {
+    businesses: fresh.businesses,
+    requests: fresh.requests,
+    actions: fresh.actions,
+    chatMessages: fresh.chatMessages,
+    jobPacks: fresh.jobPacks,
+    voicemails: fresh.voicemails ?? [],
+    calls: fresh.calls ?? [],
+    agentMessages: fresh.agentMessages ?? [],
+    teamMessages: fresh.teamMessages ?? [],
+    teamInvites: fresh.teamInvites ?? [],
+    pendingIntake: fresh.pendingIntake ?? [],
+  };
+  for (const key of Object.keys(COLLECTIONS) as CollectionKey[]) {
+    const snap = await store.collection(COLLECTIONS[key]).get();
+    for (const doc of snap.docs) {
+      // The document id IS the record id (businesses, calls, actions…).
+      arrays[key].push({ ...doc.data(), id: doc.id });
+    }
+  }
+  fresh.voicemails = arrays.voicemails as ScopedVoicemail[];
+  fresh.calls = arrays.calls as ScopedPhoneCall[];
+  fresh.agentMessages = arrays.agentMessages as AgentInboxMessage[];
+  fresh.teamMessages = arrays.teamMessages as TeamMessage[];
+  fresh.teamInvites = arrays.teamInvites as TeamInvite[];
+  fresh.pendingIntake = arrays.pendingIntake as PendingIntake[];
+  // Calls and voicemails are kept newest-first in memory (they are
+  // unshifted on save); Firestore returns no order, so restore it.
+  const byTimeDesc = (a: { timestamp?: string }, b: { timestamp?: string }) =>
+    new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+  fresh.calls.sort(byTimeDesc);
+  fresh.voicemails.sort(byTimeDesc);
+  // Seed job packs on a first boot (same starter templates as before).
+  if (fresh.jobPacks.length === 0) {
+    const seeds = seedJobPacks();
+    fresh.jobPacks.push(...seeds);
+    for (const pack of seeds) markDirty('jobPacks', pack.id, pack);
+  }
+  snapshot = fresh;
+  firestoreReady = true;
+  console.log(`[db] Durable store loaded from Firestore (${NAMED_FIRESTORE_DB}): ${fresh.businesses.length} businesses, ${fresh.calls.length} calls, ${fresh.voicemails.length} voicemails.`);
+}
+
+/** True once the boot load from Firestore succeeded. The Diagnostics
+ *  scan reports this as the Data Persistence check. */
+export function isDurableStoreReady(): boolean {
+  return firestoreReady;
+}
+
+/** Flush all pending Firestore writes now. Used on graceful shutdown
+ *  (SIGTERM) so a redeploy does not leave dirty writes behind. */
+export async function flushDurableStore(): Promise<void> {
+  await flushDirty();
 }
 
 export const db = {
   // Businesses
   getAllBusinesses(): BusinessAccount[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return data.businesses;
   },
 
   getBusiness(id: string): BusinessAccount | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     return data.businesses.find(b => b.id === id);
   },
 
   saveBusiness(business: BusinessAccount): BusinessAccount {
-    const data = ensureDb();
+    const data = getSnapshot();
     const idx = data.businesses.findIndex(b => b.id === business.id);
     if (idx >= 0) {
       data.businesses[idx] = { ...business, updatedAt: new Date().toISOString() };
     } else {
       data.businesses.push(business);
     }
-    saveDb(data);
-    return idx >= 0 ? data.businesses[idx] : business;
+    const saved = idx >= 0 ? data.businesses[idx] : business;
+    // Merge (see flushDirty): never clobber the app's fields on the
+    // shared business document.
+    markDirty('businesses', business.id, saved);
+    return saved;
   },
 
   // Patch only the given fields on the CURRENT stored record (audit #13).
@@ -228,11 +367,11 @@ export const db = {
   // (roster, settings) made in the meantime. Returns undefined when the
   // business no longer exists (deleted meanwhile) — nothing is recreated.
   updateBusiness(id: string, patch: Partial<BusinessAccount>): BusinessAccount | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     const idx = data.businesses.findIndex(b => b.id === id);
     if (idx < 0) return undefined;
     data.businesses[idx] = { ...data.businesses[idx], ...patch, id, updatedAt: new Date().toISOString() };
-    saveDb(data);
+    markDirty('businesses', id, data.businesses[idx]);
     return data.businesses[idx];
   },
 
@@ -251,68 +390,101 @@ export const db = {
    * ones with no business id are only removed when no businesses remain
    * at all (then they could only have belonged to the deleted businesses). Shared seed job packs are never touched —
    * they are starter templates, not user data.
+   *
+   * Only the server's own collections are deleted here. The app's
+   * subcollections under the business document (jobs, customers, calls,
+   * chatMessages) belong to the app — deleting those is a separate
+   * console operation, not this route.
    */
   deleteBusinessData(businessIds: string[]): { deletedBusinessIds: string[] } {
-    const data = ensureDb();
+    const data = getSnapshot();
     const targets = new Set(businessIds);
     const deletedBusinessIds = data.businesses.filter(b => targets.has(b.id)).map(b => b.id);
-    data.businesses = data.businesses.filter(b => !targets.has(b.id));
-    data.requests = data.requests.filter(r => !targets.has(r.businessId));
-    data.actions = data.actions.filter(a => !targets.has(a.businessId));
-    data.chatMessages = data.chatMessages.filter(m => !targets.has(m.businessId ?? ''));
+    const deleteDoc = (collection: CollectionKey, docId: string) => markDirty(collection, docId, null);
+    for (const id of deletedBusinessIds) deleteDoc('businesses', id);
+    const scoped = <T extends { businessId?: string }>(arr: T[] | undefined, collection: CollectionKey): T[] => {
+      if (!arr) return [];
+      const kept: T[] = [];
+      for (const r of arr) {
+        if (r.businessId && targets.has(r.businessId)) {
+          const docId = (r as unknown as { id?: string }).id;
+          if (docId) deleteDoc(collection, docId);
+        } else {
+          kept.push(r);
+        }
+      }
+      return kept;
+    };
+    data.requests = scoped(data.requests, 'requests');
+    data.actions = scoped(data.actions, 'actions');
+    data.chatMessages = scoped(data.chatMessages, 'chatMessages');
     if (data.agentMessages) {
-      data.agentMessages = data.agentMessages.filter(m => !targets.has(m.businessId));
+      data.agentMessages = scoped(data.agentMessages, 'agentMessages');
     }
     if (data.teamMessages) {
-      data.teamMessages = data.teamMessages.filter(m => !targets.has(m.businessId));
+      data.teamMessages = scoped(data.teamMessages, 'teamMessages');
     }
     if (data.teamInvites) {
-      data.teamInvites = data.teamInvites.filter(i => !targets.has(i.businessId));
+      // Team invites key their document by code, not id.
+      const kept: TeamInvite[] = [];
+      for (const i of data.teamInvites) {
+        if (targets.has(i.businessId)) deleteDoc('teamInvites', i.code);
+        else kept.push(i);
+      }
+      data.teamInvites = kept;
     }
+    // Collect the ids BEFORE filtering — the filtered-out records
+    // still need their Firestore documents removed.
+    const removedVmIds = (data.voicemails || []).filter(v => v.businessId && targets.has(v.businessId)).map(v => v.id);
+    const removedCallIds = (data.calls || []).filter(c => c.businessId && targets.has(c.businessId)).map(c => c.id);
     if (data.voicemails) data.voicemails = data.voicemails.filter(v => !(v.businessId && targets.has(v.businessId)));
     if (data.calls) data.calls = data.calls.filter(c => !(c.businessId && targets.has(c.businessId)));
+    for (const id of removedVmIds) deleteDoc('voicemails', id);
+    for (const id of removedCallIds) deleteDoc('calls', id);
     // Unattributed records: only safe to clear when nothing remains.
     if (data.businesses.length === 0) {
+      for (const v of data.voicemails || []) deleteDoc('voicemails', v.id);
+      for (const c of data.calls || []) deleteDoc('calls', c.id);
       data.voicemails = [];
       data.calls = [];
     }
-    saveDb(data);
     return { deletedBusinessIds };
   },
 
   // Customer Requests
   getRequests(businessId: string): CustomerRequest[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return data.requests
       .filter(r => r.businessId === businessId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   getRequest(id: string): CustomerRequest | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     return data.requests.find(r => r.id === id);
   },
 
   saveRequest(req: CustomerRequest): CustomerRequest {
-    const data = ensureDb();
+    const data = getSnapshot();
     const idx = data.requests.findIndex(r => r.id === req.id);
     if (idx >= 0) {
       data.requests[idx] = { ...req, updatedAt: new Date().toISOString() };
     } else {
       data.requests.push(req);
     }
-    saveDb(data);
-    return idx >= 0 ? data.requests[idx] : req;
+    const saved = idx >= 0 ? data.requests[idx] : req;
+    markDirty('requests', req.id, saved);
+    return saved;
   },
 
   // Field-level patch on the CURRENT stored request (audit #13). Returns
   // undefined when the request no longer exists — never resurrects it.
   updateRequest(id: string, patch: Partial<CustomerRequest>): CustomerRequest | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     const idx = data.requests.findIndex(r => r.id === id);
     if (idx < 0) return undefined;
     data.requests[idx] = { ...data.requests[idx], ...patch, id, updatedAt: new Date().toISOString() };
-    saveDb(data);
+    markDirty('requests', id, data.requests[idx]);
     return data.requests[idx];
   },
 
@@ -320,63 +492,68 @@ export const db = {
   // business existed yet. Queued instead of lost; flushed into Customer
   // Requests when a business is created.
   savePendingIntake(entry: PendingIntake): PendingIntake {
-    const data = ensureDb();
+    const data = getSnapshot();
     if (!data.pendingIntake) data.pendingIntake = [];
     data.pendingIntake.push(entry);
     // Bounded queue (audit #22): keep the newest 500 leads.
-    if (data.pendingIntake.length > 500) data.pendingIntake = data.pendingIntake.slice(-500);
-    saveDb(data);
+    if (data.pendingIntake.length > 500) {
+      const dropped = data.pendingIntake.slice(0, data.pendingIntake.length - 500);
+      data.pendingIntake = data.pendingIntake.slice(-500);
+      for (const d of dropped) markDirty('pendingIntake', d.id, null);
+    }
+    markDirty('pendingIntake', entry.id, entry);
     return entry;
   },
 
   // Read + clear all queued intake records (flush). Returns what was queued.
   takePendingIntake(): PendingIntake[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     const pending = data.pendingIntake || [];
     if (pending.length > 0) {
+      for (const entry of pending) markDirty('pendingIntake', entry.id, null);
       data.pendingIntake = [];
-      saveDb(data);
     }
     return pending;
   },
 
   // Actions
   getActions(businessId: string): ActionRecord[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return data.actions
       .filter(a => a.businessId === businessId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   getAction(id: string): ActionRecord | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     return data.actions.find(a => a.id === id);
   },
 
   saveAction(act: ActionRecord): ActionRecord {
-    const data = ensureDb();
+    const data = getSnapshot();
     const idx = data.actions.findIndex(a => a.id === act.id);
     if (idx >= 0) {
       data.actions[idx] = { ...act, updatedAt: new Date().toISOString() };
     } else {
       data.actions.push(act);
     }
-    saveDb(data);
-    return idx >= 0 ? data.actions[idx] : act;
+    const saved = idx >= 0 ? data.actions[idx] : act;
+    markDirty('actions', act.id, saved);
+    return saved;
   },
 
   // Chat Messages
   getChatMessages(businessId: string, employeeId?: string): ChatMessage[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return data.chatMessages
       .filter(m => m.businessId === businessId && (!employeeId || m.employeeId === employeeId))
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   },
 
   saveChatMessage(msg: ChatMessage): ChatMessage {
-    const data = ensureDb();
+    const data = getSnapshot();
     data.chatMessages.push(msg);
-    saveDb(data);
+    markDirty('chatMessages', msg.id, msg);
     return msg;
   },
 
@@ -385,7 +562,7 @@ export const db = {
   // packs carry the businessId that created them and are returned only to
   // that business (audit #17). With no businessId given, only seed packs.
   getJobPacks(industry?: string, businessId?: string): JobPack[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     const visible = data.jobPacks.filter(j => {
       const owner = (j as JobPack & { businessId?: string }).businessId;
       return !owner || (!!businessId && owner === businessId);
@@ -397,7 +574,7 @@ export const db = {
   },
 
   saveJobPack(jobPack: JobPack): JobPack {
-    const data = ensureDb();
+    const data = getSnapshot();
     const idx = data.jobPacks.findIndex(j => j.id === jobPack.id);
     if (idx >= 0) {
       data.jobPacks[idx] = jobPack;
@@ -410,23 +587,24 @@ export const db = {
         if (mine.length > 200) {
           const drop = new Set(mine.slice(0, mine.length - 200).map(j => j.id));
           data.jobPacks = data.jobPacks.filter(j => !drop.has(j.id));
+          for (const id of drop) markDirty('jobPacks', id, null);
         }
       }
     }
-    saveDb(data);
+    markDirty('jobPacks', jobPack.id, jobPack);
     return jobPack;
   },
 
   // Voicemails & Transcribed Messages
   getVoicemails(): ScopedVoicemail[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return (data.voicemails || []).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   },
 
   saveVoicemail(vm: ScopedVoicemail): ScopedVoicemail {
-    const data = ensureDb();
+    const data = getSnapshot();
     if (!data.voicemails) data.voicemails = [];
     const idx = data.voicemails.findIndex(v => v.id === vm.id);
     // Keep the owner: an update never changes or drops a record's business, and a new
@@ -438,60 +616,62 @@ export const db = {
     } else {
       data.voicemails.unshift(record);
     }
-    saveDb(data);
+    markDirty('voicemails', vm.id, record);
     return record;
   },
 
   getVoicemail(id: string): ScopedVoicemail | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     return (data.voicemails || []).find(v => v.id === id);
   },
 
   deleteVoicemail(id: string): boolean {
-    const data = ensureDb();
+    const data = getSnapshot();
     if (!data.voicemails) return false;
     const initialLen = data.voicemails.length;
     data.voicemails = data.voicemails.filter(v => v.id !== id);
-    saveDb(data);
+    if (data.voicemails.length < initialLen) markDirty('voicemails', id, null);
     return data.voicemails.length < initialLen;
   },
 
   // Phone Calls
   getCalls(): ScopedPhoneCall[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return data.calls || [];
   },
 
   findCall(call: { id?: string }): ScopedPhoneCall | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     return (data.calls || []).find(c => (!!call.id && c.id === call.id));
   },
 
   saveCall(call: ScopedPhoneCall): ScopedPhoneCall {
-    const data = ensureDb();
+    const data = getSnapshot();
     if (!data.calls) data.calls = [];
     const idx = data.calls.findIndex(c => c.id === call.id);
     const businessId = (idx >= 0 ? data.calls[idx].businessId : undefined) || call.businessId || defaultPhoneBusinessId();
     const record: ScopedPhoneCall = businessId ? { ...call, businessId } : call;
     if (idx >= 0) {
+      // Merge: the stored record may carry fields the new write lacks.
       data.calls[idx] = { ...data.calls[idx], ...record };
     } else {
       data.calls.unshift(record);
     }
-    saveDb(data);
+    // Persist the stored (merged) record, not just the incoming one.
+    markDirty('calls', call.id, idx >= 0 ? data.calls[idx] : data.calls[0]);
     return record;
   },
 
   // Proactive agent messages (the Agent Inbox)
   getAgentMessages(businessId: string): AgentInboxMessage[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return (data.agentMessages || [])
       .filter(m => m.businessId === businessId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   saveAgentMessage(msg: AgentInboxMessage): AgentInboxMessage {
-    const data = ensureDb();
+    const data = getSnapshot();
     if (!data.agentMessages) data.agentMessages = [];
     // Dedupe: never store two unread messages with the same dedupe key.
     if (msg.dedupeKey) {
@@ -502,18 +682,22 @@ export const db = {
     }
     data.agentMessages.unshift(msg);
     // Keep the inbox bounded.
-    if (data.agentMessages.length > 300) data.agentMessages.length = 300;
-    saveDb(data);
+    if (data.agentMessages.length > 300) {
+      const dropped = data.agentMessages.slice(300);
+      data.agentMessages.length = 300;
+      for (const d of dropped) markDirty('agentMessages', d.id, null);
+    }
+    markDirty('agentMessages', msg.id, msg);
     return msg;
   },
 
   updateAgentMessage(businessId: string, id: string, patch: Partial<AgentInboxMessage>): AgentInboxMessage | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     if (!data.agentMessages) return undefined;
     const msg = data.agentMessages.find(m => m.businessId === businessId && m.id === id);
     if (!msg) return undefined;
     Object.assign(msg, patch);
-    saveDb(data);
+    markDirty('agentMessages', id, msg);
     return msg;
   },
 
@@ -522,54 +706,56 @@ export const db = {
   // Team chat messages. Capped per business so the chat can never grow
   // the database without bound — oldest messages drop off first.
   getTeamMessages(businessId: string): TeamMessage[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return (data.teamMessages || [])
       .filter(m => m.businessId === businessId)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   },
 
   saveTeamMessage(msg: TeamMessage): TeamMessage {
-    const data = ensureDb();
+    const data = getSnapshot();
     if (!data.teamMessages) data.teamMessages = [];
     data.teamMessages.push(msg);
     const MAX_PER_BUSINESS = 500;
     const forBiz = data.teamMessages.filter(m => m.businessId === msg.businessId);
     if (forBiz.length > MAX_PER_BUSINESS) {
       const keep = new Set(forBiz.slice(forBiz.length - MAX_PER_BUSINESS).map(m => m.id));
+      const dropped = data.teamMessages.filter(m => m.businessId === msg.businessId && !keep.has(m.id));
       data.teamMessages = data.teamMessages.filter(m => m.businessId !== msg.businessId || keep.has(m.id));
+      for (const d of dropped) markDirty('teamMessages', d.id, null);
     }
-    saveDb(data);
+    markDirty('teamMessages', msg.id, msg);
     return msg;
   },
 
   // Team invites. Kept in their own store (NOT on the business record) so
   // the codes are never exposed by the plain business fetch.
   getTeamInvites(businessId: string): TeamInvite[] {
-    const data = ensureDb();
+    const data = getSnapshot();
     return (data.teamInvites || [])
       .filter(i => i.businessId === businessId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
   getTeamInviteByCode(code: string): TeamInvite | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     return (data.teamInvites || []).find(i => i.code === code);
   },
 
   saveTeamInvite(invite: TeamInvite): TeamInvite {
-    const data = ensureDb();
+    const data = getSnapshot();
     if (!data.teamInvites) data.teamInvites = [];
     const idx = data.teamInvites.findIndex(i => i.code === invite.code);
     if (idx >= 0) data.teamInvites[idx] = invite;
     else data.teamInvites.push(invite);
-    saveDb(data);
+    markDirty('teamInvites', invite.code, invite);
     return invite;
   },
 
   // Add or refresh one team member (matched by email — the stable identity
   // across devices). Returns the business, or undefined when not found.
   addBusinessMember(businessId: string, member: BusinessMember): BusinessAccount | undefined {
-    const data = ensureDb();
+    const data = getSnapshot();
     const biz = data.businesses.find(b => b.id === businessId);
     if (!biz) return undefined;
     if (!biz.members) biz.members = [];
@@ -581,21 +767,21 @@ export const db = {
       biz.members.push(member);
     }
     biz.updatedAt = new Date().toISOString();
-    saveDb(data);
+    markDirty('businesses', businessId, biz);
     return biz;
   },
 
   // Remove one team member by email. Historical chat messages stay, with
   // the removed person's name on them. Returns true when someone was removed.
   removeBusinessMember(businessId: string, email: string): boolean {
-    const data = ensureDb();
+    const data = getSnapshot();
     const biz = data.businesses.find(b => b.id === businessId);
     if (!biz || !biz.members) return false;
     const before = biz.members.length;
     biz.members = biz.members.filter(m => m.email.toLowerCase() !== email.toLowerCase());
     if (biz.members.length === before) return false;
     biz.updatedAt = new Date().toISOString();
-    saveDb(data);
+    markDirty('businesses', businessId, biz);
     return true;
   }
 };

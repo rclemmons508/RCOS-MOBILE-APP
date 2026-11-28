@@ -32,6 +32,38 @@ import { checkDestination, envInt, takeDailyQuota } from './phone-policy';
  *  call is the owner's own call, not a receptionist call to listen in on. */
 export const OUTBOUND_ROOM_PREFIX = 'outbound-';
 
+/**
+ * Audit Phase 2 (finding 15) — a server-side cap on how long an
+ * outbound call may run. Nothing capped it before: if the app died or
+ * the hangup request was lost, the SIP leg could run until someone
+ * noticed the bill. A normal business call is minutes; two hours is a
+ * generous ceiling for a stuck one. Override with
+ * MAX_CALL_DURATION_MINUTES. The cap is enforced twice: a timer set
+ * when the call is dialed, and a sweeper (below) that reaps any
+ * outbound room older than the cap — the sweeper also covers rooms
+ * orphaned by a restart, which the in-process timer cannot.
+ */
+export function maxOutboundCallDurationMs(): number {
+  const mins = Number(process.env.MAX_CALL_DURATION_MINUTES);
+  return (Number.isFinite(mins) && mins > 0 ? mins : 120) * 60_000;
+}
+
+/** In-process timers for live outbound calls, so a hangup cancels the
+ *  cap timer instead of leaving it to fire on a dead room. */
+const callCapTimers = new Map<string, NodeJS.Timeout>();
+
+function scheduleOutboundCallCap(roomName: string): void {
+  const existing = callCapTimers.get(roomName);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    callCapTimers.delete(roomName);
+    console.error(`[outbound] Call ${roomName} hit the ${Math.round(maxOutboundCallDurationMs() / 60_000)}-minute cap — hanging up.`);
+    void hangupOutboundCall(roomName);
+  }, maxOutboundCallDurationMs());
+  timer.unref?.();
+  callCapTimers.set(roomName, timer);
+}
+
 export class OutboundNotConfiguredError extends Error {}
 export class OutboundDialError extends Error {
   status: number;
@@ -132,8 +164,12 @@ export async function dialOutboundCall(opts: {
       name: opts.callerEmail || 'Owner',
     });
     token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+    const jwt = await token.toJwt();
+    // Cap the call from the moment it is live (finding 15). Scheduled
+    // only now, so a failed dial never leaves a timer behind.
+    scheduleOutboundCallCap(roomName);
     return {
-      token: await token.toJwt(),
+      token: jwt,
       url,
       room: roomName,
       to: dest.e164,
@@ -162,14 +198,83 @@ export async function dialOutboundCall(opts: {
  * End an outbound call: deleting the room drops the SIP leg and
  * disconnects the app. Never throws — hanging up a room that already
  * finished (callee hung up, timeout) is still a successful hangup.
+ *
+ * Audit Phase 2 (finding 15): a failed delete is retried, not
+ * swallowed — a room whose delete keeps failing would otherwise leave
+ * the SIP leg running with nobody watching. If it still fails after
+ * the retries, the error is logged and the sweeper below reaps the
+ * room on its next pass (within 10 minutes).
  */
 export async function hangupOutboundCall(roomName: string): Promise<void> {
+  const capTimer = callCapTimers.get(roomName);
+  if (capTimer) {
+    clearTimeout(capTimer);
+    callCapTimers.delete(roomName);
+  }
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) return;
+  const roomClient = new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await roomClient.deleteRoom(roomName);
+      return;
+    } catch (err) {
+      if (attempt === 3) {
+        console.error(`[outbound] Could not delete room ${roomName} after 3 hangup attempts — the stale-room sweeper will retry:`, (err as Error)?.message || err);
+      } else {
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
+}
+
+/**
+ * Reap outbound rooms older than the duration cap. The room name
+ * carries its creation time (`outbound-<businessId>-<epochMs>`), so no
+ * LiveKit metadata is needed to tell how old a room is. Rooms whose
+ * name does not parse are left alone — only rooms this server created
+ * are ever deleted.
+ */
+export async function sweepStaleOutboundRooms(): Promise<number> {
+  const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
+  if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) return 0;
+  const capMs = maxOutboundCallDurationMs();
+  const now = Date.now();
+  let reaped = 0;
   try {
     const roomClient = new RoomServiceClient(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET);
-    await roomClient.deleteRoom(roomName);
-  } catch {
-    // Room already gone — the call is over either way.
+    const rooms = await roomClient.listRooms();
+    for (const room of rooms) {
+      const name = room.name || '';
+      if (!name.startsWith(OUTBOUND_ROOM_PREFIX)) continue;
+      const startedMs = Number(name.slice(name.lastIndexOf('-') + 1));
+      if (!Number.isFinite(startedMs) || startedMs <= 0) continue;
+      if (now - startedMs < capMs) continue;
+      try {
+        await roomClient.deleteRoom(name);
+        reaped++;
+        console.error(`[outbound] Sweeper deleted stale outbound room ${name} (age ${Math.round((now - startedMs) / 60_000)} min).`);
+      } catch (err) {
+        console.error(`[outbound] Sweeper could not delete stale room ${name}:`, (err as Error)?.message || err);
+      }
+    }
+  } catch (err) {
+    console.error('[outbound] Stale-room sweep failed:', (err as Error)?.message || err);
   }
+  return reaped;
+}
+
+let sweeperStarted = false;
+
+/** Start the stale-room sweeper: one pass at boot, then every 10
+ *  minutes. Safe to call repeatedly; only the first call starts it.
+ *  No-ops (silently) when LiveKit is not configured. */
+export function startOutboundCallSweeper(): void {
+  if (sweeperStarted) return;
+  sweeperStarted = true;
+  void sweepStaleOutboundRooms();
+  const timer = setInterval(() => {
+    void sweepStaleOutboundRooms();
+  }, 10 * 60_000);
+  timer.unref?.();
 }
